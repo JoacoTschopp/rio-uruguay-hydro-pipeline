@@ -1,2 +1,10 @@
 *.jpeg
 .venv
+.vscode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+.databricks
+*.log

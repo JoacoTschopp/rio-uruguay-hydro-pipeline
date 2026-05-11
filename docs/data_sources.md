@@ -16,6 +16,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 | ANA — Niveles telemétricos      | Hidrológica   | Bronze + diaria    | `weather.bronze.nivel_ana`      | Subdiaria          | Target / features  |
 | METAR — Aeropuertos Brasil      | Meteorológica | Bronze + diaria    | `weather.bronze.metar`          | Horaria            | Features temperatura |
 | ANA — Lluvias estaciones pluvio | Hidrológica   | Compartida con ANA | `weather.bronze.ana_rio_uruguai`| Subdiaria          | Features lluvia     |
+| Salto Grande — Lluvia estaciones| Hidrológica   | Pipeline nuevo     | `weather.bronze.sg_rainfall`    | Diaria             | Features lluvia     |
 | Pronósticos (precip/temp)       | Pronóstico    | No ingestada       | —                               | Diaria/grilla     | Features futuras   |
 | Evaporación                     | Meteorológica | No ingestada       | —                               | Diaria             | Features            |
 
@@ -181,9 +182,73 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ---
 
-## 6. Fuentes candidatas no ingestadas
+## 6. Salto Grande — Lluvia estaciones
 
-### 6.1. Pronósticos meteorológicos
+### 6.1. Origen
+
+* Proveedor: Comisión Técnica Mixta de Salto Grande.
+* Endpoint SOAP: `https://www.saltogrande.org/ws.php`.
+* Operación: `HidroSerieHistorica`.
+* Variable ingestada: `P` (precipitación).
+* Autenticación: no requerida en el script disponible.
+
+### 6.2. Cobertura espacial
+
+* Estaciones activas disponibles en `/Volumes/weather/raw/sg_volume/sg_estaciones_activas/estaciones_activas.csv`.
+* Se filtran estaciones cuyo campo `Variables` contiene `P`.
+* El inventario observado por MCP en Databricks contiene columnas `Id`, `Nombre`, `Latitud`, `Longitud`, `Fecha`, `Variables`.
+
+### 6.3. Cobertura temporal
+
+* La API expone hasta 30 días recientes.
+* La ingesta diaria calcula la ventana desde `hoy - 30 días` hasta `ayer` y descarga solo los días faltantes en Raw.
+* Raw guarda un archivo por día para permitir reprocesamiento y auditoría.
+
+### 6.4. Notebooks asociados
+
+* DDL: `notebooks/01_DDL/DDL_SG_Rainfall.ipynb`.
+* Landing diaria: `notebooks/00_Landing/Salto_Grande/Daily_SG_Rainfall.ipynb`.
+* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_SG_Rainfall.ipynb`.
+* Silver diaria: `notebooks/04_Silver/ETL_Silver_SG_Rainfall_Daily.ipynb`.
+
+### 6.5. Rutas
+
+* Inventario estaciones: `/Volumes/weather/raw/sg_volume/sg_estaciones_activas/estaciones_activas.csv`.
+* Landing daily: `/Volumes/weather/raw/sg_volume/json/daily/` (archivos `SG_P_YYYY_MM_DD.json`).
+
+### 6.6. Tablas
+
+* Bronze: `weather.bronze.sg_rainfall`.
+* Silver: `weather.silver.sg_rainfall_daily`.
+* Calidad: `weather.silver.attribute_quality` con `source_table = 'weather.silver.sg_rainfall_daily'`.
+
+### 6.7. Job Databricks
+
+* `SG_Rainfall_Daily_Incremental`: `DDL_SG_Rainfall -> Daily_SG_Rainfall -> ETL_Bronze_SG_Rainfall -> ETL_Silver_SG_Rainfall_Daily`.
+* Schedule propuesto: `03:30` America/Montevideo.
+
+### 6.8. Campos clave
+
+* `Id_Estacion`: identificador de estación SG.
+* `Fecha`: día de medición.
+* `P`: precipitación diaria.
+* `Nombre`, `Latitud`, `Longitud`: metadata de estación copiada desde el inventario activo.
+
+### 6.9. Estado
+
+`Pipeline versionado para Raw + Bronze + Silver`
+
+### 6.10. Limitaciones conocidas
+
+* La API solo permite recuperar la ventana reciente de 30 días; si el job falla más de 30 días, habrá una brecha no recuperable desde este endpoint.
+* Se escriben archivos Raw vacíos para días sin registros, evitando reconsultas infinitas de días válidos sin datos.
+* SG se mantiene en tablas separadas de ANA para preservar trazabilidad por fuente.
+
+---
+
+## 7. Fuentes candidatas no ingestadas
+
+### 7.1. Pronósticos meteorológicos
 
 * Variables: precipitación pronosticada, temperatura pronosticada.
 * Resolución espacial sugerida: 0,25° x 0,25°.
@@ -191,19 +256,19 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Riesgo: pronósticos históricos previos a los últimos meses pueden ser difíciles de obtener.
 * Decisión pendiente: si se usan solo en modo incremental o si se integran al histórico (ver `decisions.md` Decisión 002).
 
-### 6.2. Evaporación
+### 7.2. Evaporación
 
 * Variables: evaporación diaria, acumulada.
 * Estado: `No ingestada`.
 * Postergada para `training_dataset_v1`.
 
-### 6.3. Lluvias y niveles Argentina
+### 7.3. Lluvias y niveles Argentina
 
 * Posibles proveedores: SNIH (Sistema Nacional de Información Hídrica), INA (Instituto Nacional del Agua).
 * Estado: `No ingestada`.
 * Importancia para el punto crítico Salto Grande.
 
-### 6.4. Temperatura grandes ciudades Brasil
+### 7.4. Temperatura grandes ciudades Brasil
 
 * Complemento o reemplazo de METAR aeropuertos.
 * Posibles proveedores: INMET (Instituto Nacional de Meteorologia).
@@ -211,7 +276,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ---
 
-## 7. Reglas mínimas que debe cumplir una nueva fuente
+## 8. Reglas mínimas que debe cumplir una nueva fuente
 
 Antes de incorporar una nueva fuente al pipeline, debe documentarse:
 

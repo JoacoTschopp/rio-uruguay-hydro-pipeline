@@ -1,0 +1,188 @@
+bundle:
+  name: rio-uruguay-hydro-pipeline
+
+variables:
+  workspace_project_path:
+    description: Workspace path where notebooks are published.
+    default: /Workspace/Users/joaquintschopp@gmail.com/rio-uruguay-hydro-pipeline
+
+workspace:
+  host: https://dbc-246ffaa7-0764.cloud.databricks.com
+
+resources:
+  jobs:
+    silver_gold_initial_load_v0:
+      name: Silver_Gold_Initial_Load_v0
+      max_concurrent_runs: 1
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: silver-gold
+        load_type: initial
+      tasks:
+        - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/DDL_Silver_Gold
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Level_Daily
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Level_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "14"
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "14"
+
+        - task_key: ETL_Silver_Rainfall_Daily
+          depends_on:
+            - task_key: ETL_Silver_Temperature_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Rainfall_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "14"
+
+        - task_key: ETL_Gold_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Silver_Rainfall_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "14"
+
+        - task_key: Validate_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Gold_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+    silver_gold_daily_incremental:
+      name: Silver_Gold_Daily_Incremental
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 30 4 * * ?"
+        timezone_id: America/Montevideo
+        pause_status: UNPAUSED
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: silver-gold
+        load_type: incremental
+      tasks:
+        - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Check_Bronze_Freshness
+            source: WORKSPACE
+            base_parameters:
+              max_lag_days: "3"
+
+        - task_key: ETL_Silver_Level_Daily
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Level_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
+        - task_key: ETL_Silver_Rainfall_Daily
+          depends_on:
+            - task_key: ETL_Silver_Temperature_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Rainfall_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
+        - task_key: ETL_Gold_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Silver_Rainfall_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
+        - task_key: Validate_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Gold_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+    sg_rainfall_daily_incremental:
+      name: SG_Rainfall_Daily_Incremental
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 30 3 * * ?"
+        timezone_id: America/Montevideo
+        pause_status: UNPAUSED
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: raw-bronze-silver
+        source: salto-grande
+        load_type: incremental
+      tasks:
+        - task_key: DDL_SG_Rainfall
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_SG_Rainfall
+            source: WORKSPACE
+
+        - task_key: Daily_SG_Rainfall
+          depends_on:
+            - task_key: DDL_SG_Rainfall
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/Salto_Grande/Daily_SG_Rainfall
+            source: WORKSPACE
+            base_parameters:
+              available_days: "30"
+              force_reload: "false"
+              request_sleep_seconds: "0.2"
+
+        - task_key: ETL_Bronze_SG_Rainfall
+          depends_on:
+            - task_key: Daily_SG_Rainfall
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_SG_Rainfall
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_SG_Rainfall_Daily
+          depends_on:
+            - task_key: ETL_Bronze_SG_Rainfall
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_SG_Rainfall_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "30"
+
+targets:
+  dev:
+    default: true
