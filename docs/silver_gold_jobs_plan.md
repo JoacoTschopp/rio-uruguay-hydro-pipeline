@@ -6,7 +6,7 @@ Este documento define la implementacion de la capa Silver y la primera tabla Gol
 
 No se modifican notebooks actuales de `00_Landing`, `01_DDL`, `02_Bronze` ni `03_EDA`. Los jobs Bronze que funcionan hoy siguen siendo la fuente de verdad para alimentar Bronze.
 
-La ejecucion real en Databricks queda pendiente hasta que el MCP de Databricks este disponible y el cambio sea aprobado explicitamente.
+La ejecucion real en Databricks fue realizada el 2026-05-09 usando el MCP local de Databricks. El estado desplegado se documenta en `docs/silver_gold_implementation_status.md`.
 
 ## Decisiones confirmadas
 
@@ -18,7 +18,7 @@ La ejecucion real en Databricks queda pendiente hasta que el MCP de Databricks e
 | Punto de prediccion Gold | `ana_74100000` |
 | Regla de faltantes | Global por fuente/atributo |
 | Umbral de descarte | `missing_pct > 0.90` |
-| Ejecucion Databricks | Esperar MCP Databricks |
+| Ejecucion Databricks | Ejecutado con MCP local el 2026-05-09 |
 
 ## Inventario Bronze usado
 

@@ -1,2 +1,18 @@
 *.jpeg
 .venv
+.vscode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+.databricks
+*.log
+
+# Datos/artefactos generados por el harness de testing local (no codigo, no versionar)
+notebooks_local/ecmwf/local_data/
+
+# Scratch/debug sueltos, no son parte del pipeline
+Script_temp/
+install.ps1
+req.json

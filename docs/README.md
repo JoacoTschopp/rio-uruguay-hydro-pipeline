@@ -9,6 +9,7 @@ Documentación del proyecto **Río Uruguay – Hydro Pipeline** (tesis de Maestr
 3. `current_pipeline_inventory.md` — qué hay hoy en Databricks: notebooks, jobs, capas, brechas.
 4. `thesis_dataset_roadmap.md` — fases para llegar a `gold.training_dataset_v0` y baseline.
 5. `decisions.md` — log de decisiones técnicas y metodológicas (ADR-style).
+6. `silver_gold_implementation_status.md` — estado real desplegado de jobs, tablas y validaciones Silver/Gold.
 
 ## Mapa rápido
 
@@ -19,22 +20,23 @@ Documentación del proyecto **Río Uruguay – Hydro Pipeline** (tesis de Maestr
 | `current_pipeline_inventory.md` | ¿Qué procesos corren hoy y qué falta?                 |
 | `thesis_dataset_roadmap.md`     | ¿Qué hago próximo y en qué orden?                     |
 | `decisions.md`                  | ¿Por qué se eligió cada enfoque?                       |
+| `silver_gold_implementation_status.md` | ¿Qué quedó desplegado y validado en Databricks? |
 
 ## Estado actual del pipeline
 
 * **Landing + Bronze**: operativo para 3 fuentes (ANA estaciones, ANA niveles, METAR aeropuertos).
 * **EDA Bronze**: realizado (cobertura, faltantes, duplicados, outliers, frecuencia real).
-* **Silver**: no implementado.
-* **Gold**: no implementado.
-* **Jobs Databricks**: 3 jobs serverless diarios.
+* **Silver**: implementado para niveles, temperatura y lluvia; lluvia/temperatura quedan excluidas de Gold v0 por calidad global.
+* **Gold**: `weather.gold.training_dataset_v0` implementado y validado para `ana_74100000`.
+* **Jobs Databricks**: 3 jobs Bronze diarios + 2 jobs Silver/Gold (`Initial_Load` e `Incremental`).
 
 ## Próximo entregable
 
-`gold.training_dataset_v0` — primera versión entrenable. Ver fases en `thesis_dataset_roadmap.md`.
+Baseline de modelado sobre `weather.gold.training_dataset_v0` y decisión de nueva fuente meteorológica para reemplazar/complementar METAR histórico.
 
 ## Convenciones
 
 * Catálogo Unity: `weather`.
 * Schemas: `raw`, `bronze`, `silver`, `gold`.
 * Volumes: `/Volumes/weather/raw/ana_volume/` y `/Volumes/weather/raw/noaa_volume/`.
-* Notebooks numerados por capa: `00_Landing/`, `01_DDL/`, `02_Bronze/`, `03_EDA/`, `04_Silver/` (futuro), `05_Gold/` (futuro).
+* Notebooks numerados por capa: `00_Landing/`, `01_DDL/`, `02_Bronze/`, `03_EDA/`, `04_Silver/`, `05_Gold/`, `06_Quality/`.
