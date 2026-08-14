@@ -24,16 +24,40 @@ from typing import Optional
 GRID_DEG = 0.25
 
 
+def _geojson_total_bounds(geojson_path: str | Path) -> tuple[float, float, float, float]:
+    """Bounds (lon_min, lat_min, lon_max, lat_max) de un FeatureCollection en CRS84,
+    leido a mano (sin geopandas): evita cargar GDAL/PROJ en el mismo proceso que cfgrib
+    (eccodes) en Daily_ECMWF_FC, una dependencia nativa menos en un proceso ya sensible
+    a conflictos de librerias (ver docs/decisions.md sobre el crash de cfgrib en si)."""
+    with open(geojson_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    minx = miny = math.inf
+    maxx = maxy = -math.inf
+
+    def walk(coords):
+        nonlocal minx, miny, maxx, maxy
+        if isinstance(coords[0], (int, float)):
+            x, y = coords[0], coords[1]
+            minx, maxx = min(minx, x), max(maxx, x)
+            miny, maxy = min(miny, y), max(maxy, y)
+        else:
+            for c in coords:
+                walk(c)
+
+    for feature in data["features"]:
+        walk(feature["geometry"]["coordinates"])
+
+    return minx, miny, maxx, maxy
+
+
 def compute_download_area(geojson_path: str | Path, grid_deg: float = GRID_DEG, margin_cells: int = 1) -> dict:
     """Calcula el area minima (N/O/S/E) que cubre el geojson, redondeada a la grilla + margen.
 
     Evita bajar "todo el mundo": el area se deriva de los limites reales del
     geojson de las 3 sub-cuencas, no de un bbox fijo hardcodeado.
     """
-    import geopandas as gpd
-
-    gdf = gpd.read_file(geojson_path)
-    minx, miny, maxx, maxy = gdf.total_bounds  # lon_min, lat_min, lon_max, lat_max
+    minx, miny, maxx, maxy = _geojson_total_bounds(geojson_path)
     margin = grid_deg * margin_cells
 
     north = math.ceil((maxy + margin) / grid_deg) * grid_deg
@@ -237,8 +261,10 @@ def write_json(records: list[dict], out_path: Path) -> None:
 
 
 def date_range_str(start: date, end: date) -> str:
-    """Sintaxis MARS de rango de fechas, aceptada por cdsapi en el campo 'date'."""
-    return f"{start.isoformat()}/to/{end.isoformat()}"
+    """Sintaxis de rango de fechas del portal ECMWF Data Stores (ecds.ecmwf.int): "start/end",
+    sin "/to/" (esa era la sintaxis MARS clasica, la API nueva la rechaza con 400 Bad Request:
+    'Date ranges must be of the form "start_date/end_date"')."""
+    return f"{start.isoformat()}/{end.isoformat()}"
 
 
 def _reftime_dim_name(tp) -> Optional[str]:

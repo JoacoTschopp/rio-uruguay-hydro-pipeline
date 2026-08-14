@@ -284,30 +284,6 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_ECMWF_Forecast
             source: WORKSPACE
 
-        - task_key: Daily_ECMWF_FC
-          depends_on:
-            - task_key: DDL_ECMWF_Forecast
-          notebook_task:
-            notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/ECMWF/Daily_ECMWF_FC
-            source: WORKSPACE
-
-        - task_key: ETL_Bronze_ECMWF_FC
-          depends_on:
-            - task_key: Daily_ECMWF_FC
-          notebook_task:
-            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
-            source: WORKSPACE
-
-        - task_key: ETL_Silver_ECMWF_FC
-          depends_on:
-            - task_key: ETL_Bronze_ECMWF_FC
-          notebook_task:
-            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_FC
-            source: WORKSPACE
-            base_parameters:
-              load_mode: incremental
-              incremental_lookback_days: "3"
-
         - task_key: Daily_ECMWF_CF
           depends_on:
             - task_key: DDL_ECMWF_Forecast
@@ -357,7 +333,7 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/ECMWF/Historic_ECMWF_CF
             source: WORKSPACE
             base_parameters:
-              max_batches_per_run: "3"
+              max_batches_per_run: "25"
 
         - task_key: ETL_Bronze_ECMWF_CF_Historic
           depends_on:
@@ -384,7 +360,7 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/ECMWF/Historic_ECMWF_PF
             source: WORKSPACE
             base_parameters:
-              max_batches_per_run: "3"
+              max_batches_per_run: "50"
 
         - task_key: ETL_Bronze_ECMWF_PF_Historic
           depends_on:

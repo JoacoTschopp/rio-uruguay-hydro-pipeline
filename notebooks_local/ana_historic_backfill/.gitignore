@@ -1,0 +1,12 @@
+# Datos y estado en tiempo real: regenerables (re-descargando o re-bajando el estado
+# desde el Volume de Databricks), no tiene sentido versionarlos.
+output_json/
+output_test/
+output_stateful_test/
+historic_backfill_state.json
+last_sync.json
+backfill.lock
+logs/*.log
+__pycache__/
+dashboard_test.log
+dashboard_test.pid

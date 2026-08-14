@@ -17,7 +17,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 | METAR — Aeropuertos Brasil      | Meteorológica | Bronze + diaria    | `weather.bronze.metar`          | Horaria            | Features temperatura |
 | ANA — Lluvias estaciones pluvio | Hidrológica   | Compartida con ANA | `weather.bronze.ana_rio_uruguai`| Subdiaria          | Features lluvia     |
 | Salto Grande — Lluvia estaciones| Hidrológica   | Pipeline nuevo     | `weather.bronze.sg_rainfall`    | Diaria             | Features lluvia     |
-| ECMWF — Pronóstico precipitación (fc + cf) | Pronóstico | Bronze + Silver + diaria | `weather.bronze.ecmwf_forecast_fc` / `_cf` | Diaria (grilla 0,25°) | Features futuras |
+| ECMWF — Pronóstico precipitación (cf + pf) | Pronóstico | Bronze + Silver + diaria | `weather.bronze.ecmwf_forecast_cf` / `_pf` | Diaria (grilla 0,25°) | Features futuras |
 | Evaporación                     | Meteorológica | No ingestada       | —                               | Diaria             | Features            |
 
 ---
@@ -46,18 +46,18 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 ### 3.4. Notebooks asociados
 
 * Landing diaria: `notebooks/00_Landing/ANA_Hidrico/Daily_ANA.ipynb`.
-* Landing histórica: `notebooks/00_Landing/ANA_Hidrico/Historic_ANA.ipynb`.
-* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_ANA.ipynb`.
-* Bronze histórica: `notebooks/02_Bronze/ETL_Bronze_ANA_Histo.ipynb`.
+* Landing histórica: **movida a ejecución local** (`notebooks_local/ana_historic_backfill/run_backfill_local.py`, rama `feature/ana-backfill-automation`, no en `main`). `notebooks/00_Landing/ANA_Hidrico/Historic_ANA.ipynb` documenta la lógica (mismo endpoint/batching) pero ya no corre en Databricks — ver Decisión 016. El notebook original que pegaba contra el endpoint legado (`snirh.gov.br/hidroweb/rest/api/seriehistorica`, hoy muerto con 401) fue reescrito el 2026-08-05 (Decisión 015) antes de moverse a local el 2026-08-14.
+* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_ANA.ipynb` (también consume el histórico: lee todo el folder `json/` sin distinguir origen del archivo, así que los JSON subidos por `notebooks_local/ana_historic_backfill/sync_to_databricks.py` se mergean en el próximo run diario sin ningún job adicional).
 
 ### 3.5. Rutas de almacenamiento
 
 * Landing daily: `/Volumes/weather/raw/ana_volume/json/` (archivos `ANA_YYYY_MM_DD.json`).
-* Landing histórico: `/Volumes/weather/raw/ana_volume/json/` (archivos `ANA_*.json`).
+* Landing histórico: `/Volumes/weather/raw/ana_volume/json/` (archivos `ANA_HIST_<inicio>_<fin>.json`, subidos desde local — ver Decisión 016).
 
 ### 3.6. Job Databricks
 
-* `All_Estacoes_ANA_Daily`: `Daily_ANA -> ETL_Bronze_ANA`. Ejecución serverless.
+* `All_Estacoes_ANA_Daily`: `Daily_ANA -> ETL_Bronze_ANA`. Ejecución serverless. También absorbe el backfill histórico subido desde local (mismo folder `json/`).
+* ~~`ANA_Historic_Backfill`~~: eliminado de `databricks.yml` (Decisión 016). El backfill histórico corre 100% local (`notebooks_local/ana_historic_backfill/`), con Task Scheduler de Windows para automatizarlo y un dashboard Gradio (`dashboard_app.py`) para monitorear/controlar. Databricks solo recibe los JSON ya descargados vía `sync_to_databricks.py`.
 
 ### 3.7. Campos clave
 
@@ -246,53 +246,51 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ---
 
-## 7. ECMWF — Pronóstico de precipitación (control forecast + determinístico)
+## 7. ECMWF — Pronóstico de precipitación (control forecast + perturbed forecast)
 
 ### 7.1. Origen
 
-* Dos fuentes independientes, ambas del ECMWF:
-  * **`fc` (determinístico, HRES)**: ECMWF Open Data (`ecmwf.opendata.Client`, paquete `ecmwf-opendata`), sin autenticación. `stream="oper"`, `type="fc"`, `param="tp"`.
-  * **`cf` (control forecast del ensemble)**: dataset `tigge-forecasts` en el portal nuevo ECMWF Data Stores (`https://ecds.ecmwf.int`), vía paquete estándar `cdsapi`. Request MARS clásico (`origin=ecmf`, `levtype=sfc`, `param=228228`, `type=cf`).
-* Autenticación `cf`: credenciales `cdsapi_url` / `cdsapi_key` (del `~/.cdsapirc` del usuario) guardadas en el Databricks secret scope `ecmwf`, leídas vía `dbutils.secrets.get`. `fc` no requiere autenticación.
+* `cf` (control forecast del ensemble) y `pf` (perturbed forecast, 50 miembros): dataset `tigge-forecasts` en el portal nuevo ECMWF Data Stores (`https://ecds.ecmwf.int`), vía paquete estándar `cdsapi`. Request MARS clásico (`origin=ecmf`, `levtype=sfc`, `param=228228`, `type=cf`/`pf`).
+* Autenticación: credenciales `cdsapi_url` / `cdsapi_key` (del `~/.cdsapirc` del usuario) guardadas en el Databricks secret scope `ecmwf`, leídas vía `dbutils.secrets.get`.
 * Nota histórica: el ECMWF Web API legacy (`api.ecmwf.int`, paquete `ecmwfapi`) quedó deshabilitado (token) y fue reemplazado por este portal nuevo — ver `decisions.md`.
+* `fc` (determinístico, HRES vía ECMWF Open Data, `ecmwf.opendata.Client`) se evaluó e implementó, pero se **descartó**: requiere `cfgrib`/`eccodes`, que desde la versión ≥2.39 depende de la librería nativa `eckit` y esta aborta el proceso (`SIGABRT`) en el compute serverless de este workspace — el workspace no permite compute clásico como alternativa. Ver Decisión 013 en `decisions.md` para el diagnóstico completo.
 
 ### 7.2. Cobertura espacial
 
-* Bounding box de descarga calculado dinámicamente antes de cada corrida a partir de `SIG/subcuencas_modelo.geojson.total_bounds` (función `compute_download_area()`), redondeado al múltiplo de grilla 0,25° más cercano + 1 celda de margen. No se descarga un área fija ni el grid global.
-* Resolución nativa 0,25° x 0,25° (la más fina disponible en ambas fuentes) en ambos casos.
+* Bounding box de descarga calculado dinámicamente antes de cada corrida a partir de `SIG/subcuencas_modelo.geojson` (función `compute_download_area()`, sin `geopandas`: lee el GeoJSON a mano), redondeado al múltiplo de grilla 0,25° más cercano + 1 celda de margen. No se descarga un área fija ni el grid global.
+* Resolución nativa 0,25° x 0,25°.
 * El recorte al polígono exacto de las 3 sub-cuencas (con buffer ~0,15°, ~15 km) se aplica recién en **Silver**, no en Landing/Bronze — Bronze conserva todo el bounding box descargado sin recortar.
 
 ### 7.3. Cobertura temporal
 
 * Horizonte de pronóstico: todos los steps disponibles cada 24h, de 0h a 360h (`range(0, 361, 24)`), por corrida.
-* `fc`: se descarga la corrida más reciente publicada (`client.latest(...)`), sin latencia relevante.
-* `cf`: TIGGE tiene latencia de archivo — la corrida de `hoy` y `hoy-1` normalmente no están disponibles; el notebook busca hacia atrás desde `hoy-2` hasta `hoy-5` (`TIGGE_LAG_DAYS=2`, `MAX_LAG_SEARCH=5`) hasta encontrar la primera corrida publicada.
-* `tp` (precipitación acumulada desde el inicio de la corrida): Open Data entrega en metros (se convierte a mm, factor 1000); `tigge-forecasts` vía `cdsapi` entrega directamente en kg/m² (equivalente a mm, sin conversión) — confirmado empíricamente vía `GRIB_units`, no asumido.
+* TIGGE tiene latencia de archivo — la corrida de `hoy` y `hoy-1` normalmente no están disponibles; el notebook busca hacia atrás desde `hoy-2` hasta `hoy-5` (`TIGGE_LAG_DAYS=2`, `MAX_LAG_SEARCH=5`) hasta encontrar la primera corrida publicada.
+* `tp` (precipitación acumulada desde el inicio de la corrida): `tigge-forecasts` vía `cdsapi` entrega en kg/m² (equivalente a mm, sin conversión) — confirmado empíricamente vía `GRIB_units`, no asumido.
 
 ### 7.4. Notebooks asociados
 
 * DDL: `notebooks/01_DDL/DDL_ECMWF_Forecast.ipynb` (crea el volumen, carpetas, tablas Bronze y Silver).
-* Landing diaria: `notebooks/00_Landing/ECMWF/Daily_ECMWF_FC.ipynb` y `Daily_ECMWF_CF.ipynb`.
-* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_ECMWF_FC.ipynb` y `ETL_Bronze_ECMWF_CF.ipynb`.
-* Silver diaria (recorte al polígono real): `notebooks/04_Silver/ETL_Silver_ECMWF_FC.ipynb` y `ETL_Silver_ECMWF_CF.ipynb`.
+* Landing diaria: `notebooks/00_Landing/ECMWF/Daily_ECMWF_CF.ipynb` y `Daily_ECMWF_PF.ipynb`.
+* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_ECMWF_CF.ipynb` y `ETL_Bronze_ECMWF_PF.ipynb`.
+* Silver diaria (recorte al polígono real): `notebooks/04_Silver/ETL_Silver_ECMWF_CF.ipynb` y `ETL_Silver_ECMWF_PF.ipynb`.
 
 ### 7.5. Rutas de almacenamiento
 
 * Volumen: `weather.raw.ecmwf_volume`.
-* `fc`: `/Volumes/weather/raw/ecmwf_volume/fc_opendata/{raw,json}/` (archivos `ECMWF_FC_YYYY_MM_DD_t{HH}.{grib2,json}`).
 * `cf`: `/Volumes/weather/raw/ecmwf_volume/cf_tigge/{raw,json}/` (archivos `ECMWF_CF_YYYY_MM_DD_t{HH}.{nc,json}`).
+* `pf`: `/Volumes/weather/raw/ecmwf_volume/pf_tigge/{raw,json}/` (archivos `ECMWF_PF_YYYY_MM_DD_t{HH}.{nc,json}`).
 * Idempotencia: si ya existe el JSON de la corrida (`run_date`+`run_time`), se saltea salvo `force_reload=true`.
 
 ### 7.6. Tablas
 
-* Bronze: `weather.bronze.ecmwf_forecast_fc`, `weather.bronze.ecmwf_forecast_cf` (esta última con columna adicional `number` de ensemble). Contienen todo el bounding box descargado, sin recortar al polígono.
-* Silver: `weather.silver.ecmwf_forecast_fc_basin`, `weather.silver.ecmwf_forecast_cf_basin`. Solo puntos de grilla dentro del buffer del polígono de las 3 sub-cuencas, tageados con `subcuenca_id`/`subcuenca_nombre`.
+* Bronze: `weather.bronze.ecmwf_forecast_cf`, `weather.bronze.ecmwf_forecast_pf` (ambas con columna `number` de ensemble). Contienen todo el bounding box descargado, sin recortar al polígono.
+* Silver: `weather.silver.ecmwf_forecast_cf_basin`, `weather.silver.ecmwf_forecast_pf_basin`. Solo puntos de grilla dentro del buffer del polígono de las 3 sub-cuencas, tageados con `subcuenca_id`/`subcuenca_nombre`.
 
 ### 7.7. Job Databricks
 
-* `ECMWF_Forecast_Daily_Incremental`: `DDL_ECMWF_Forecast -> (Daily_ECMWF_FC -> ETL_Bronze_ECMWF_FC -> ETL_Silver_ECMWF_FC)` y `-> (Daily_ECMWF_CF -> ETL_Bronze_ECMWF_CF -> ETL_Silver_ECMWF_CF)` en paralelo.
+* `ECMWF_Forecast_Daily_Incremental`: `DDL_ECMWF_Forecast -> Daily_ECMWF_CF -> ETL_Bronze_ECMWF_CF -> ETL_Silver_ECMWF_CF` (y, si se agrega `pf` diario, en paralelo).
 * Schedule: `08:00 UTC` diario (ciclos ECMWF son en UTC).
-* Validado manualmente end-to-end en Databricks (ambas ramas, Landing → Bronze → Silver) antes de activar el schedule.
+* Validado manualmente end-to-end en Databricks (Landing → Bronze → Silver) antes de activar el schedule.
 
 ### 7.8. Campos clave
 
@@ -301,25 +299,26 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * `valid_date`, `valid_datetime`: momento al que corresponde el pronóstico (`run` + `step`).
 * `latitude`, `longitude`: punto de grilla (longitud normalizada a convención -180/180).
 * `tp_mm`: precipitación acumulada desde el inicio de la corrida, en mm.
-* `number` (solo `cf`): identificador del miembro del ensemble (control = 0).
+* `number`: identificador del miembro del ensemble (`cf` = control = 0; `pf` = 1–50).
 * `subcuenca_id`, `subcuenca_nombre` (solo Silver): sub-cuenca a la que pertenece el punto de grilla.
 
 ### 7.9. Estado
 
-`Bronze + Silver operativos, job diario activo (validado manualmente el 2026-07-27)`
+`Bronze + Silver operativos, job diario activo (validado manualmente el 2026-07-27). fc descartado (ver 7.1 y Decision 013).`
 
 ### 7.10. Limitaciones conocidas
 
 * `tp` es acumulado desde el inicio de la corrida, no incremental entre steps consecutivos — no sumar entre steps sin restar el acumulado previo.
-* `cf` no está disponible el mismo día ni el día anterior (latencia de archivo TIGGE); el `run_date` efectivo de `cf` normalmente queda 2+ días detrás de la fecha de ejecución del job.
+* `cf`/`pf` no están disponibles el mismo día ni el día anterior (latencia de archivo TIGGE); el `run_date` efectivo normalmente queda 2+ días detrás de la fecha de ejecución del job.
 * El compute (Databricks Free Edition) invalida la sesión de `spark` si un notebook llama a `dbutils.library.restartPython()` después de un `%pip install` — los notebooks Silver instalan `geopandas`/`pyogrio` sin reiniciar el kernel para evitarlo.
-* `type="cf"` con `param="tp"` no existe en ECMWF Open Data (solo en `tigge-forecasts`); por eso `cf` sale exclusivamente del portal ECMWF Data Stores.
+* `type="cf"`/`type="pf"` con `param="tp"` no existen en ECMWF Open Data (solo en `tigge-forecasts`); por eso salen exclusivamente del portal ECMWF Data Stores.
 
 ### 7.11. Reconstrucción histórica (backfill) de `cf` y `pf`
 
-* Cobertura real disponible: **2006-10-01 → hoy**. El archivo TIGGE no tiene datos anteriores a octubre de 2006 (confirmado en la documentación de ECMWF); no es posible reconstruir desde 2000 con esta fuente. `fc` (Open Data) queda **fuera de alcance**: solo retiene ~12 corridas (2-3 días), no tiene archivo histórico — reconstruirlo requeriría un Service Agreement/acceso MARS distinto con ECMWF (ver Decisión 012 en `decisions.md`).
+* Cobertura real disponible: **2006-10-01 → hoy**. El archivo TIGGE no tiene datos anteriores a octubre de 2006 (confirmado en la documentación de ECMWF); no es posible reconstruir desde 2000 con esta fuente. `fc` (Open Data) ya está fuera de alcance por completo (7.1) — nunca hubiera tenido archivo histórico de todas formas: solo retiene ~12 corridas (2-3 días), reconstruirlo hubiera requerido un Service Agreement/acceso MARS distinto con ECMWF (ver Decisión 012 en `decisions.md`).
 * Notebooks: `notebooks/00_Landing/ECMWF/Historic_ECMWF_CF.ipynb` y `Historic_ECMWF_PF.ipynb`. Reusan las mismas tablas Bronze/Silver que el job diario sin ningún cambio de esquema — escriben un JSON por día en el mismo folder (`cf_tigge/json/`, `pf_tigge/json/`), con lo cual Bronze (que lee toda la carpeta) no distingue si el archivo vino del job diario o del backfill.
-* Estrategia anti-bloqueo de API: un solo request de `cdsapi` a la vez, agrupando fechas en un único request por lote en vez de un request por día — 1 año calendario por request para `cf` (~5.840 "fields": 365 días × 16 steps), 1 mes calendario por request para `pf` (~24.000 fields con los 50 miembros, para no acercarse a órdenes de magnitud grandes sin límite documentado). Tope de `max_batches_per_run` lotes por corrida (default 3), corte inmediato ante el primer fallo (no reintentos en bucle), resumible por diseño (saltea lotes con todos los días ya aterrizados).
+* Estrategia anti-bloqueo de API: un solo request de `cdsapi` a la vez, agrupando fechas en un único request por lote en vez de un request por día — 1 año calendario por request para `cf` (~5.840 "fields": 365 días × 16 steps), 1 mes calendario por request para `pf` (~24.000 fields con los 50 miembros, para no acercarse a órdenes de magnitud grandes sin límite documentado). Tope de `max_batches_per_run` lotes por corrida (25 para `cf`, 50 para `pf`), corte inmediato ante el primer fallo (no reintentos en bucle), resumible por diseño (saltea lotes con todos los días ya aterrizados).
+* Bug encontrado y corregido (2026-08-04): `date_range_str()` construía el rango con sintaxis MARS clásica (`"start/to/end"`), que el portal nuevo ECMWF Data Stores (`ecds.ecmwf.int`) rechaza con `400 Bad Request: Date ranges must be of the form "start_date/end_date"`. Como el fallo se tragaba silenciosamente (diseño: "corta ante el primer fallo, no reintenta", pero sin marcar el task como fallido), el backfill venía reportando `SUCCESS` en Databricks sin haber avanzado nunca más allá del primer lote. Fix: `"start/end"` sin `/to/`.
 * Job Databricks: `ECMWF_Forecast_Historic_Backfill`, **sin schedule** (se dispara a mano, "Run now", tantas veces como haga falta hasta terminar). Encadena `Historic_ECMWF_CF` → Bronze → Silver → `Historic_ECMWF_PF` → Bronze → Silver de forma estrictamente secuencial (nunca en paralelo entre sí ni con `ECMWF_Forecast_Daily_Incremental`, porque comparten cuenta/token contra la misma cola de TIGGE/ECDS).
 * Silver histórico usa un tercer `load_mode=backfill` (además de `full`/`incremental`) con `range_start`/`range_end` explícitos — necesario porque el modo `incremental` filtra por `MAX(run_date) - lookback` y nunca recogería filas más viejas que el máximo ya cargado por el job diario. El job de backfill pasa ese rango automáticamente vía task values (`{{tasks.Historic_ECMWF_CF.values.range_start}}`), publicados por el propio notebook histórico al final de cada corrida.
 * Estado: `Implementado, no corrido en Databricks todavía (2026-07-28). Falta validar contra la API real y calibrar max_batches_per_run según el tiempo de cola observado.`
