@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Dataset Caudal Río Uruguay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#eef2f5; --surface:#ffffff; --surface-2:#f5f8fa; --surface-3:#eaeff3;
+  --ink:#0e1f2b; --ink-2:#3a4b57; --ink-3:#647581; --line:#d6dfe6; --line-2:#c3cfd8;
+  --caudal:#0e7490; --caudal-soft:#cdeaf0; --rio:#1d4ed8; --rio-soft:#dbe4ff;
+  --ok:#15803d; --ok-bg:#dcf3e4; --warn:#b45309; --warn-bg:#fbedd6; --crit:#b91c1c; --crit-bg:#f8dcdc;
+  --shadow:0 1px 2px rgba(14,31,43,.06),0 8px 24px -12px rgba(14,31,43,.18);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --caudal-soft:#0d3742; --rio:#7aa0ff; --rio-soft:#1a2c52;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --caudal-soft:#0d3742; --rio:#7aa0ff; --rio-soft:#1a2c52;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;text-wrap:balance;line-height:1.15;margin:0}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+a{color:var(--caudal)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---- Masthead ---- */
+.mast{position:relative;overflow:hidden;border-bottom:1px solid var(--line);
+  background:linear-gradient(160deg,var(--surface) 0%,var(--surface-2) 60%,var(--surface-3) 100%);}
+.mast .wrap{padding:52px 24px 40px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--caudal);font-weight:600;margin:0 0 18px}
+.mast h1{font-size:clamp(2.1rem,5.2vw,3.5rem);font-weight:600;letter-spacing:-.015em}
+.mast h1 em{font-style:italic;color:var(--caudal)}
+.lede{margin:20px 0 0;max-width:64ch;font-size:1.08rem;color:var(--ink-2)}
+.metaline{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:26px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.chip b{color:var(--ink);font-weight:600}
+.wave{position:absolute;inset:auto 0 -1px 0;height:70px;opacity:.5;pointer-events:none}
+
+/* ---- Sections ---- */
+section{padding:46px 0}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:24px;flex-wrap:wrap}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--caudal);font-weight:600;
+  border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+.sec-head h2{font-size:clamp(1.5rem,3.4vw,2rem);font-weight:600;letter-spacing:-.01em}
+.sec-sub{color:var(--ink-2);max-width:70ch;margin:-10px 0 26px}
+.rule{height:1px;background:var(--line);border:0;margin:0}
+
+/* ---- KPI tiles ---- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 18px 16px;
+  box-shadow:var(--shadow)}
+.kpi .n{font-family:"Fraunces",serif;font-size:2rem;font-weight:600;letter-spacing:-.02em;line-height:1;
+  color:var(--caudal)}
+.kpi .n.rio{color:var(--rio)}
+.kpi .l{margin-top:9px;font-size:13px;color:var(--ink-2);line-height:1.35}
+.kpi .s{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);margin-top:6px}
+
+/* ---- Cards ---- */
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;box-shadow:var(--shadow)}
+.card h3{font-size:1.14rem;font-weight:600;margin-bottom:6px}
+.card p{margin:.5em 0;color:var(--ink-2);font-size:14.5px}
+.card .mono{font-size:12.5px;color:var(--caudal)}
+
+/* ---- Pills ---- */
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px;font-weight:500;padding:3px 9px;border-radius:999px;white-space:nowrap;line-height:1.5}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-ok{color:var(--ok);background:var(--ok-bg)}
+.p-warn{color:var(--warn);background:var(--warn-bg)}
+.p-crit{color:var(--crit);background:var(--crit-bg)}
+.p-info{color:var(--caudal);background:var(--caudal-soft)}
+
+/* ---- Tables ---- */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+thead th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:12px 14px;
+  border-bottom:1px solid var(--line-2);background:var(--surface-2)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+tbody td.mono{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink)}
+tbody td strong{color:var(--ink);font-weight:600}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-family:"IBM Plex Mono",monospace}
+
+/* ---- coverage bar ---- */
+.bar{height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden;min-width:80px;margin-top:5px}
+.bar>span{display:block;height:100%;border-radius:3px}
+
+/* ---- Medallion flow ---- */
+.flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.stage{flex:1 1 150px;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:16px;position:relative;box-shadow:var(--shadow)}
+.stage .tag{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--caudal);font-weight:600}
+.stage h4{margin:8px 0 6px;font-family:"Fraunces",serif;font-size:1.05rem;font-weight:600;color:var(--ink)}
+.stage ul{margin:0;padding-left:16px;font-size:12.5px;color:var(--ink-2)}
+.stage ul li{margin:2px 0}
+.stage .arrow{position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--line-2);z-index:2;
+  font-size:18px;background:var(--ground);border-radius:50%}
+@media(max-width:640px){.stage .arrow{display:none}}
+
+/* ---- schema group ---- */
+.schema{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(272px,1fr))}
+.sgroup{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;box-shadow:var(--shadow)}
+.sgroup .hd{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+  justify-content:space-between;gap:10px;background:var(--surface-2)}
+.sgroup .hd h4{margin:0;font-family:"Fraunces",serif;font-size:1.02rem;font-weight:600}
+.sgroup .bd{padding:12px 16px 15px}
+.cols{display:flex;flex-wrap:wrap;gap:6px}
+.col{font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:3px 8px;border-radius:6px;
+  background:var(--surface-3);color:var(--ink-2);border:1px solid var(--line)}
+.col.tg{background:var(--caudal-soft);color:var(--caudal);border-color:transparent;font-weight:600}
+.col.na{opacity:.55;text-decoration:line-through}
+.sgroup .note{font-size:12px;color:var(--ink-3);margin:10px 0 0}
+
+/* ---- future work ---- */
+.fw{display:grid;gap:14px}
+.fwitem{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow)}
+.fwitem .pr{font-family:"Fraunces",serif;font-size:1.5rem;font-weight:600;color:var(--caudal);line-height:1;
+  min-width:34px;text-align:center}
+.fwitem h4{margin:0 0 4px;font-size:1.05rem;font-weight:600}
+.fwitem p{margin:6px 0 0;font-size:14px;color:var(--ink-2)}
+.fwitem .tags{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.blocker{border-left:3px solid var(--rio)}
+
+.callout{background:var(--caudal-soft);border:1px solid transparent;border-radius:12px;padding:18px 20px;
+  font-size:14.5px;color:var(--ink);margin-top:4px}
+.callout strong{color:var(--caudal)}
+.callout.warn{background:var(--warn-bg)}
+.callout.warn strong{color:var(--warn)}
+
+footer{border-top:1px solid var(--line);padding:30px 0 46px;color:var(--ink-3);font-size:13px}
+footer .mono{font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--ink-2);margin-bottom:18px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+::selection{background:var(--caudal);color:#fff}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="wrap">
+    <p class="eyebrow">Informe de datos · Tesis · Río Uruguay</p>
+    <h1>Dataset para predecir el <em>caudal</em> del Río Uruguay en la estación objetivo</h1>
+    <p class="lede">Estado de las capas Silver y Gold del pipeline Medallion, la estructura del dataset de
+      entrenamiento y los trabajos pendientes para concluir una base entrenable y reproducible.</p>
+    <div class="metaline">
+      <span class="chip">Objetivo <b>caudal m³/s · t+1/3/7/14 d</b></span>
+      <span class="chip">Estación target <b class="mono">74100000 · Irai</b></span>
+      <span class="chip">Punto <b class="mono">ana_74100000</b></span>
+      <span class="chip">Entorno <b>Databricks · Unity Catalog</b></span>
+      <span class="chip">Corte <b>2026-08-19</b></span>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,40 C240,10 480,70 720,45 C960,20 1200,65 1440,38 L1440,70 L0,70 Z" fill="var(--caudal)"/>
+  </svg>
+</header>
+
+<main class="wrap">
+
+<!-- ESTADO GENERAL -->
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>Estado general del proyecto</h2></div>
+  <p class="sec-sub">El pipeline end-to-end (Landing → Bronze → Silver → Gold) está operativo en Databricks.
+    La tabla Gold de entrenamiento existe, es reproducible y ya incorpora el caudal como variable objetivo
+    principal. El dataset es entrenable hoy para un punto de predicción; la ampliación a la escala completa
+    está en curso.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">31.094</div><div class="l">filas en <span class="mono">gold.training_dataset_v0</span></div><div class="s">1941 → 2026</div></div>
+    <div class="kpi"><div class="n">9.694</div><div class="l">filas con caudal poblado</div><div class="s">desde 2000-01-01</div></div>
+    <div class="kpi"><div class="n rio">210.106</div><div class="l">filas de caudal diario en Silver</div><div class="s">22 estaciones · grupo A</div></div>
+    <div class="kpi"><div class="n rio">509</div><div class="l">segmentos de curva de aforo</div><div class="s">20/22 estaciones usables</div></div>
+    <div class="kpi"><div class="n">99,2%</div><div class="l">caudal interpolado (en rango)</div><div class="s">0,8% sin curva · 0% extrapolado</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:20px">
+    <div class="callout"><strong>Lo que ya está resuelto.</strong> Conversión física nivel→caudal por
+      curva de aforo vigente en cada fecha, targets de caudal a 1/3/7/14 días, features hidrológicas de nivel
+      y caudal (lags, medias móviles, deltas) y trazabilidad completa de qué curva se usó. Clave lógica sin
+      duplicados y sin fugas de target verificadas.</div>
+    <div class="callout warn"><strong>Lo que limita el dataset hoy.</strong> Un solo punto de predicción
+      (Salto Grande pendiente); temperatura y lluvia llegan casi vacías y se publican como <code>NULL</code>;
+      el pronóstico ECMWF vive en Silver pero aún no se integra a Gold; y los agregados de caudal por
+      sub-cuenca —la mayor ganancia predictiva— esperan el grupo B de estaciones.</div>
+  </div>
+</section>
+<hr class="rule">
+
+<!-- ARQUITECTURA -->
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>Arquitectura del pipeline</h2></div>
+  <p class="sec-sub">Arquitectura Medallion. La conversión nivel→caudal se resuelve en Silver (es una
+    normalización física por estación); Gold trabaja al grano <code>fecha + punto_prediccion</code> con
+    lags, ventanas móviles y targets.</p>
+  <div class="flow">
+    <div class="stage"><span class="tag">Landing</span><h4>Fuentes crudas</h4>
+      <ul><li>ANA HidroWebService</li><li>METAR / NOAA</li><li>Salto Grande</li><li>ECMWF Data Stores</li></ul>
+      <span class="arrow">→</span></div>
+    <div class="stage"><span class="tag">Bronze</span><h4>Espejo tipado</h4>
+      <ul><li>nivel_ana · ana_rio_uruguai</li><li>metar · sg_rainfall</li><li>rating_curve_segments</li><li>ecmwf_forecast_cf/pf</li></ul>
+      <span class="arrow">→</span></div>
+    <div class="stage"><span class="tag">Silver</span><h4>Limpio + diario</h4>
+      <ul><li>river_levels_daily</li><li><b>river_discharge_daily</b></li><li>temperature · rainfall</li><li>ecmwf_*_basin</li></ul>
+      <span class="arrow">→</span></div>
+    <div class="stage"><span class="tag">Gold</span><h4>Entrenable</h4>
+      <ul><li><b>training_dataset_v0</b></li><li>grano fecha+punto</li><li>features + targets</li><li>caudal + nivel</li></ul></div>
+  </div>
+</section>
+<hr class="rule">
+
+<!-- TARGET -->
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>La variable objetivo: caudal</h2></div>
+  <p class="sec-sub">Decisión 017 (2026-08-19): el target pasa a ser el <strong>caudal (m³/s)</strong> en la
+    estación objetivo, conservando el nivel. El nivel (cota, cm) no es comparable entre estaciones porque
+    depende del cero de escala local; el caudal es una magnitud física comparable, aditiva aguas abajo y la
+    que usan los sistemas operativos de decisión.</p>
+  <div class="grid g3">
+    <div class="card"><h3>Punto de predicción</h3>
+      <p class="mono">ana_74100000 — Irai</p>
+      <p>Estación ANA sobre el Río Uruguay, zona de frontera Brasil/Argentina. Segundo punto (Salto Grande
+        aguas abajo) planificado, aún sin datos.</p></div>
+    <div class="card"><h3>Horizontes</h3>
+      <p class="mono">t+1d · t+3d · t+7d · t+14d</p>
+      <p>Targets de caudal como variable principal (<code>caudal_t_mas_*</code>) y targets de nivel
+        conservados en paralelo (<code>nivel_rio_t_mas_*</code>).</p></div>
+    <div class="card"><h3>Granularidad</h3>
+      <p class="mono">fecha + punto_prediccion</p>
+      <p>Una fila por día y punto. Fuentes subdiarias agregadas a diario. Piso temporal del caudal:
+        2000-01-01.</p></div>
+  </div>
+  <div class="callout warn" style="margin-top:16px"><strong>Advertencia hidrológica documentada.</strong>
+    La estación 74100000 (Irai) está bajo influencia directa de la represa UHE Foz do Chapecó: la curva
+    cota–caudal de la sección es válida, pero el régimen no es natural. Se documenta como limitación, no se
+    corrige.</div>
+</section>
+<hr class="rule">
+
+<!-- SILVER -->
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Capa Silver — inventario y calidad</h2></div>
+  <p class="sec-sub">Tablas normalizadas a grano diario que alimentan Gold. La regla de calidad documentada
+    excluye de Gold v0 toda fuente con <code>missing_pct &gt; 0,90</code> (se publica como <code>NULL</code>).</p>
+  <div class="legend">
+    <span><span class="pill p-ok">usable</span> entra a Gold con datos</span>
+    <span><span class="pill p-warn">parcial</span> entra pero con reservas</span>
+    <span><span class="pill p-crit">no usable</span> se publica como NULL / vacía</span>
+  </div>
+  <div class="tblwrap">
+    <table>
+      <thead><tr>
+        <th>Tabla Silver</th><th>Rol en el dataset</th><th class="num">Filas</th>
+        <th>Cobertura</th><th>Faltantes clave</th><th>Estado</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">river_discharge_daily</td>
+          <td><strong>Caudal diario</strong> — fuente del target y features de caudal</td>
+          <td class="num">210.106</td>
+          <td>2000 → hoy · 22 est.</td>
+          <td>0,8% sin curva
+            <div class="bar"><span style="width:99.2%;background:var(--ok)"></span></div></td>
+          <td><span class="pill p-ok">usable</span></td>
+        </tr>
+        <tr>
+          <td class="mono">river_levels_daily</td>
+          <td>Nivel diario de la estación target — features/targets de nivel</td>
+          <td class="num">30.582</td>
+          <td>1941 → hoy · target</td>
+          <td>0,01% en <code>nivel_media_cm</code>
+            <div class="bar"><span style="width:99.99%;background:var(--ok)"></span></div></td>
+          <td><span class="pill p-ok">usable</span></td>
+        </tr>
+        <tr>
+          <td class="mono">rating_curve_segments</td>
+          <td>Curvas de aforo vigentes — motor de la conversión</td>
+          <td class="num">509</td>
+          <td>grupo A · 22 est.</td>
+          <td>2 est. con MAPE &gt; 100%
+            <div class="bar"><span style="width:91%;background:var(--warn)"></span></div></td>
+          <td><span class="pill p-warn">parcial</span></td>
+        </tr>
+        <tr>
+          <td class="mono">temperature_daily</td>
+          <td>Temperatura de aeropuertos (features meteorológicas)</td>
+          <td class="num">46.787</td>
+          <td>histórico crudo desde 1990</td>
+          <td>99,7% en <code>temp_*_c</code>
+            <div class="bar"><span style="width:0.3%;background:var(--crit)"></span></div></td>
+          <td><span class="pill p-crit">no usable</span></td>
+        </tr>
+        <tr>
+          <td class="mono">rainfall_daily</td>
+          <td>Lluvia diaria ANA (features de lluvia)</td>
+          <td class="num">0</td>
+          <td>—</td>
+          <td>99,8% / tabla vacía
+            <div class="bar"><span style="width:0.2%;background:var(--crit)"></span></div></td>
+          <td><span class="pill p-crit">no usable</span></td>
+        </tr>
+        <tr>
+          <td class="mono">sg_rainfall_daily</td>
+          <td>Lluvia Salto Grande (features de lluvia, punto aguas abajo)</td>
+          <td class="num">—</td>
+          <td>ventana móvil 30 d</td>
+          <td>pipeline nuevo, no integrado a Gold</td>
+          <td><span class="pill p-info">no integrada</span></td>
+        </tr>
+        <tr>
+          <td class="mono">ecmwf_forecast_cf/pf_basin</td>
+          <td>Precipitación pronosticada por sub-cuenca (features de forecast)</td>
+          <td class="num">—</td>
+          <td>2018 → hoy (cf)</td>
+          <td>backfill 2006–2018 pendiente; pf sin arrancar</td>
+          <td><span class="pill p-info">no integrada</span></td>
+        </tr>
+        <tr>
+          <td class="mono">estacion_subcuenca</td>
+          <td>Mapeo estación → sub-cuenca (habilita agregados de caudal)</td>
+          <td class="num">22</td>
+          <td>solo <code>alta_frontera</code></td>
+          <td>grupo B (~370) sin mapear</td>
+          <td><span class="pill p-warn">parcial</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+<hr class="rule">
+
+<!-- GOLD SCHEMA -->
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Dataset Gold — <span class="mono" style="font-family:'IBM Plex Mono';font-size:.7em">training_dataset_v0</span></h2></div>
+  <p class="sec-sub">Grano <code>fecha + punto_prediccion</code>. 31.094 filas, sin duplicados por clave, sin
+    mismatches en los targets. Las columnas se agrupan por dominio; <span class="col tg" style="padding:1px 6px">target</span>
+    marca las variables objetivo y las tachadas se publican vacías en v0.</p>
+  <div class="schema">
+    <div class="sgroup">
+      <div class="hd"><h4>Claves</h4><span class="pill p-ok">poblado</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col">fecha</span><span class="col">punto_prediccion</span><span class="col">codigoestacao</span>
+      </div></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Caudal — actual y contexto</h4><span class="pill p-ok">poblado</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col">caudal_actual_m3s</span><span class="col">caudal_registros_validos</span>
+        <span class="col">caudal_metodo</span><span class="col">caudal_extrapolado</span>
+        <span class="col">distancia_fuera_rango_cm</span><span class="col">supera_aforo_maximo</span>
+        <span class="col">caudal_confiable</span>
+      </div><p class="note">Flags de trazabilidad: el dato sale completo, el modelado decide el tratamiento.</p></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Caudal — features</h4><span class="pill p-ok">poblado</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col">caudal_lag_1d</span><span class="col">caudal_lag_3d</span><span class="col">caudal_lag_7d</span>
+        <span class="col">caudal_media_3d</span><span class="col">caudal_media_7d</span><span class="col">caudal_delta_1d</span>
+      </div></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Caudal — targets</h4><span class="pill p-info">principal</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col tg">caudal_t_mas_1d</span><span class="col tg">caudal_t_mas_3d</span>
+        <span class="col tg">caudal_t_mas_7d</span><span class="col tg">caudal_t_mas_14d</span>
+      </div></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Nivel — actual y features</h4><span class="pill p-ok">poblado</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col">nivel_rio_actual_cm</span><span class="col">nivel_rio_actual_m</span><span class="col">nivel_registros_validos</span>
+        <span class="col">nivel_rio_lag_1d</span><span class="col">nivel_rio_lag_3d</span><span class="col">nivel_rio_lag_7d</span>
+        <span class="col">nivel_rio_media_3d</span><span class="col">nivel_rio_media_7d</span><span class="col">nivel_rio_delta_1d</span>
+      </div></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Nivel — targets</h4><span class="pill p-info">secundario</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col tg">nivel_rio_t_mas_1d</span><span class="col tg">nivel_rio_t_mas_3d</span>
+        <span class="col tg">nivel_rio_t_mas_7d</span><span class="col tg">nivel_rio_t_mas_14d</span>
+      </div><p class="note">Conversión biyectiva dentro del rango de la curva: se puede predecir en cualquiera de los dos espacios.</p></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Agregados por sub-cuenca</h4><span class="pill p-warn">parcial</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col">caudal_agregado_alta_frontera_m3s</span>
+        <span class="col">…_lag_1d/2d/3d</span>
+        <span class="col">…_confiable_pct</span>
+        <span class="col na">…_intermedia_paso_libres_*</span>
+        <span class="col na">…_baja_salto_grande_*</span>
+      </div><p class="note">Solo <code>alta_frontera</code> poblado. El caudal es aditivo entre estaciones (el nivel no) — la mayor ganancia predictiva pendiente.</p></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Meteorología</h4><span class="pill p-crit">NULL en v0</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col na">temp_media_c</span><span class="col na">temp_min_c</span><span class="col na">temp_max_c</span>
+        <span class="col na">temp_station_count</span><span class="col na">lluvia_acumulada_mm</span><span class="col na">lluvia_is_usable</span>
+      </div><p class="note">Excluidas por la regla de calidad (missing &gt; 90%). El esquema ya las reserva.</p></div>
+    </div>
+  </div>
+</section>
+<hr class="rule">
+
+<!-- COBERTURA -->
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Cobertura y garantías del dataset</h2></div>
+  <div class="kpis">
+    <div class="kpi"><div class="n rio">1941</div><div class="l">fecha mínima (nivel)</div><div class="s">caudal desde 2000</div></div>
+    <div class="kpi"><div class="n">0</div><div class="l">duplicados por <span class="mono">fecha+punto</span></div><div class="s">clave lógica íntegra</div></div>
+    <div class="kpi"><div class="n">0</div><div class="l">mismatches en targets t+1/3/7/14</div><div class="s">sin fuga verificada</div></div>
+    <div class="kpi"><div class="n">20<span style="font-size:1.1rem;color:var(--ink-3)">/22</span></div><div class="l">curvas usables (MAPE ≤ 20%)</div><div class="s">2 flageadas, no bloquean</div></div>
+    <div class="kpi"><div class="n">5,1%</div><div class="l">MAPE de la curva vs. aforos</div><div class="s">tras corregir la fórmula H₀</div></div>
+  </div>
+</section>
+<hr class="rule">
+
+<!-- FUTURO -->
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Trabajos futuros para concluir</h2></div>
+  <p class="sec-sub">Ordenados por prioridad. Los marcados con barra azul
+    <span style="display:inline-block;width:22px;height:3px;background:var(--rio);vertical-align:middle;border-radius:2px"></span>
+    son los que más amplían el poder predictivo o desbloquean el resto.</p>
+  <div class="fw">
+    <div class="fwitem blocker"><div class="pr">1</div><div>
+      <h4>Completar el grupo B y el mapeo estación → sub-cuenca</h4>
+      <p>Terminar la descarga de curvas de las ~370 estaciones restantes y unir sus coordenadas contra los
+        polígonos de <code>SIG/subcuencas_modelo.geojson</code>. Habilita los agregados de caudal de
+        <code>intermedia_paso_libres</code> y <code>baja_salto_grande</code> — la ganancia predictiva más
+        grande de todo el trabajo.</p>
+      <div class="tags"><span class="pill p-warn">en descarga</span><span class="pill p-info">resumible</span><span class="pill p-info">desbloquea agregados</span></div>
+    </div></div>
+    <div class="fwitem blocker"><div class="pr">2</div><div>
+      <h4>Segundo punto de predicción: Salto Grande aguas abajo</h4>
+      <p>Los datos del punto crítico aguas abajo no vienen de ANA (son CARU / Salto Grande). Requiere definir
+        la fuente de nivel/caudal de ese punto y la conversión propia. Hoy el dataset tiene un solo
+        <code>punto_prediccion</code>.</p>
+      <div class="tags"><span class="pill p-crit">no iniciado</span><span class="pill p-info">fuente externa</span></div>
+    </div></div>
+    <div class="fwitem"><div class="pr">3</div><div>
+      <h4>Poblar lluvia y temperatura, o documentar su exclusión</h4>
+      <p><code>rainfall_daily</code> está vacía (0 filas) y <code>temperature_daily</code> tiene 99,7% de
+        faltantes (METAR solo pobla temperatura en el tramo reciente). Integrar la lluvia de Salto Grande y
+        ANA pluvio, y evaluar INMET para temperatura histórica de ciudades brasileñas.</p>
+      <div class="tags"><span class="pill p-crit">NULL en v0</span><span class="pill p-info">features clima</span></div>
+    </div></div>
+    <div class="fwitem"><div class="pr">4</div><div>
+      <h4>Integrar el pronóstico ECMWF a Gold</h4>
+      <p>El pronóstico de precipitación vive en Silver (<code>ecmwf_*_basin</code>) pero no está en el dataset
+        de entrenamiento. Completar el backfill de <code>cf</code> (2006–2018), arrancar <code>pf</code>, y
+        agregar features de precipitación pronosticada por sub-cuenca y horizonte.</p>
+      <div class="tags"><span class="pill p-warn">backfill parcial</span><span class="pill p-info">features forecast</span></div>
+    </div></div>
+    <div class="fwitem"><div class="pr">5</div><div>
+      <h4>Validación formal y baseline de modelado</h4>
+      <p>Cerrar el reporte de calidad del dataset (Fase 6: faltantes por columna, discontinuidades, fuga) y
+        entrenar los baselines (Fase 7: naive temporal, regresión, Random Forest, LightGBM) con métricas por
+        horizonte. Exportar al repo los notebooks de <code>06_Quality</code> que hoy solo existen en el Workspace.</p>
+      <div class="tags"><span class="pill p-info">Fase 6 · 7</span></div>
+    </div></div>
+    <div class="fwitem"><div class="pr">6</div><div>
+      <h4>Incrementalidad y refresco de curvas</h4>
+      <p>Definir la cadencia del job <code>Rating_Curve_Discharge_Initial_Load</code> (el plan propone
+        refresco trimestral) y encadenarlo al incremental diario Silver/Gold. Investigar las 2 estaciones con
+        MAPE &gt; 100% (<code>70100000</code>, <code>70300000</code>).</p>
+      <div class="tags"><span class="pill p-info">Fase 8</span><span class="pill p-warn">2 curvas sospechosas</span></div>
+    </div></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><strong style="color:var(--ink)">Río Uruguay · Hydro Pipeline</strong> — informe generado a partir de
+      <span class="mono">docs/</span>, el DDL de Silver/Gold y las Decisiones 001–017 del repositorio.</p>
+    <p class="mono">rama feature/ana-backfill-automation · corte de datos 2026-08-19 · granularidad diaria · fuente de verdad: weather.gold.training_dataset_v0</p>
+  </div>
+</footer>
+
+</body>
+</html>

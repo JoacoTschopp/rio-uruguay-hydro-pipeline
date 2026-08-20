@@ -18,6 +18,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 | ANA — Lluvias estaciones pluvio | Hidrológica   | Compartida con ANA | `weather.bronze.ana_rio_uruguai`| Subdiaria          | Features lluvia     |
 | Salto Grande — Lluvia estaciones| Hidrológica   | Pipeline nuevo     | `weather.bronze.sg_rainfall`    | Diaria             | Features lluvia     |
 | ECMWF — Pronóstico precipitación (cf + pf) | Pronóstico | Bronze + Silver + diaria | `weather.bronze.ecmwf_forecast_cf` / `_pf` | Diaria (grilla 0,25°) | Features futuras |
+| ANA — Curvas de aforo (rating curve) | Hidrológica | Bronze + Silver + Gold, grupo A completo | `weather.bronze.ana_rating_curve_segments` / `ana_discharge_measurements` | Estática (revisión trimestral) | Conversión nivel→caudal |
 | Evaporación                     | Meteorológica | No ingestada       | —                               | Diaria             | Features            |
 
 ---
@@ -325,21 +326,81 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ---
 
-## 8. Fuentes candidatas no ingestadas
+## 8. ANA — Curvas de aforo (rating curve) y conversión nivel → caudal
 
-### 8.1. Evaporación
+### 8.1. Origen
+
+* Misma API que sección 3 (HidroWebService), otros dos endpoints:
+  * `/EstacoesTelemetricas/HidroSerieCurvaDescarga/v1`: segmentos de curva-chave (coeficientes `Coef_a`, `Coef_h0`, `Coef_n` de `Q = A·(H−H0)^N`, por vigencia).
+  * `/EstacoesTelemetricas/HidroSerieResumoDescarga/v1`: aforos reales (medições de campo), usados para validar la curva, no para calcular caudal.
+* El endpoint de curva filtra por `Data_Ultima_Alteracao` (fecha de modificación del registro en el sistema de ANA), no por vigencia — ver Decisión 017 y `docs/rating_curve_discharge_plan.md` §2.1 para el detalle de la calibración.
+
+### 8.2. Cobertura espacial
+
+* Universo calculado en vivo: `notebooks_local/ana_rating_curve/estaciones_nivel.json`, todas las estaciones con `Cota_Adotada` en `weather.bronze.ana_rio_uruguai` (392 al 2026-08-19). Grupo A (22, historia profunda) completo; grupo B (~370) en descarga.
+
+### 8.3. Cobertura temporal observada
+
+* Curvas: histórico completo por estación (para 74100000, 8 vigencias desde 1948).
+* Aforos: descargados desde 2000-01-01 (piso del dataset, Decisión D4 del plan).
+* `river_discharge_daily`: 2000-01-01 → hoy, grupo A verificado con 210.106 filas / 22 estaciones.
+
+### 8.4. Notebooks asociados
+
+* Landing local (no Databricks): `notebooks_local/ana_rating_curve/download_rating_curves_batch.py` (barrido multi-estación) y `download_rating_curve.py` (script original, una estación, reutilizado como librería de funciones).
+* Bronze: `notebooks/02_Bronze/ETL_Bronze_Rating_Curve.ipynb`.
+* Silver: `notebooks/04_Silver/ETL_Silver_River_Discharge_Daily.ipynb` (también puebla `weather.silver.rating_curve_segments`).
+* Gold: cambios integrados en `notebooks/05_Gold/ETL_Gold_Training_Dataset_v0.ipynb` (no es un notebook aparte).
+* Calidad: `notebooks/06_Quality/Validate_River_Discharge.ipynb`.
+* DDL: tablas nuevas en `notebooks/04_Silver/DDL_Silver_Gold.ipynb`.
+
+### 8.5. Rutas de almacenamiento
+
+* `/Volumes/weather/raw/ana_volume/rating_curves/curve_segments/` — un JSON por estación (`curva_<codigo>.json`).
+* `/Volumes/weather/raw/ana_volume/rating_curves/discharge_measurements/` — un JSON por estación (`aforos_<codigo>.json`).
+
+### 8.6. Tablas
+
+* Bronze: `weather.bronze.ana_rating_curve_segments`, `weather.bronze.ana_discharge_measurements`.
+* Silver: `weather.silver.rating_curve_segments`, `weather.silver.river_discharge_daily`, `weather.silver.estacion_subcuenca` (referencia estación→sub-cuenca, sembrada solo para el grupo A).
+* Gold: columnas de caudal en `weather.gold.training_dataset_v0` (`caudal_actual_m3s`, `caudal_t_mas_*`, `caudal_agregado_<subcuenca>_*`, etc. — ver DDL para la lista completa).
+
+### 8.7. Job Databricks
+
+* `Rating_Curve_Discharge_Initial_Load`: `ETL_Bronze_Rating_Curve -> ETL_Silver_River_Discharge_Daily -> Validate_River_Discharge`. Sin schedule, se dispara a mano mientras dura la Fase 1. El Gold se corre por separado (`silver_gold_initial_load_v0`, task `ETL_Gold_Training_Dataset_v0`) hasta que se decida encadenarlo.
+
+### 8.8. Campos clave
+
+* Curva: `codigoestacao`, `Numero_Curva` (segmento/total), `Periodo_Validade_Inicio`/`Fim` (vigencia), `Coef_a`, `Coef_h0` (ya en metros), `Coef_n`, `Cota_Minima`/`Maxima` (rango calibrado, cm).
+* Aforos: `codigoestacao`, `Data_Hora_Dado`, `Cota (cm)`, `Vazao (m3/s)` (nombres de campo con espacios/unidades, distinto del resto de endpoints ANA).
+* Silver: `caudal_m3s`, `caudal_metodo` (`interpolado`/`extrapolado_superior`/`extrapolado_inferior`/`bajo_cero_curva`/`sin_curva`), `distancia_fuera_rango_cm`, `supera_aforo_maximo`, `caudal_confiable`.
+
+### 8.9. Estado
+
+`Bronze + Silver + Gold operativos para el grupo A (22 estaciones). Grupo B (~370) en descarga de curvas al 2026-08-19, sin aforos todavía (pasada aparte, no bloqueante). Sin schedule ni cadencia de refresco definida.`
+
+### 8.10. Limitaciones conocidas
+
+* `weather.silver.estacion_subcuenca` solo tiene mapeo para el grupo A (todas en `alta_frontera`) — los agregados de caudal por sub-cuenca de `intermedia_paso_libres`/`baja_salto_grande` están vacíos hasta mapear el grupo B.
+* Dos estaciones del grupo A (70100000, 70300000) tienen MAPE > 100% contra aforos reales — quedan marcadas `is_usable=false`, sin investigar la causa raíz (coeficientes sospechosos o vigencia mal resuelta).
+* Ninguna estación del grupo A tuvo filas `extrapolado_*` en el histórico 2000-2026 — la lógica D3 (extrapolar con flag en vez de NULL) está implementada pero no ejercitada todavía por datos reales; falta observarla en una crecida real o en estaciones del grupo B con rango calibrado más angosto.
+* La curva completa de una estación se descarga sin recortar por fecha (puede incluir vigencias anteriores a 2000), pero `river_discharge_daily` sí aplica el piso 2000-01-01 al nivel — ver plan §2.1.
+
+## 9. Fuentes candidatas no ingestadas
+
+### 9.1. Evaporación
 
 * Variables: evaporación diaria, acumulada.
 * Estado: `No ingestada`.
 * Postergada para `training_dataset_v1`.
 
-### 8.2. Lluvias y niveles Argentina
+### 9.2. Lluvias y niveles Argentina
 
 * Posibles proveedores: SNIH (Sistema Nacional de Información Hídrica), INA (Instituto Nacional del Agua).
 * Estado: `No ingestada`.
 * Importancia para el punto crítico Salto Grande.
 
-### 8.3. Temperatura grandes ciudades Brasil
+### 9.3. Temperatura grandes ciudades Brasil
 
 * Complemento o reemplazo de METAR aeropuertos.
 * Posibles proveedores: INMET (Instituto Nacional de Meteorologia).
@@ -347,7 +408,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ---
 
-## 9. Reglas mínimas que debe cumplir una nueva fuente
+## 10. Reglas mínimas que debe cumplir una nueva fuente
 
 Antes de incorporar una nueva fuente al pipeline, debe documentarse:
 

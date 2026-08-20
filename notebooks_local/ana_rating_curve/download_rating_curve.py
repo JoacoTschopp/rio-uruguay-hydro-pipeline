@@ -9,10 +9,13 @@ hydroDataBR, MIT) porque no estan documentados de forma legible en el swagger pu
   - GET /EstacoesTelemetricas/HidroSerieResumoDescarga/v1    -> aforos (medicoes reales)
 
 La formula de la curva-chave segmentada (DNAEE/ANA, estandar de hidrometria brasileira)
-es Q = A * (H - H0) ** N, con H y H0 en cm y Q en m3/s. Este script NO asume esa
-convencion de unidades a ciegas: descarga tambien los aforos reales de la estacion y
-elige entre "H0 en cm" vs "H0 en m" la que mejor reproduce los aforos medidos, dejando
-el resultado de esa validacion en el reporte final.
+es Q = A * (H - H0) ** N. La API entrega la cota (H) en cm y el coeficiente Coef_h0 ya
+en metros (valores tipo 0.19, 0.54, -0.71): la conversion correcta es H_m = H_cm/100 y
+Q = A * (H_m - H0_m) ** N. Confirmado contra 292 aforos reales de la estacion 74100000
+(MAPE=5.1%, contra 44% de la alternativa "H0 tambien en cm" que una version anterior de
+este script elegia por descarte entre dos convenciones igualmente incorrectas). El
+script descarga tambien los aforos reales y reporta el MAPE de la curva como control de
+calidad, no como selector de formula.
 
 Uso:
     Las credenciales se leen de USER_API_ANA / PASS_API_ANA, ya sea como variables de
@@ -104,8 +107,8 @@ def log_api_ana(session: requests.Session) -> str:
         )
     url = f"{BASE_URL}{LOGIN_ENDPOINT}"
     headers = {"Identificador": usuario, "Senha": password}
-    response = session.get(url, headers=headers, timeout=DEFAULT_TIMEOUT)
     try:
+        response = session.get(url, headers=headers, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         payload: dict[str, Any] = response.json()
     except (ValueError, requests.RequestException) as exc:
@@ -265,7 +268,7 @@ def normalize_rating_curve_segments(items: list[dict], station: str) -> pd.DataF
                 "stage_max_cm": _num(_first(item, ("Cota_Maxima", "CotaMaxima", "CotaFinal"))),
                 "table_stage_step_cm": _num(_first(item, ("Tabela_Passo_Cota", "IntervaloCota", "PassoCota"))),
                 "coefficient_a": _num(_first(item, ("Coef_a", "CoeficienteA", "CoefA", "A"))),
-                "coefficient_h0_cm": h0_raw,
+                "coefficient_h0_m": h0_raw,
                 "coefficient_n": _num(_first(item, ("Coef_n", "CoeficienteN", "CoefN", "N"))),
                 "consistency_level": _first(item, ("Nivel_Consistencia", "NivelConsistencia")),
                 "rating_curve_id": _first(item, ("CodigoCurva", "IdCurva", "IdentificadorCurva")),
@@ -312,12 +315,16 @@ def normalize_discharge_measurements(items: list[dict], station: str) -> pd.Data
 # Validacion de convencion de unidades + construccion de la tabla cota->vazao
 # ---------------------------------------------------------------------------
 
-def _predicted_discharge(stage_cm: float, a: float, h0_cm: float, n: float, h0_in_meters: bool) -> Optional[float]:
-    if h0_in_meters:
-        delta = (stage_cm / 100.0) - (h0_cm / 100.0)
-    else:
-        delta = stage_cm - h0_cm
-    if delta <= 0 or a is None or n is None:
+def _predicted_discharge(stage_cm: float, a: float, h0_m: float, n: float) -> Optional[float]:
+    """Q = A * (H - H0) ** N. La API entrega H0 (Coef_h0) ya en metros (valores tipo
+    0.19, 0.54, -0.71); la cota (stage_cm) viene en cm y hay que pasarla a metros antes
+    de restar. Confirmado contra 292 aforos reales de la estacion 74100000: esta
+    convencion da MAPE=5.1%, contra 44% de la alternativa "H0 tambien en cm" que el
+    script anterior elegia por descarte entre dos formulas igualmente incorrectas."""
+    if a is None or n is None or h0_m is None:
+        return None
+    delta = (stage_cm / 100.0) - h0_m
+    if delta <= 0:
         return None
     try:
         return a * (delta**n)
@@ -343,7 +350,11 @@ def _segment_for_stage(segments: pd.DataFrame, stage_cm: float, at: Optional[pd.
     return in_range.iloc[0]
 
 
-def evaluate_h0_convention(segments: pd.DataFrame, measurements: pd.DataFrame, h0_in_meters: bool) -> dict:
+def evaluate_curve_accuracy(segments: pd.DataFrame, measurements: pd.DataFrame) -> dict:
+    """Control de calidad por estacion: compara la curva contra los aforos reales y
+    reporta el MAPE. Ya no elige entre convenciones (la formula esta fija, ver
+    _predicted_discharge) -- si el MAPE es alto, la estacion se marca como sospechosa
+    en el reporte de cobertura en vez de aplicarse una formula alternativa en silencio."""
     errors = []
     matched = 0
     for _, row in measurements.iterrows():
@@ -351,15 +362,15 @@ def evaluate_h0_convention(segments: pd.DataFrame, measurements: pd.DataFrame, h
         if segment is None:
             continue
         predicted = _predicted_discharge(
-            row["stage_cm"], segment["coefficient_a"], segment["coefficient_h0_cm"], segment["coefficient_n"], h0_in_meters
+            row["stage_cm"], segment["coefficient_a"], segment["coefficient_h0_m"], segment["coefficient_n"]
         )
         if predicted is None or predicted <= 0 or row["discharge_m3s"] in (None, 0):
             continue
         matched += 1
         errors.append(abs(predicted - row["discharge_m3s"]) / row["discharge_m3s"])
     if matched == 0:
-        return {"h0_in_meters": h0_in_meters, "matched": 0, "mape": None}
-    return {"h0_in_meters": h0_in_meters, "matched": matched, "mape": sum(errors) / len(errors)}
+        return {"matched": 0, "mape": None}
+    return {"matched": matched, "mape": sum(errors) / len(errors)}
 
 
 def choose_active_curve(segments: pd.DataFrame) -> pd.DataFrame:
@@ -377,7 +388,7 @@ def choose_active_curve(segments: pd.DataFrame) -> pd.DataFrame:
     return segments[segments["rating_curve_id"] == active_id].sort_values("stage_min_cm").reset_index(drop=True)
 
 
-def build_stage_discharge_table(active_segments: pd.DataFrame, h0_in_meters: bool, step_cm: float) -> pd.DataFrame:
+def build_stage_discharge_table(active_segments: pd.DataFrame, step_cm: float) -> pd.DataFrame:
     rows = []
     for _, seg in active_segments.iterrows():
         stage_min = seg["stage_min_cm"]
@@ -386,7 +397,7 @@ def build_stage_discharge_table(active_segments: pd.DataFrame, h0_in_meters: boo
             continue
         stage = stage_min
         while stage <= stage_max + 1e-9:
-            q = _predicted_discharge(stage, seg["coefficient_a"], seg["coefficient_h0_cm"], seg["coefficient_n"], h0_in_meters)
+            q = _predicted_discharge(stage, seg["coefficient_a"], seg["coefficient_h0_m"], seg["coefficient_n"])
             rows.append(
                 {
                     "cota_cm": round(stage, 2),
@@ -397,7 +408,7 @@ def build_stage_discharge_table(active_segments: pd.DataFrame, h0_in_meters: boo
                     "vigencia_inicio": seg["valid_from"],
                     "vigencia_fin": seg["valid_to"],
                     "coeficiente_a": seg["coefficient_a"],
-                    "coeficiente_h0_cm": seg["coefficient_h0_cm"],
+                    "coeficiente_h0_m": seg["coefficient_h0_m"],
                     "coeficiente_n": seg["coefficient_n"],
                 }
             )
@@ -438,20 +449,11 @@ def main():
     measurements.to_csv(OUTPUT_DIR / f"aforos_{args.station}.csv", index=False)
     print(f"\n{len(segments)} segmentos de curva y {len(measurements)} aforos guardados en {OUTPUT_DIR}")
 
-    cm_eval = evaluate_h0_convention(segments, measurements, h0_in_meters=False)
-    m_eval = evaluate_h0_convention(segments, measurements, h0_in_meters=True)
-    print("\nValidacion de la formula Q = A * (H - H0) ** N contra aforos reales:")
-    print(f"  H0 en cm: {cm_eval['matched']} aforos comparados, error medio absoluto = {cm_eval['mape']}")
-    print(f"  H0 en m : {m_eval['matched']} aforos comparados, error medio absoluto = {m_eval['mape']}")
-
-    candidates = [e for e in (cm_eval, m_eval) if e["mape"] is not None]
-    if candidates:
-        best = min(candidates, key=lambda e: e["mape"])
-        print(f"  -> Convencion elegida: H0 en {'m' if best['h0_in_meters'] else 'cm'} (menor error vs aforos reales)")
-        h0_in_meters = best["h0_in_meters"]
-    else:
-        print("  -> No hay aforos suficientes para validar; se asume H0 en cm (convencion estandar DNAEE/ANA).")
-        h0_in_meters = False
+    accuracy = evaluate_curve_accuracy(segments, measurements)
+    print("\nValidacion de la formula Q = A * (H/100 - H0_m) ** N contra aforos reales:")
+    print(f"  {accuracy['matched']} aforos comparados, error medio absoluto (MAPE) = {accuracy['mape']}")
+    if accuracy["mape"] is not None and accuracy["mape"] > 0.20:
+        print("  -> MAPE > 20%: estacion sospechosa, revisar coeficientes/vigencias antes de confiar en el caudal.")
 
     active_segments = choose_active_curve(segments)
     print(
@@ -460,7 +462,7 @@ def main():
         f"{len(active_segments)} segmento(s)."
     )
 
-    table = build_stage_discharge_table(active_segments, h0_in_meters, args.step_cm)
+    table = build_stage_discharge_table(active_segments, args.step_cm)
     out_path = OUTPUT_DIR / f"curva_aforo_{args.station}.csv"
     table.to_csv(out_path, index=False)
     print(f"\nTabla cota->vazao escrita en: {out_path} ({len(table)} filas)")
