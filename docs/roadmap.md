@@ -87,7 +87,7 @@ Va primera por rápida y porque es el instrumento para auditar todo lo demás: s
 pandas, las reglas de la Fase 2 y la cobertura de lluvia de la Fase 3 se deciden a ciegas.
 
 **Diseño.** Un task final del job de Gold escribe un Parquet único en
-`/Volumes/weather/raw/gold_export/`; el script local lo baja con `databricks fs cp`, el mismo camino de
+`/Volumes/weather/raw/gold_export_volume/`; el script local lo baja con `databricks fs cp`, el mismo camino de
 autenticación que ya usa `notebooks_local/ana_historic_backfill/sync_to_databricks.py`. No requiere un SQL
 warehouse encendido, en línea con el criterio de costo de la Decisión 016.
 
