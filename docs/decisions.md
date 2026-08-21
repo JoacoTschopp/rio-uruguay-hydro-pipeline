@@ -363,7 +363,7 @@ Evitar reproducir un patrón de credenciales inseguro ya identificado como deuda
 
 ### Estado
 
-`Aceptada`
+`Aceptada`, **parcialmente superada** (2026-08-21). Sigue vigente todo lo referido a las restricciones reales de las fuentes y al diseño por lotes. Quedan superadas dos de sus consecuencias: el piso de 2006-10 para las features de pronóstico (la Decisión 021 lo baja a 2000 con GEFS Reforecast v12) y `fc` fuera de alcance (la Decisión 022 lo reincorpora por vía local).
 
 ### Contexto
 
@@ -399,7 +399,7 @@ Prometer una cobertura que la fuente no puede dar (2000–2006) generaría una l
 
 ### Estado
 
-`Pendiente` (causa raíz identificada, fix definitivo no aplicado — ver Consecuencias)
+**`Resuelta`** (2026-08-21) por la Decisión 022: `fc` se mueve a ejecución local, donde no existe el Spark Connect que provoca la colisión. La causa raíz descrita acá sigue siendo válida y sin solución conocida para `cfgrib` dentro del compute serverless de este workspace; lo que cambió es que el pipeline dejó de necesitarlo ahí.
 
 ### Contexto
 
@@ -689,6 +689,15 @@ La semana día por día (8 horizontes) permite ver **dónde** se degrada el erro
 * Queda un punto abierto que no se resuelve acá: la definición única de MAPE / `is_usable` (el reporte local y la validación en Silver dan números distintos para las mismas estaciones). Se resuelve en la Fase 2 de `roadmap.md`.
 * El contrato completo, con las nueve reglas y el conteo de filas que explica cada una, se publica en `docs/gold_consolidation_contract.md` como entregable de la Fase 2.
 
+### Enmienda (2026-08-21): se cierran los cuatro criterios que habían quedado abiertos
+
+La decisión original dejó cuatro reglas con el criterio sin fijar. Se cierran así:
+
+* **R1 — Piso temporal, ahora duro.** `training_dataset_v0` **arranca en 2000-01-01**. Las 21.400 filas de 1941–1999 (nivel sin caudal) salen de Gold: quedaban vacías en casi todas las columnas y desalineadas con el caudal, con el pronóstico (GEFS v12 arranca en 2000, ver Decisión 021) y con el objetivo de la tesis. **La serie larga de nivel no se pierde**: sigue completa en `weather.silver.river_levels_daily` desde 1941, disponible para análisis histórico de nivel fuera del dataset de entrenamiento. Gold pasa de 31.094 a ~9.694 filas.
+* **R7 — Umbral de `is_usable`: MAPE ≤ 30% medido únicamente contra los aforos que caen dentro del rango calibrado de la curva.** Se elige la comparación en rango porque mide lo que la curva efectivamente promete cubrir, y no la penaliza por puntos que nunca pretendió representar. El umbral de 30% (en vez de 20%) responde a que el agregado de la cuenca alta es chico —22 estaciones— y perder una por dos puntos porcentuales cuesta más de lo que aporta el rigor extra. Resultado: **20 de 22 estaciones usables**; quedan fuera `70100000` (MAPE 123%) y `70300000` (138%), que conservan su nivel y sólo pierden el caudal, según la regla general. No se investigan sus coeficientes en esta etapa.
+* **R8 — Sin umbral de exclusión para lluvia y temperatura.** Se publica toda estación con algún dato real y la cobertura viaja como columna (`_station_count`, `_cobertura_pct` en el agregado por sub-cuenca). Se abandona el portón todo-o-nada de `missing_pct > 0,90`: era un promedio sobre todas las estaciones juntas y borraba la tabla entera aunque hubiera estaciones con serie excelente. El criterio nuevo es coherente con la Decisión 017 · D3 — el dato sale completo y el filtrado es una decisión de modelado, no una pérdida de información en el pipeline. Cualquier umbral fijo hubiera sido arbitrario y habría que justificarlo en la tesis.
+* **R9 — El recorte de la cola sin target se aplica en el exportador, no en Gold.** Gold conserva todas las filas con los targets en `NULL` donde no hay observación; el exportador recorta según el flag `--horizonte` al bajar el dataset. Gold sigue siendo la foto completa y las filas más recientes —las que no tienen target— son justamente las que se usan para predecir en operación. Borrarlas en Gold hubiera dejado la tabla inservible para su propósito operativo.
+
 ---
 
 ## Decisión 020: Cadencias del pipeline y orden de la cadena diaria
@@ -722,3 +731,84 @@ Sobre el orden: un eslabón que corre después de Gold introduce un desfase de 2
 * `Rating_Curve_Discharge_Initial_Load` se parte en dos: un task diario de conversión dentro del incremental, y un job trimestral de refresco de curvas.
 * Queda como punto abierto la **latencia real de disponibilidad del pronóstico**: TIGGE (`cf`/`pf`, vía `cdsapi`) documenta un embargo para acceso público que puede llegar a ~48 h. Si se confirma, el pronóstico que entra a Gold no es el del día sino el del ciclo disponible más reciente, lo que cambia el significado operativo del modelo. Se mide en la Fase 4 y se registra por fila en una columna `forecast_age_days`; no se asume ni a favor ni en contra hasta medirlo.
 * El criterio de cierre de la Fase 5 es empírico: tres días consecutivos en que a las 06:00 el snapshot local tenga la fila de ayer completa, con caudal y pronóstico del ciclo correcto.
+
+---
+
+## Decisión 021: El pronóstico cubre desde 2000 — GEFS Reforecast v12 empalmado con TIGGE por calibración
+
+### Estado
+
+`Aceptada` (2026-08-21), implementación en la Fase 4 de `roadmap.md`
+
+### Contexto
+
+La Decisión 012 aceptó que la reconstrucción histórica del pronóstico arrancara en 2006-10, por ser el piso real del archivo TIGGE, y dejó explícitamente fuera de alcance el período 2000–2006. El dataset de caudal, en cambio, arranca en 2000-01-01 (Decisión 017 · D4). Eso dejaba 6 años y 9 meses de dataset sin ninguna feature de pronóstico — casi un tercio de la serie entrenable.
+
+Al revisar el roadmap se decidió que esa asimetría no es aceptable: si el pronóstico es la única familia de features con información del futuro, tenerla ausente en un tercio de la serie obliga a entrenar con dos regímenes de features distintos o a resignar el tramo temprano.
+
+La restricción de TIGGE es real y no se puede levantar. Lo que sí existe es otra fuente de pronósticos retrospectivos que cubre exactamente el hueco.
+
+### Decisión
+
+* **El pronóstico cubre desde 2000-01-01**, alineado con el piso temporal del caudal. El período 2000–2006 deja de estar fuera de alcance.
+* **Fuente para el tramo temprano: GEFS Reforecast v12 (NOAA)**, con cobertura aproximada 2000–2019 y acceso público en AWS Open Data. Son pronósticos retrospectivos reales, no reanálisis: no introducen fuga de información. El horizonte y la resolución exactos se verifican al implementar, contra el requisito de cubrir hasta t+14 con resolución útil a escala de sub-cuenca.
+* **Se descarta ERA5 como fuente de pronóstico.** Es reanálisis: describe lo que efectivamente pasó, no lo que se pronosticaba. Usarlo como feature de pronóstico sobrestimaría sistemáticamente la habilidad del modelo. Sólo sería admisible declarado como experimento de cota superior (*perfect prognosis*), y no se incorpora en esta etapa.
+* **Empalme calibrado en el solapamiento.** GEFS v12 y TIGGE coexisten en 2006–2019, 13 años. Se usa ese solapamiento para ajustar GEFS contra TIGGE (corrección de sesgo por sub-cuenca y por horizonte) y se publica **una sola serie homogénea** de pronóstico, con una columna `forecast_source` que declara el origen de cada fila.
+* La ingesta de GEFS corre **en local**, siguiendo el precedente de las Decisiones 015/016: es I/O contra una API externa, no se beneficia de Spark, y no tiene sentido pagar cómputo serverless por esperar descargas. Mismo patrón de estado resumible y lock compartido que el resto de las descargas locales.
+* La corrección de sesgo se aplica **en Silver**, coherente con la Decisión 011: es una regla de negocio, no un hecho crudo. Bronze conserva lo descargado tal cual.
+
+### Justificación
+
+Empalmar dos fuentes sin calibrar habría creado un escalón artificial en la serie de features justo en 2006 o 2020 — una discontinuidad que un modelo de árboles aprende como si fuera señal y que después aparece como una importancia de variable inexplicable. Con 13 años de solapamiento hay material más que suficiente para caracterizar el sesgo entre modelos, así que la corrección es medible y no un supuesto.
+
+Publicar una serie única con `forecast_source` en vez de dos columnas paralelas evita el NULL estructural en un tercio de la serie, que es exactamente el problema que la decisión venía a resolver.
+
+El trabajo de calibración además rinde como material propio de tesis: comparar la habilidad de dos sistemas de pronóstico sobre la misma cuenca es un resultado en sí mismo, no sólo un paso de ingeniería.
+
+### Consecuencias
+
+* Queda **superada la consecuencia de la Decisión 012** que fijaba 2006-10 como piso de las features de pronóstico. La restricción de TIGGE sigue vigente; lo que cambia es que ya no determina el piso del dataset.
+* GEFS v12 termina alrededor de 2019 y TIGGE cubre 2006 → hoy, así que no queda ningún hueco: el tramo 2020 → hoy sale de TIGGE.
+* Aparece una fuente nueva que hay que documentar en `data_sources.md` antes de escribir código, según la regla de §10 de ese documento.
+* El volumen de descarga de GEFS hay que dimensionarlo al implementar: se necesita sólo precipitación sobre el bounding box de la cuenca, pero los archivos de origen son globales por variable y fecha.
+* `forecast_source` pasa a ser una columna del dataset y debe entrar al diccionario de columnas de la Fase 6.
+
+---
+
+## Decisión 022: `fc` se resuelve moviéndolo a ejecución local; su historia se investiga y tiene reemplazo definido
+
+### Estado
+
+`Aceptada` (2026-08-21), implementación en la Fase 8 de `roadmap.md`. **Resuelve la Decisión 013**, que estaba `Pendiente`.
+
+### Contexto
+
+`fc` (HRES determinístico, vía ECMWF Open Data) tenía dos problemas distintos que se venían tratando como uno solo:
+
+1. **El job diario crashea.** `Daily_ECMWF_FC` aborta con `SIGABRT` al cargar `libeckit.so`, por colisión entre la librería nativa `eckit` (que `cfgrib`/`eccodes` ≥2.39 arrastra) y el protobuf/gRPC que Spark Connect ya tiene cargado en el mismo proceso. Diagnóstico completo en la Decisión 013. Todas las mitigaciones desde Python puro fallaron, y el workspace no permite compute clásico, que era la salida natural.
+2. **No tiene archivo histórico.** ECMWF Open Data retiene sólo ~12 corridas (2-3 días). La Decisión 012 lo puso fuera de alcance por eso.
+
+La Decisión 013 quedó abierta sin fix. El roadmap la trae de vuelta al alcance.
+
+### Decisión
+
+* **`fc` se descarga en local, no en Databricks.** La causa raíz del crash es la convivencia con Spark Connect en el compute serverless; en una máquina local ese proceso no existe y `cfgrib` funciona normalmente. Se reinstala el camino de landing local para `fc` (`notebooks_local/ecmwf/landing_fc_opendata.py`, borrado en el commit `ac6deab`) y se suma su carga al script de descarga y sincronización que ya usan las demás fuentes locales.
+* **La descarga diaria arranca cuanto antes.** Como Open Data no retiene historia, cada día que pasa sin descargar es archivo perdido de forma irrecuperable. El costo de acumular es casi nulo.
+* **La historia de `fc` se investiga como tarea de la fase**, no se da por perdida: relevar si existe alguna ruta de archivo accesible (Service Agreement / MARS con acuerdo académico institucional, u otro endpoint de ECMWF).
+* **Criterio de salida si la investigación no encuentra ruta viable:** el lugar del pronóstico determinístico lo ocupa el **GEFS operativo de NOAA**, cuyo reforecast 2000–2019 ya va a estar ingestado por la Decisión 021 — con lo cual entrenamiento y operación quedan sobre el mismo modelo, sin asimetría. **El reemplazo aplica únicamente a `fc`**: el ensemble sigue siendo de ECMWF (`cf`/`pf` vía TIGGE), no se migra a NOAA.
+* **Acceso en tiempo real:** la vía es **ECMWF Open Data, que es gratuita y sin embargo** — es de donde ya sale `fc`. La tarea de investigación de la Fase 4 verifica qué productos de ensemble y qué parámetros de precipitación expone hoy (la nota de `data_sources.md` §7 dice que `tp` para `cf`/`pf` no estaba disponible ahí, pero el catálogo de Open Data cambió varias veces desde entonces). No se contrata ninguna vía paga.
+
+### Justificación
+
+Mover `fc` a local es la misma jugada que ya resolvió el backfill histórico de ANA (Decisión 016): sacar de Databricks el trabajo que es I/O contra una API externa y que además choca con el entorno. Acá tiene un beneficio extra que allá no existía — elimina la causa raíz del crash en vez de mitigarla, porque el conflicto es con el entorno de ejecución, no con el código.
+
+Se prefirió esto a las alternativas que la Decisión 013 dejaba planteadas: `pygrib` era una apuesta sin confirmar (es otro binding sobre el mismo ecCodes, podía arrastrar el mismo árbol de dependencias) y un parser GRIB2 propio es desarrollo no trivial que no se justifica en una tesis de datos cuando existe una salida de una línea de configuración.
+
+Definir el reemplazo por GEFS operativo antes de investigar evita que la fase quede rehén de un trámite institucional de duración desconocida: la fase puede cerrar con o sin acceso a MARS.
+
+### Consecuencias
+
+* La **Decisión 013 pasa de `Pendiente` a resuelta**, por relocalización del proceso y no por fix del crash. Si en el futuro se volviera a necesitar `cfgrib` dentro de Databricks serverless, el problema sigue intacto y sin solución conocida en este workspace.
+* `fc` no aporta historia para entrenar en el corto plazo: su archivo empieza a acumularse desde el día que se prenda la descarga. Hasta que la investigación resuelva, el entrenamiento usa `cf`/`pf` y GEFS, que sí cubren 2000 → hoy.
+* Si el reemplazo se activa, el dataset queda con determinístico de NOAA y ensemble de ECMWF. Es una combinación defendible pero hay que documentarla explícitamente en el capítulo de datos.
+* `data_sources.md` §7.1 debe actualizarse: `fc` deja de estar «descartado» y pasa a estar ingestado por vía local.
