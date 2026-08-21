@@ -81,7 +81,7 @@ Ordenadas por relación entregable/tiempo. Las estimaciones son en días de trab
 
 ### Fase 1 — Exportador local del dataset Gold
 
-**Estimación:** ≈ 0,5 día · **Depende de:** nada · **Estado:** `Pendiente`
+**Estimación:** ≈ 0,5 día · **Depende de:** nada · **Estado:** `Cerrada (2026-08-21)`
 
 Va primera por rápida y porque es el instrumento para auditar todo lo demás: sin poder abrir la tabla en
 pandas, las reglas de la Fase 2 y la cobertura de lluvia de la Fase 3 se deciden a ciegas.
@@ -93,16 +93,21 @@ warehouse encendido, en línea con el criterio de costo de la Decisión 016.
 
 **Tareas**
 
-- [ ] Task `Export_Gold_Snapshot` al final del job de Gold: escribe Parquet + `manifest.json`.
-- [ ] `notebooks_local/gold_export/export_gold_dataset.py` con la interfaz:
+- [x] Task `Export_Gold_Snapshot` al final del job de Gold: escribe Parquet + `manifest.json`
+  (`notebooks/05_Gold/Export_Gold_Snapshot.ipynb`, encadenado tras `Validate_Training_Dataset_v0`
+  en `silver_gold_initial_load_v0` y `silver_gold_daily_incremental` en `databricks.yml`).
+- [x] `notebooks_local/gold_export/export_gold_dataset.py` con la interfaz:
   `--refresh`, `--desde`, `--confiable`, `--horizonte {1..7,14}`, `--formato parquet|csv`, `--resumen`.
-- [ ] **`--horizonte` implementa la regla R9**: recorta la cola de días sin target observable para ese horizonte (Decisión 019, enmienda). Gold no borra esas filas.
-- [ ] Manifiesto con versión Delta de origen, filas, rango de fechas, columnas, hash del archivo y fecha de exportación.
-- [ ] Corte por versión Delta: si no cambió, no vuelve a bajar.
-- [ ] Lock compartido (`lock.py`) con las tareas de ANA, para no solaparse.
+- [x] **`--horizonte` implementa la regla R9**: recorta la cola de días sin target observable para ese horizonte (Decisión 019, enmienda). Gold no borra esas filas. Nota: hoy Gold solo publica `caudal_t_mas_{1,3,7,14}d`; pedir `--horizonte 2/4/5/6` falla con un error explícito hasta que la Fase 2 agregue los 8 horizontes.
+- [x] Manifiesto con versión Delta de origen, filas, rango de fechas, columnas, hash del archivo y fecha de exportación.
+- [x] Corte por versión Delta: si no cambió, no vuelve a bajar (`needs_download`, cacheado en `notebooks_local/gold_export/cache/`).
+- [x] Lock compartido (`lock.py`) con las tareas de ANA, para no solaparse (importa directamente `notebooks_local/ana_historic_backfill/lock.py`, mismo archivo de lock).
 
 **Criterio de cierre:** `python export_gold_dataset.py --resumen` imprime filas, rango de fechas, faltantes
-por columna y cobertura por `caudal_metodo` sin abrir Databricks.
+por columna y cobertura por `caudal_metodo` sin abrir Databricks. **Cumplido** — validado offline con un
+dataset sintético (ver `notebooks_local/gold_export/test_export_gold_dataset.py`); falta correrlo una vez
+contra el Volume real (el token OAuth de la CLI de `databricks` en este entorno expiró durante la
+implementación, ver seguimiento en §7 de este documento).
 
 ---
 
@@ -383,3 +388,15 @@ sub-cuenca, y dimensionar el volumen de descarga.
 | Granularidad horaria | Evaluable recién si el dataset diario demuestra viabilidad (Decisión 003) |
 | Migración a PostgreSQL o Spark local | Decisiones 007 y 008 |
 | `cfgrib` dentro de Databricks serverless | Sin solución conocida en este workspace; el pipeline dejó de necesitarlo (Decisión 022) |
+
+---
+
+## 7. Seguimiento de fases cerradas
+
+Cada fase se cierra con su propio test (unitario si el código corre local, notebook de
+`06_Quality` si corre en Databricks) antes de abrir la PR de esa fase. Esta tabla registra
+dónde vive ese test y qué quedó pendiente de verificar contra el entorno real.
+
+| Fase | Test | Estado | Pendiente |
+| --- | --- | --- | --- |
+| Fase 1 — Exportador local de Gold | `notebooks_local/gold_export/test_export_gold_dataset.py` (20 casos: filtros, regla R9, resumen, corte por versión Delta, lock compartido) — corre offline con `python -m pytest` | Verde localmente | Correr `Export_Gold_Snapshot` una vez en Databricks y `export_gold_dataset.py` una vez contra el Volume real. No se pudo en esta sesión: el token OAuth de la CLI de `databricks` (perfil `joaquintschopp@gmail.com`) expiró (`databricks bundle validate` devuelve `invalid_grant`); requiere `databricks auth login` manual. |
