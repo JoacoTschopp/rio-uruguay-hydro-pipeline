@@ -1,7 +1,7 @@
 """Exportador local del dataset Gold (`weather.gold.training_dataset_v0`), sin necesitar
 un SQL warehouse encendido (Decision 016). El task `Export_Gold_Snapshot`, al final del
 job de Gold (notebooks/05_Gold/Export_Gold_Snapshot.ipynb), escribe un Parquet unico mas
-un manifest.json en `/Volumes/weather/raw/gold_export/`. Este script baja ambos con la
+un manifest.json en `/Volumes/weather/raw/gold_export_volume/`. Este script baja ambos con la
 CLI de `databricks` (mismo camino de autenticacion que
 notebooks_local/ana_historic_backfill/sync_to_databricks.py), cachea el Parquet en
 `cache/` y sólo lo vuelve a bajar si la version Delta de origen cambio o si se pide
@@ -36,7 +36,7 @@ OUTPUT_DIR = LOCAL_DIR / "output"
 CACHE_PARQUET = CACHE_DIR / "training_dataset_v0.parquet"
 CACHE_MANIFEST = CACHE_DIR / "manifest.json"
 
-VOLUME_DIR = "dbfs:/Volumes/weather/raw/gold_export"
+VOLUME_DIR = "dbfs:/Volumes/weather/raw/gold_export_volume"
 VOLUME_PARQUET = f"{VOLUME_DIR}/training_dataset_v0.parquet"
 VOLUME_MANIFEST = f"{VOLUME_DIR}/manifest.json"
 
