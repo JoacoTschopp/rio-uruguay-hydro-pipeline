@@ -104,10 +104,12 @@ warehouse encendido, en línea con el criterio de costo de la Decisión 016.
 - [x] Lock compartido (`lock.py`) con las tareas de ANA, para no solaparse (importa directamente `notebooks_local/ana_historic_backfill/lock.py`, mismo archivo de lock).
 
 **Criterio de cierre:** `python export_gold_dataset.py --resumen` imprime filas, rango de fechas, faltantes
-por columna y cobertura por `caudal_metodo` sin abrir Databricks. **Cumplido** — validado offline con un
-dataset sintético (ver `notebooks_local/gold_export/test_export_gold_dataset.py`); falta correrlo una vez
-contra el Volume real (el token OAuth de la CLI de `databricks` en este entorno expiró durante la
-implementación, ver seguimiento en §7 de este documento).
+por columna y cobertura por `caudal_metodo` sin abrir Databricks. **Cumplido y verificado contra el Volume
+real** (2026-08-21): `Export_Gold_Snapshot` corrió dentro de `Silver_Gold_Daily_Incremental`
+(versión Delta 236, 31.096 filas, 1941-07-02 a 2026-08-20) y `export_gold_dataset.py --resumen` bajó y
+resumió ese snapshot sin abrir Databricks; una segunda corrida sin `--refresh` confirmó el corte por versión
+Delta (`Version Delta sin cambios (236); usando cache local`), y `--desde/--confiable/--horizonte` filtraron
+correctamente sobre el dataset real. Ver seguimiento en §7 de este documento.
 
 ---
 
@@ -399,4 +401,4 @@ dónde vive ese test y qué quedó pendiente de verificar contra el entorno real
 
 | Fase | Test | Estado | Pendiente |
 | --- | --- | --- | --- |
-| Fase 1 — Exportador local de Gold | `notebooks_local/gold_export/test_export_gold_dataset.py` (20 casos: filtros, regla R9, resumen, corte por versión Delta, lock compartido) — corre offline con `python -m pytest` | Verde localmente | Correr `Export_Gold_Snapshot` una vez en Databricks y `export_gold_dataset.py` una vez contra el Volume real. No se pudo en esta sesión: el token OAuth de la CLI de `databricks` (perfil `joaquintschopp@gmail.com`) expiró (`databricks bundle validate` devuelve `invalid_grant`); requiere `databricks auth login` manual. |
+| Fase 1 — Exportador local de Gold | `notebooks_local/gold_export/test_export_gold_dataset.py` (20 casos: filtros, regla R9, resumen, corte por versión Delta, lock compartido) — corre offline con `python -m pytest`; verificado además contra el Volume real (`Export_Gold_Snapshot` corrido en Databricks + `export_gold_dataset.py --resumen`/`--desde`/`--confiable`/`--horizonte` corridos contra el snapshot descargado) | Verde, local y contra Databricks real | Ninguno. Se creó el Volume `weather.raw.gold_export_volume` (no existía) y se corrigió el nombre en el código para seguir la convención `<fuente>_volume` del resto de `weather.raw`. |
