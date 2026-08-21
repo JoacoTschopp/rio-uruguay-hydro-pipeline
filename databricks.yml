@@ -71,6 +71,13 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
             source: WORKSPACE
 
+        - task_key: Export_Gold_Snapshot
+          depends_on:
+            - task_key: Validate_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/Export_Gold_Snapshot
+            source: WORKSPACE
+
     silver_gold_daily_incremental:
       name: Silver_Gold_Daily_Incremental
       max_concurrent_runs: 1
@@ -135,6 +142,13 @@ resources:
             - task_key: ETL_Gold_Training_Dataset_v0
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+        - task_key: Export_Gold_Snapshot
+          depends_on:
+            - task_key: Validate_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/Export_Gold_Snapshot
             source: WORKSPACE
 
     sg_rainfall_daily_incremental:
