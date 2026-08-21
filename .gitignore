@@ -1,5 +1,6 @@
 *.jpeg
 .venv
+.env
 .vscode
 __pycache__
 *.pyc
@@ -16,3 +17,8 @@ notebooks_local/ecmwf/local_data/
 Script_temp/
 install.ps1
 req.json
+
+# JSON crudos descargados de la API de ANA (curvas de aforo / nivel) y estado de descarga
+# Son datos generados por los scripts locales, no codigo. No versionar.
+notebooks_local/ana_rating_curve/output/raw_json/
+notebooks_local/ana_rating_curve/rating_curve_state.json
