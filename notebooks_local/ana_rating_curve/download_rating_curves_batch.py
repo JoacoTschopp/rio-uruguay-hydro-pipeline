@@ -67,7 +67,10 @@ LOG_FILE = LOCAL_DIR / "logs" / "rating_curve.log"
 
 AFOROS_FLOOR = date(2000, 1, 1)
 REQUEST_DELAY_SECONDS = 0.5
-MAPE_SOSPECHOSA_THRESHOLD = 0.20
+# R7 (Decision 019, enmienda): mismo umbral que MAPE_USABLE_THRESHOLD en
+# ETL_Silver_River_Discharge_Daily.ipynb, para que este reporte y la validacion real en
+# Silver no den veredictos distintos para la misma estacion.
+MAPE_SOSPECHOSA_THRESHOLD = 0.30
 
 logger = logging.getLogger("ana_rating_curve_batch")
 
@@ -285,7 +288,7 @@ def run(target: list[str], only_missing: bool, max_stations: int, skip_aforos: b
                     if not measurements.empty:
                         acc = drc.evaluate_curve_accuracy(segments, measurements)
                         mape = acc["mape"]
-                        flag = " <- SOSPECHOSA (MAPE>20%)" if mape is not None and mape > MAPE_SOSPECHOSA_THRESHOLD else ""
+                        flag = " <- SOSPECHOSA (MAPE>30%)" if mape is not None and mape > MAPE_SOSPECHOSA_THRESHOLD else ""
                         logger.info(f"    aforos: {len(measurements)}, MAPE={mape}{flag}")
                     else:
                         logger.info("    aforos: 0 desde 2000-01-01 (sin_validacion)")

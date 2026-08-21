@@ -812,3 +812,84 @@ Definir el reemplazo por GEFS operativo antes de investigar evita que la fase qu
 * `fc` no aporta historia para entrenar en el corto plazo: su archivo empieza a acumularse desde el día que se prenda la descarga. Hasta que la investigación resuelva, el entrenamiento usa `cf`/`pf` y GEFS, que sí cubren 2000 → hoy.
 * Si el reemplazo se activa, el dataset queda con determinístico de NOAA y ensemble de ECMWF. Es una combinación defendible pero hay que documentarla explícitamente en el capítulo de datos.
 * `data_sources.md` §7.1 debe actualizarse: `fc` deja de estar «descartado» y pasa a estar ingestado por vía local.
+
+## Decisión 023: R8 para lluvia — sin umbral de exclusión, agregado por sub-cuenca con cobertura expuesta
+
+### Estado
+
+`Aceptada` (2026-08-21), implementada en la Fase 3 de `roadmap.md` (tareas — lluvia).
+
+### Contexto
+
+`ETL_Silver_Rainfall_Daily.ipynb` publicaba lluvia diaria sólo si un único indicador global —
+`missing_pct` promediado sobre las ~522 estaciones de `weather.bronze.ana_rio_uruguai` en una
+ventana de 30 días — quedaba por debajo de 0,90; si no, ejecutaba un `DELETE` de **todas** las
+filas de la fuente, sin distinguir estación. Además, `ETL_Gold_Training_Dataset_v0.ipynb` sumaba
+`lluvia_acumulada_mm` sobre **toda la cuenca** (~392 estaciones con curva más el resto de la red),
+violando el alcance espacial de la Decisión 018: Gold sólo debe publicar el agregado de
+`alta_frontera`, igual que el caudal.
+
+Al medir el estado real contra Databricks para corregir esto, aparece un hallazgo que condiciona
+el resultado: de las 22 estaciones del grupo A (`weather.silver.estacion_subcuenca`, todas en
+`alta_frontera`), **sólo 9 reportan `Chuva_Adotada` alguna vez, y sólo desde 2026-03-03** — 0 días
+de lluvia antes de esa fecha en las 26 años de historia de nivel/caudal de esas estaciones. El
+resto de la red (hasta 522 estaciones con algún dato de lluvia, back hasta 1912) está fuera de
+`alta_frontera`. El indicador global anterior ocultaba esto: sumaba lluvia de estaciones lejanas
+y daba la falsa impresión de cobertura casi completa.
+
+### Decisión
+
+* **Se elimina el portón binario y el `DELETE` global.** `ETL_Silver_Rainfall_Daily.ipynb` publica
+  toda estación con dato real, sin umbral de exclusión (R8). La medición de `missing_pct` contra
+  `weather.silver.attribute_quality` se conserva, pero pasa a ser puramente informativa: ya no
+  bloquea publicación ni borra filas.
+* **`lluvia_acumulada_mm` en Gold corrige su alcance, no su nombre.** Se recalcula uniendo
+  `weather.silver.rainfall_daily` contra `weather.silver.estacion_subcuenca` filtrado a
+  `alta_frontera` — mismo join que ya usa el agregado de caudal. La columna sigue llamándose
+  igual porque su intención (lluvia relevante para el punto de predicción) no cambió; lo que
+  cambió es que ahora sí la cumple.
+* **La cobertura viaja como columna, no como portón.** Cuatro columnas nuevas en
+  `weather.gold.training_dataset_v0`: `lluvia_agregado_alta_frontera_station_count`,
+  `lluvia_agregado_alta_frontera_cobertura_pct` (contra el universo de 22 estaciones mapeadas),
+  y los acumulados móviles `lluvia_agregado_alta_frontera_acum_3d_mm` /
+  `_acum_7d_mm`, que faltaban (roadmap: "acumulados y ventanas móviles").
+* **`lluvia_is_usable` queda deprecada** (siempre `NULL`): era el resultado del portón que se
+  elimina. Se conserva la columna en el esquema en vez de borrarla, porque Delta no permite un
+  `ADD COLUMNS` no idempotente ni un `DROP COLUMN` barato en este workspace, y no hay lectores
+  externos que dependan de dropearla.
+* **`weather.silver.sg_rainfall_daily` (Salto Grande) no se conecta al agregado de Gold.** El
+  inventario de estaciones activas (`estaciones_activas.csv`, columna `subcuenca_nombre` ya
+  provista por el proveedor) confirma que ninguna de sus 69 estaciones cae en `alta_frontera`:
+  59 en `baja_salto_grande`, las 10 restantes en `intermedia_paso_libres`. Conectarlas violaría el mismo
+  R2 que esta decisión corrige para ANA. La tarea del roadmap ("conectar SG a Gold") se resuelve
+  por la negativa: queda fuera de alcance mientras Gold no publique esas sub-cuencas (Decisión
+  018), documentado en vez de forzado.
+
+### Justificación
+
+Un portón que mide una sola cifra sobre 522 estaciones heterogéneas no puede representar la
+calidad real de ninguna de ellas individualmente: puede pasar con estaciones del target vacías
+(como se descubrió acá) o fallar con estaciones del target perfectas si el resto de la red tiene
+un mal día. El principio que ya rige las otras ocho reglas de consolidación (R1-R7, R9) —no
+perder información buena por un criterio grueso, exponer la calidad real como dato en vez de
+decidir por el usuario final— se aplica igual acá.
+
+Corregir el alcance de `lluvia_acumulada_mm` en el mismo cambio (en vez de en un paso aparte) es
+necesario porque ambos bugs se enmascaraban mutuamente: con el portón global activo, cualquier
+intento de leer la cobertura real de `alta_frontera` en particular hubiera dado un número
+optimista y falso.
+
+### Consecuencias
+
+* **La lluvia es casi inutilizable como feature en el dataset actual.** Con cobertura real desde
+  2026-03-03 nada más, cualquier modelo entrenado con el histórico completo (2000-2026) va a ver
+  `lluvia_acumulada_mm` en `NULL` en el 98,6% de las filas. Esto no es un bug de esta fase: es el
+  estado real de la fuente, medido con las herramientas que esta fase construyó. Queda registrado
+  como limitación conocida en `data_sources.md` y en el roadmap.
+* Hay dos salidas posibles para esto, ninguna implementada todavía: (a) que las 13 estaciones sin
+  lluvia empiecen a reportar `Chuva_Adotada` de acá en adelante (la telemetría de ANA es del
+  proveedor, no del pipeline) — la cobertura mejoraría desde hoy en adelante, nunca hacia atrás; o
+  (b) sumar lluvia de estaciones del grupo B dentro de `alta_frontera` (Fase 7) si alguna tiene
+  historia de lluvia más profunda que las del grupo A, cosa que no se investigó todavía.
+* `docs/gold_consolidation_contract.md` (R8) y `docs/data_sources.md` (§4, lluvia; §6, Salto
+  Grande) se actualizan con estos números reales.

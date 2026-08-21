@@ -115,7 +115,7 @@ correctamente sobre el dataset real. Ver seguimiento en §7 de este documento.
 
 ### Fase 2 — Contrato de consolidación y regeneración de Gold
 
-**Estimación:** ≈ 2 días · **Depende de:** Fase 1 (para auditar el resultado) · **Estado:** `Pendiente`
+**Estimación:** ≈ 2 días · **Depende de:** Fase 1 (para auditar el resultado) · **Estado:** `Cerrada (2026-08-21)`
 
 Escribir como documento y como código las reglas que hoy están dispersas en los notebooks, y aplicar las
 Decisiones 019 y su enmienda.
@@ -125,34 +125,39 @@ derivado de él.
 
 | # | Regla | Criterio | Estado |
 | --- | --- | --- | --- |
-| R1 | Piso temporal | Gold arranca en **2000-01-01**; las 21.400 filas de 1941–1999 salen (la serie larga de nivel queda en Silver) | Decidida |
-| R2 | Sub-cuenca | Sólo estaciones de `alta_frontera` | Decidida |
-| R3 | Estación sin curva | Sin caudal derivable, **el nivel se conserva** | Decidida |
-| R4 | Vigencia vencida | Se extiende la última curva hasta hoy, marcada con `curva_vigencia_extendida` | Decidida |
+| R1 | Piso temporal | Gold arranca en **2000-01-01**; las 21.400 filas de 1941–1999 salen (la serie larga de nivel queda en Silver) | Implementada (31.096 → 9.729 filas) |
+| R2 | Sub-cuenca | Sólo estaciones de `alta_frontera` | Implementada |
+| R3 | Estación sin curva | Sin caudal derivable, **el nivel se conserva** | Implementada |
+| R4 | Vigencia vencida | Se extiende la última curva hasta hoy, marcada con `curva_vigencia_extendida` | Implementada (2/22 en la cuenca alta: `70100000`, `72715000`) |
 | R5 | Cota fuera de rango | Se extrapola y se marca; el registro se conserva como probable crecida real | Implementada |
-| R6 | Estación íntegramente fuera de tabla | Si **toda** la serie cae fuera del rango calibrado, se descarta su caudal y queda sólo el nivel | Decidida |
-| R7 | Curva no confiable | **MAPE ≤ 30% contra aforos dentro del rango calibrado**. Resultado: 20/22 usables | Decidida |
-| R8 | Cobertura de fuentes | **Sin umbral de exclusión**: se publica toda estación con dato y la cobertura viaja como columna | Decidida |
-| R9 | Cola sin target | Se recorta **en el exportador**, por horizonte. Gold conserva las filas con target en `NULL` | Decidida |
+| R6 | Estación íntegramente fuera de tabla | Si **toda** la serie cae fuera del rango calibrado, se descarta su caudal y queda sólo el nivel | Implementada (1 estación en todo el universo: `66400390`, outlier de datos) |
+| R7 | Curva no confiable | **MAPE ≤ 30% contra aforos dentro del rango calibrado**. Resultado: 20/22 usables | Implementada (`70100000` 114,7%, `70300000` 138,2%) |
+| R8 | Cobertura de fuentes | **Sin umbral de exclusión**: se publica toda estación con dato y la cobertura viaja como columna | Pendiente (Fase 3) |
+| R9 | Cola sin target | Se recorta **en el exportador**, por horizonte. Gold conserva las filas con target en `NULL` | Implementada (Fase 1) |
 
 **Tareas**
 
-- [ ] `docs/gold_consolidation_contract.md` con las nueve reglas, su implementación y el conteo de filas que explica cada una.
-- [ ] Implementar R3, R4 y R6 en `ETL_Silver_River_Discharge_Daily.ipynb`; agregar la columna `curva_vigencia_extendida`.
-- [ ] Fijar el cálculo de `is_usable` en R7 (MAPE en rango, umbral 30%) y re-emitir el veredicto de las 22 estaciones de la cuenca alta.
-- [ ] Aplicar R1: Gold arranca en 2000-01-01. Verificar que `weather.silver.river_levels_daily` conserva la serie desde 1941.
-- [ ] Ampliar a 8 horizontes en `ETL_Gold_Training_Dataset_v0.ipynb`: `caudal_t_mas_{1,2,3,4,5,6,7,14}d` y sus equivalentes de nivel (16 columnas de target).
-- [ ] Subir los JSON del barrido cerrado al Volume y correr `Rating_Curve_Discharge_Initial_Load` → Silver → Gold en ese orden (reconcilia los 510 segmentos y 2.270 aforos locales contra los 509 y 1.737 cargados).
-- [ ] Emitir el listado de fechas extrapoladas de la estación objetivo, como insumo para contrastar contra crónicas de crecidas al escribir la tesis.
+- [x] `docs/gold_consolidation_contract.md` con las nueve reglas, su implementación y el conteo de filas que explica cada una.
+- [x] Implementar R3, R4 y R6 en `ETL_Silver_River_Discharge_Daily.ipynb`; agregar la columna `curva_vigencia_extendida`.
+- [x] Fijar el cálculo de `is_usable` en R7 (MAPE en rango, umbral 30%) y re-emitir el veredicto de las 22 estaciones de la cuenca alta.
+- [x] Aplicar R1: Gold arranca en 2000-01-01. Verificar que `weather.silver.river_levels_daily` conserva la serie desde 1941.
+- [x] Ampliar a 8 horizontes en `ETL_Gold_Training_Dataset_v0.ipynb`: `caudal_t_mas_{1,2,3,4,5,6,7,14}d` y sus equivalentes de nivel (16 columnas de target).
+- [x] Subir los JSON del barrido cerrado al Volume y correr `Rating_Curve_Discharge_Initial_Load` → Silver → Gold en ese orden (484 archivos subidos: 407 curvas + 77 aforos; las tres tareas del job en verde).
+- [x] Emitir el listado de fechas extrapoladas de la estación objetivo, como insumo para contrastar contra crónicas de crecidas al escribir la tesis (`notebooks_local/gold_export/fechas_extrapoladas.py`; hoy 0 filas).
 
 **Criterio de cierre:** la cantidad de filas de `training_dataset_v0` se explica regla por regla, y el
 veredicto de cada una de las 22 estaciones de la cuenca alta sale de una sola definición de MAPE.
+**Cumplido y verificado contra Databricks real** (2026-08-21): Gold pasó de 31.096 a 9.729 filas
+(2000-01-01 a 2026-08-20); `rating_curve_segments` da 20/22 estaciones `is_usable` en la cuenca
+alta con un único umbral de MAPE (30%, mismo en Silver y en el reporte local); 2 estaciones con
+`curva_vigencia_extendida`; 1 estación (`66400390`, fuera de la cuenca alta) descartada por R6. Ver
+seguimiento en §7.
 
 ---
 
 ### Fase 3 — Lluvia y temperatura
 
-**Estimación:** ≈ 4-6 días · **Depende de:** Fase 1 · **Estado:** `Pendiente`
+**Estimación:** ≈ 4-6 días · **Depende de:** Fase 1 · **Estado:** `En curso (lluvia cerrada 2026-08-21; temperatura pendiente)`
 
 **Es el trabajo más importante del roadmap en contenido.** Sin forzante meteorológico el modelo sólo ve el
 propio río. Descarga e histórico se resuelven para **toda la cuenca**; a Gold entra sólo el agregado de
@@ -173,13 +178,13 @@ propio río. Descarga e histórico se resuelven para **toda la cuenca**; a Gold 
    de temperatura son **METAR** de aeropuertos (ya ingestada, poblada sólo en el tramo reciente) e **INMET**,
    el instituto meteorológico brasileño, identificado en `data_sources.md` §9.3 y nunca ingestado.
 
-**Tareas — lluvia**
+**Tareas — lluvia** (cerradas 2026-08-21, Decisión 023 — ver seguimiento en §7)
 
-- [ ] Reemplazar el portón todo-o-nada por la regla R8: publicar toda estación con dato real y exponer la cobertura como columna (`_station_count`, `_cobertura_pct` en el agregado por sub-cuenca).
-- [ ] Eliminar el `DELETE` global de la fuente.
-- [ ] Re-materializar `weather.silver.rainfall_daily` en modo `full` y medir la cobertura real por estación y por año, ahora que el backfill terminó.
-- [ ] Conectar `weather.silver.sg_rainfall_daily` (Salto Grande) a Gold — está en Silver y nunca llegó al dataset.
-- [ ] Agregar lluvia por sub-cuenca y publicar en Gold sólo `alta_frontera`, con acumulados y ventanas móviles.
+- [x] Reemplazar el portón todo-o-nada por la regla R8: publicar toda estación con dato real y exponer la cobertura como columna (`lluvia_agregado_alta_frontera_station_count`, `_cobertura_pct` en el agregado por sub-cuenca).
+- [x] Eliminar el `DELETE` global de la fuente.
+- [x] Re-materializar `weather.silver.rainfall_daily` en modo `full` y medir la cobertura real por estación y por año, ahora que el backfill terminó. **Hallazgo:** de las 22 estaciones de `alta_frontera`, sólo 9 reportan lluvia, y sólo desde 2026-03-03 (0 días antes en 26 años). La lluvia queda prácticamente inutilizable como feature del histórico completo hasta que la fuente mejore o se sume el grupo B (Fase 7).
+- [x] Conectar `weather.silver.sg_rainfall_daily` (Salto Grande) a Gold — **resuelto por la negativa**: el inventario de estaciones SG ya trae `subcuenca_nombre` resuelto por el proveedor y ninguna cae en `alta_frontera` (59 de 69 en `baja_salto_grande`, las 10 restantes en `intermedia_paso_libres`). Conectarla violaría el alcance espacial de la Decisión 018, igual que el bug que esta fase corrigió para ANA.
+- [x] Agregar lluvia por sub-cuenca y publicar en Gold sólo `alta_frontera`, con acumulados y ventanas móviles (`lluvia_agregado_alta_frontera_acum_3d_mm`, `_acum_7d_mm`).
 
 **Tareas — temperatura**
 
@@ -402,3 +407,5 @@ dónde vive ese test y qué quedó pendiente de verificar contra el entorno real
 | Fase | Test | Estado | Pendiente |
 | --- | --- | --- | --- |
 | Fase 1 — Exportador local de Gold | `notebooks_local/gold_export/test_export_gold_dataset.py` (20 casos: filtros, regla R9, resumen, corte por versión Delta, lock compartido) — corre offline con `python -m pytest`; verificado además contra el Volume real (`Export_Gold_Snapshot` corrido en Databricks + `export_gold_dataset.py --resumen`/`--desde`/`--confiable`/`--horizonte` corridos contra el snapshot descargado) | Verde, local y contra Databricks real | Ninguno. Se creó el Volume `weather.raw.gold_export_volume` (no existía) y se corrigió el nombre en el código para seguir la convención `<fuente>_volume` del resto de `weather.raw`. |
+| Fase 2 — Contrato de consolidación y regeneración de Gold | `notebooks/06_Quality/Validate_River_Discharge.ipynb` y `Validate_Training_Dataset_v0.ipynb`, ambos como task final de sus jobs (`Rating_Curve_Discharge_Initial_Load` y `Silver_Gold_Initial_Load_v0`) — corridos en Databricks real, 3/3 y 7/7 tareas en verde respectivamente; verificado además con consultas SQL ad hoc contra `weather.silver.rating_curve_segments`/`river_discharge_daily` (warehouse serverless `Serverless Starter Warehouse`) y con `export_gold_dataset.py --refresh --resumen` / `fechas_extrapoladas.py --offline` contra el snapshot local | Verde, local y contra Databricks real | Ninguno. `docs/gold_consolidation_contract.md` documenta las nueve reglas con los conteos reales. |
+| Fase 3 (lluvia) — R8 sin umbral, agregado por sub-cuenca | `Validate_Training_Dataset_v0.ipynb` extendido con dos asserts nuevos (cobertura en `[0,1]`, `lluvia_is_usable` deprecada en `NULL`) — corrido en Databricks real dentro de `Silver_Gold_Initial_Load_v0` (7/7 tareas en verde, versión Delta 244); verificado además con consultas SQL ad hoc contra `weather.silver.rainfall_daily`/`estacion_subcuenca` y `weather.gold.training_dataset_v0` (warehouse serverless) | Verde, local (sintaxis) y contra Databricks real | Ninguno en el código. **Hallazgo que sigue abierto como limitación de datos, no de pipeline:** sólo 9/22 estaciones de `alta_frontera` reportan lluvia, y sólo desde 2026-03-03 — ver Decisión 023. Nota operativa: los notebooks de este repo se sincronizan al Databricks Repo (`/Workspace/Users/joaquintschopp@gmail.com/rio-uruguay-hydro-pipeline`, git-linked a `main`) con `databricks workspace import --format JUPYTER --overwrite`, no con `databricks bundle deploy` (ese comando sólo sube a `.bundle/.../files`, un path que ningún job lee) — repetir este paso en cualquier sesión futura que edite notebooks antes de correr jobs. |

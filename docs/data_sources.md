@@ -77,6 +77,14 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Algunos campos numéricos vienen como string con coma decimal (`Chuva_Adotada`).
 * Frecuencia subdiaria; requiere agregación en Silver para granularidad diaria.
 * Posibles duplicados por `(codigoestacao, Data_Hora_Medicao)`; el daily ya hace dedupe por `Data_Atualizacao`.
+* **`Chuva_Adotada` es muy escasa en las 22 estaciones de `alta_frontera`** (Decisión 023,
+  2026-08-21): sólo 9 de las 22 reportan lluvia alguna vez, y sólo desde 2026-03-03 — 0 días de
+  lluvia antes de esa fecha en toda la historia. `weather.silver.rainfall_daily` (agregación diaria
+  por `codigoestacao`, `ETL_Silver_Rainfall_Daily.ipynb`) publica toda estación con dato real, sin
+  umbral de exclusión (R8); la cobertura real llega a Gold como columna
+  (`lluvia_agregado_alta_frontera_cobertura_pct`), no como portón binario. Otras ~513 estaciones de
+  la red sí tienen lluvia con historia profunda (hasta 1912), pero caen fuera de `alta_frontera` y
+  por lo tanto fuera del alcance de Gold (Decisión 018).
 
 ---
 
@@ -243,6 +251,12 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 * La API solo permite recuperar la ventana reciente de 30 días; si el job falla más de 30 días, habrá una brecha no recuperable desde este endpoint.
 * Se escriben archivos Raw vacíos para días sin registros, evitando reconsultas infinitas de días válidos sin datos.
+* **Ninguna estación SG cae en `alta_frontera`** (Decisión 023, 2026-08-21): el inventario de
+  estaciones activas ya trae `subcuenca_id`/`subcuenca_nombre` resueltos por el proveedor — 59 de
+  69 estaciones activas en `baja_salto_grande`, las 10 restantes en `intermedia_paso_libres`, 0 en
+  `alta_frontera`. `weather.silver.sg_rainfall_daily` por lo tanto no se une al agregado de lluvia
+  de Gold, que sólo publica `alta_frontera` (Decisión 018): conectarla violaría el mismo alcance
+  espacial que la Decisión 023 corrigió para la lluvia de ANA.
 * SG se mantiene en tablas separadas de ANA para preservar trazabilidad por fuente.
 
 ---
