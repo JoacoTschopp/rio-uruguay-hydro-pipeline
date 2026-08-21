@@ -386,7 +386,7 @@ resources:
       # Sin schedule: se dispara a mano ("Run now") mientras la Fase 1 (descarga local de
       # curvas, ver notebooks_local/ana_rating_curve/) va completando estaciones. Una vez
       # validado con el grupo A se encadena a silver_gold_initial_load_v0 /
-      # silver_gold_daily_incremental (ver docs/rating_curve_discharge_plan.md).
+      # silver_gold_daily_incremental (ver docs/decisions.md (Decision 017)).
       tags:
         project: rio-uruguay-hydro-pipeline
         layer: bronze-silver

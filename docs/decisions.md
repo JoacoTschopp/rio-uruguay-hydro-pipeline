@@ -575,9 +575,13 @@ El troceo original (`--max-windows 10` cada 4 h) no era una restricción de la A
 
 ### Contexto
 
-El pipeline solo tenía la curva de descarga de una estación (74100000), descargada a mano con `notebooks_local/ana_rating_curve/download_rating_curve.py`, y el dataset de entrenamiento usaba nivel (cota, cm) como target/feature — una magnitud que no es comparable entre estaciones (depende del cero de escala local). El caudal (m³/s) sí lo es, tiene sentido hidrológico para propagación aguas abajo, y es lo que usan los sistemas operativos reales. El usuario pidió un plan de dos fases (descarga de curvas para todas las estaciones con nivel + transformación nivel→caudal en el pipeline) documentado en `docs/rating_curve_discharge_plan.md`, con cuatro decisiones explícitas (D1-D4, ver ese documento §1): conversión en Silver, target = caudal sin perder nivel, extrapolación con flag en vez de NULL, y alcance = todas las estaciones con piso 2000-01-01.
+El pipeline solo tenía la curva de descarga de una estación (74100000), descargada a mano con `notebooks_local/ana_rating_curve/download_rating_curve.py`, y el dataset de entrenamiento usaba nivel (cota, cm) como target/feature — una magnitud que no es comparable entre estaciones (depende del cero de escala local). El caudal (m³/s) sí lo es, tiene sentido hidrológico para propagación aguas abajo, y es lo que usan los sistemas operativos reales. El usuario pidió un plan de dos fases (descarga de curvas para todas las estaciones con nivel + transformación nivel→caudal en el pipeline), con cuatro decisiones explícitas (D1-D4): conversión en Silver, target = caudal sin perder nivel, extrapolación con flag en vez de NULL, y alcance = todas las estaciones con piso 2000-01-01.
 
-Calibración real contra la API (Paso 0 del plan) corrigió la hipótesis inicial: el endpoint `HidroSerieCurvaDescarga/v1` filtra por `Data_Ultima_Alteracao` (fecha de modificación del registro en el sistema de ANA), no por vigencia de la curva. Se verificó contra 8 estaciones que todas las modificaciones históricas caen en una banda de ~3 años (2023-02 a 2026-02); se adoptó una ventana fija de 5 años como barrido (detalle completo en el plan §2.1).
+Calibración real contra la API (Paso 0 del plan) corrigió la hipótesis inicial: el endpoint `HidroSerieCurvaDescarga/v1` filtra por `Data_Ultima_Alteracao` (fecha de modificación del registro en el sistema de ANA), no por vigencia de la curva. Se verificó contra 8 estaciones que todas las modificaciones históricas caen en una banda de ~3 años (2023-02 a 2026-02); se adoptó como barrido una ventana fija de **5 ventanas de 365 días cubriendo `(hoy.año − 4)-01-01 → hoy`** (5 requests por estación en vez de las 77 del rango 1950-2026). Detalle operativo a conservar para el refresco trimestral (Decisión 020):
+
+* La vigencia de cada segmento devuelto es la real, sin importar cuándo se tocó el registro por última vez; las curvas se traen completas y el recorte temporal se aplica a los datos de nivel, no a los metadatos de curva (una vigencia iniciada en 1992 puede seguir vigente en 2003).
+* `[]` en todas las ventanas es señal confiable de "sin curva publicada", no de "ventana equivocada" — confirmado contra las 3 estaciones sin curva de la muestra de calibración.
+* Si aparece una estación con curva conocida por otra vía (por ejemplo `Vazao_Adotada` con muchos registros en Bronze) pero `sin_curva` en el barrido, la hipótesis a probar es que el margen de la ventana no alcanzó para esa estación y hay que ampliarlo puntualmente.
 
 ### Decisión
 
@@ -605,8 +609,116 @@ Separar Fase 1 (local, I/O contra API externa) de Fase 2 (Databricks, transforma
 
 ### Consecuencias
 
-* El job `Rating_Curve_Discharge_Initial_Load` no tiene schedule todavía — se dispara a mano ("Run now") mientras el grupo B se sigue descargando localmente; falta decidir su cadencia de refresco (el plan propone trimestral, ver `docs/rating_curve_discharge_plan.md` §4.7) y su integración en `silver_gold_daily_incremental` una vez que el grupo B esté completo.
+* El job `Rating_Curve_Discharge_Initial_Load` no tenía schedule al cierre de esta decisión — se disparaba a mano mientras el grupo B se seguía descargando. Su cadencia quedó definida después en la Decisión 020: conversión nivel→caudal diaria, descarga de curvas trimestral.
 * Grupo B (~370 estaciones) quedó descargando curvas (sin aforos, pasada no bloqueante aparte) en segundo plano al cierre de esta sesión — el estado es resumible vía `rating_curve_state.json`, se puede continuar con `python download_rating_curves_batch.py --group B --skip-aforos --only-missing`.
 * Los agregados de caudal por sub-cuenca (`caudal_agregado_intermedia_paso_libres_*`, `caudal_agregado_baja_salto_grande_*`) están en el esquema pero vacíos hasta que se genere el mapeo estación→sub-cuenca para el grupo B — es la ganancia predictiva más grande pendiente de este trabajo (ver plan §4.5).
 * Las dos estaciones sospechosas (70100000, 70300000) no fueron investigadas a fondo; quedan flageadas en `weather.silver.rating_curve_segments.is_usable=false` para que Gold las excluya de `caudal_confiable`, pero valdría la pena revisar sus coeficientes/vigencias manualmente.
 * `notebooks/06_Quality/Validate_Training_Dataset_v0.ipynb` y `Check_Bronze_Freshness.ipynb` existen en el Workspace de Databricks pero no estaban versionados en este repo git — se detectó al construir `Validate_River_Discharge.ipynb` siguiendo su mismo patrón. No se resolvió esa desprolijidad en esta sesión (fuera de alcance), pero conviene exportarlos a `notebooks/06_Quality/` en una sesión futura para que el repo sea la fuente de verdad completa.
+
+---
+
+## Decisión 018: El alcance de la tesis se limita a la cuenca alta; la ingesta sigue cubriendo toda la cuenca
+
+### Estado
+
+`Aceptada` (2026-08-21)
+
+### Contexto
+
+El dataset se diseñó desde la Decisión 005 con **dos** puntos críticos de predicción: la frontera Brasil/Argentina (estación ANA 74100000, Irai) y una zona aguas abajo asociada a la represa de Salto Grande. El primero está implementado end-to-end; el segundo nunca arrancó porque sus datos no vienen de ANA sino de CARU / Salto Grande, con una fuente y una conversión nivel→caudal propias todavía sin definir.
+
+Al cerrarse el barrido de curvas de aforo y el backfill histórico de ANA (ver §2 de `roadmap.md`), el dataset quedó completo para la cuenca alta y bloqueado para aguas abajo por trabajo que no tiene fecha. Mantener los dos puntos como objetivo implicaba dejar el dataset permanentemente "incompleto por diseño" y postergar el modelado por una fuente externa que aún no se relevó.
+
+### Decisión
+
+* `gold.training_dataset_v0` contiene **únicamente** la sub-cuenca `alta_frontera`, con el target ya fijado en `ana_74100000`.
+* El segundo punto de predicción aguas abajo queda **cancelado** como objetivo de la tesis. Las sub-cuencas `intermedia_paso_libres` y `baja_salto_grande` no se analizan.
+* Las columnas de agregado de esas dos sub-cuencas permanecen **reservadas en el esquema de Gold, en `NULL`**, marcadas como fuera de alcance y no como pendientes.
+* **La ingesta no se recorta.** ANA nivel/lluvia, curvas de aforo, ECMWF y Salto Grande se siguen descargando y consolidando en Landing/Bronze/Silver para las tres sub-cuencas, incluido el histórico.
+
+### Justificación
+
+El recorte convierte un dataset permanentemente incompleto en uno terminado dentro de un alcance declarado, que es lo que permite escribir la tesis y cerrar la fase de datos. Mantener la ingesta completa cuesta poco (los procesos ya corren y son incrementales) y es lo que hace la decisión reversible: si más adelante se decide reincorporar aguas abajo, el trabajo pendiente es recortar y unir, no volver a descargar veinte años de historia.
+
+Se prefirió el recorte al alcance antes que bajar la calidad del punto que sí está resuelto, en línea con la Decisión 010 (un dataset útil y acotado antes que uno completo e indefinido).
+
+### Consecuencias
+
+* Un solo `punto_prediccion` en el dataset; la clave lógica `fecha + punto_prediccion` se mantiene igual por si se revierte.
+* Salen del listado de pendientes: el segundo punto de predicción, el mapeo estación→sub-cuenca de las sub-cuencas intermedia y baja, y sus agregados de caudal.
+* Revertir la decisión requiere levantar el filtro en `ETL_Gold_Training_Dataset_v0.ipynb` y sembrar `weather.silver.estacion_subcuenca` con las estaciones de las otras dos sub-cuencas — no requiere ninguna descarga nueva.
+* La Decisión 005 (dos puntos críticos, estado `Propuesta`) queda **superada** por ésta.
+
+---
+
+## Decisión 019: Reglas de consolidación hacia Gold y ampliación a ocho horizontes
+
+### Estado
+
+`Aceptada` (2026-08-21), implementación pendiente en la Fase 2 de `roadmap.md`
+
+### Contexto
+
+Las reglas que deciden qué llega a Gold estaban dispersas en el código de los notebooks y nunca se escribieron como contrato. Al cerrarse el barrido de curvas aparecieron además tres situaciones sin regla definida: estaciones sin curva publicada (330 de 392), estaciones cuya última curva vigente termina antes de hoy (25 de las 62 con curva, 2 de ellas en la cuenca alta) y registros con cota por encima del rango calibrado de la curva.
+
+Sobre los horizontes, la Decisión 004 fijó cuatro (1, 3, 7 y 14 días) dejando abierto si convenía extender a todos los días entre 1 y 14.
+
+### Decisión
+
+El principio que ordena todas las reglas: **el nivel nunca se pierde; lo que se puede perder es el caudal derivado de él.**
+
+* **R3 — Estación sin curva de aforo:** no se deriva caudal, pero **el nivel se conserva** y sigue disponible como feature. No se descarta la estación.
+* **R4 — Vigencia vencida:** para las estaciones cuya última curva publicada termina antes de la fecha actual, se **extiende esa última vigencia hasta hoy** en vez de dejar el tramo sin caudal. La extensión se marca con una columna propia `curva_vigencia_extendida` para poder reportarla: es un supuesto (asume que la sección no cambió desde el fin de la vigencia), no un dato publicado por ANA.
+* **R5 — Cota fuera del rango calibrado:** se mantiene la Decisión 017 · D3 (se extrapola y se marca, nunca se anula). Se agrega la lectura hidrológica: un valor fuera de tabla es muy probablemente una **crecida real**, así que se conserva y las fechas afectadas se emiten como listado para contrastarlas al escribir la tesis contra crónicas de inundaciones documentadas.
+* **R6 — Estación íntegramente fuera de tabla:** si **toda** la serie temporal de una estación cae fuera del rango calibrado de su curva, se descarta su caudal y queda sólo el nivel. Es una salvaguarda: hoy ninguna estación de la cuenca alta califica (0% extrapolado observado).
+* **Horizontes:** se amplía de 4 a **8** — `t+1, t+2, t+3, t+4, t+5, t+6, t+7, t+14`. Son 8 targets de caudal más 8 de nivel en paralelo, 16 columnas de target.
+* **R9 — Cola sin target:** cada horizonte pierde sus últimos *h* días de serie; el descarte se aplica por horizonte, no de forma global.
+
+### Justificación
+
+Extender la última curva vigente (R4) recupera el tramo 2024-2026 de dos estaciones de la cuenca alta que si no quedarían sin caudal justo en el período más reciente y más relevante para validar. Es un supuesto explícito y flageado, preferible a un hueco silencioso.
+
+Conservar los extrapolados (R5) responde a que el error de una ley de potencia por encima de su rango calibrado es máximo justamente en crecidas — que es el fenómeno que interesa modelar. Descartarlos sería descartar los eventos de mayor valor predictivo. Cruzarlos después contra crónicas reales convierte una limitación numérica en evidencia verificable.
+
+La semana día por día (8 horizontes) permite ver **dónde** se degrada el error dentro del rango operativo útil, que con sólo t+1, t+3 y t+7 queda invisible. El costo es de 8 columnas en una tabla de decenas de miles de filas: despreciable.
+
+### Consecuencias
+
+* La Decisión 004 (horizontes 1/3/7/14, estado `Propuesta`) queda **cerrada** con el conjunto de ocho.
+* Gold hay que regenerarlo: 8 columnas de target nuevas más `curva_vigencia_extendida`.
+* Queda un punto abierto que no se resuelve acá: la definición única de MAPE / `is_usable` (el reporte local y la validación en Silver dan números distintos para las mismas estaciones). Se resuelve en la Fase 2 de `roadmap.md`.
+* El contrato completo, con las nueve reglas y el conteo de filas que explica cada una, se publica en `docs/gold_consolidation_contract.md` como entregable de la Fase 2.
+
+---
+
+## Decisión 020: Cadencias del pipeline y orden de la cadena diaria
+
+### Estado
+
+`Aceptada` (2026-08-21), implementación pendiente en la Fase 5 de `roadmap.md`
+
+### Contexto
+
+El requisito operativo es que **todos los días a las 06:00 el dataset tenga el día anterior cerrado**, tanto para predecir como para reentrenar y testear. Al revisar los schedules reales de `databricks.yml` aparecieron dos cosas sin definir:
+
+1. La Decisión 017 dejó sin fijar la cadencia de `Rating_Curve_Discharge_Initial_Load`, que se venía disparando a mano.
+2. `ECMWF_Forecast_Daily_Incremental` corre a las 08:00 UTC (05:00 America/Montevideo), es decir **después** de `Silver_Gold_Daily_Incremental` (04:30 Montevideo). Mientras el pronóstico no entra a Gold eso es inocuo, pero al integrarlo (Fase 4 del roadmap) Gold estaría consumiendo el pronóstico del día anterior, con un desfase de 24 h que no queda registrado en ninguna columna.
+
+### Decisión
+
+* **La conversión nivel → caudal de las estaciones con curva es diaria**, encadenada como task previo a Gold dentro de `Silver_Gold_Daily_Incremental`. No depende de que haya curvas nuevas: se aplica a los niveles del día con las curvas ya cargadas.
+* **La descarga de curvas de aforo nuevas es trimestral**, en un job propio sin schedule diario. Corre en local (`download_rating_curves_batch.py`, ver Decisión 016 sobre por qué el I/O contra la API de ANA no corre en Databricks), seguida de la carga a Bronze y el reproceso del caudal histórico.
+* **El pronóstico entra a Gold antes del volcado.** Si el ciclo está disponible en ECMWF antes de la hora de descarga actual, se adelanta la descarga. Si la medición de latencia real muestra que no está disponible tan temprano, se corre Gold detrás del pronóstico (Gold puede moverse a las 05:15 y seguir cumpliendo la meta de las 06:00). Lo que no se acepta es dejar el pronóstico fuera de la corrida del día.
+* **Regla general de la cadena:** ningún eslabón que alimente a Gold puede correr después de Gold. Queda escrita en `current_pipeline_inventory.md` junto al orden completo.
+
+### Justificación
+
+Separar la cadencia del dato (diaria) de la cadencia del metadato (trimestral) es la distinción que faltaba: las curvas de aforo cambian con baja frecuencia porque son recalibraciones de ANA, mientras que los niveles llegan todos los días y su conversión a caudal es una transformación determinística que no tiene motivo para esperar.
+
+Sobre el orden: un eslabón que corre después de Gold introduce un desfase de 24 h invisible en los datos — no hay columna que lo delate, y aparece más adelante como una señal rara en el modelo que cuesta semanas rastrear hasta el schedule. Es más barato fijar el orden ahora que auditarlo después.
+
+### Consecuencias
+
+* `Rating_Curve_Discharge_Initial_Load` se parte en dos: un task diario de conversión dentro del incremental, y un job trimestral de refresco de curvas.
+* Queda como punto abierto la **latencia real de disponibilidad del pronóstico**: TIGGE (`cf`/`pf`, vía `cdsapi`) documenta un embargo para acceso público que puede llegar a ~48 h. Si se confirma, el pronóstico que entra a Gold no es el del día sino el del ciclo disponible más reciente, lo que cambia el significado operativo del modelo. Se mide en la Fase 4 y se registra por fila en una columna `forecast_age_days`; no se asume ni a favor ni en contra hasta medirlo.
+* El criterio de cierre de la Fase 5 es empírico: tres días consecutivos en que a las 06:00 el snapshot local tenga la fila de ayer completa, con caudal y pronóstico del ciclo correcto.

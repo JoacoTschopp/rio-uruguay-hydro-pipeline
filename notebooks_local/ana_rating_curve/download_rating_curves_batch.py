@@ -1,13 +1,13 @@
 """Barrido multi-estacion de curvas de aforo (curva-chave) y aforos reales, para TODAS
 las estaciones ANA con medicion de nivel (no solo el target 74100000).
 
-Fase 1 del plan docs/rating_curve_discharge_plan.md. Reutiliza request/normalizacion de
+Fase 1 del trabajo de curvas de aforo (ver Decision 017 en docs/decisions.md). Reutiliza request/normalizacion de
 download_rating_curve.py y agrega lo que ese script no tiene: estado resumible,
 reautenticacion ante 401, lock compartido con el backfill historico (nunca en paralelo,
 misma cuenta/token de ANA), logging a archivo, y barrido de N estaciones en una corrida.
 
-Ventanas de curva-chave calibradas en el Paso 0 (ver docs/rating_curve_discharge_plan.md
-§2.1 y §3.3): el endpoint filtra por `Data_Ultima_Alteracao` (fecha de modificacion del
+Ventanas de curva-chave calibradas en el Paso 0 (ver Decision 017 en docs/decisions.md):
+el endpoint filtra por `Data_Ultima_Alteracao` (fecha de modificacion del
 registro en el sistema de ANA), no por vigencia de la curva. Se usan 5 ventanas de 365
 dias cubriendo desde el 1-ene de hace 4 anios hasta hoy (con margen de seguridad sobre el
 piso observado de ~3.5 anios). Una estacion sin datos en esas 5 ventanas se considera
@@ -79,14 +79,14 @@ def curve_windows(today: date) -> list[tuple[date, date]]:
 
 
 # ---------------------------------------------------------------------------
-# Universo de estaciones y grupos (plan §3.2)
+# Universo de estaciones y grupos (ver Decision 017 en docs/decisions.md)
 # ---------------------------------------------------------------------------
 
 def load_universe() -> list[str]:
     if not ESTACIONES_NIVEL_FILE.exists():
         raise drc.AnaApiError(
-            f"No existe {ESTACIONES_NIVEL_FILE}. Se genera con la query SQL de "
-            "docs/rating_curve_discharge_plan.md §3.2 contra weather.bronze.ana_rio_uruguai."
+            f"No existe {ESTACIONES_NIVEL_FILE}. Se genera con la query SQL documentada "
+            "en la Decision 017 (docs/decisions.md) contra weather.bronze.ana_rio_uruguai."
         )
     return json.loads(ESTACIONES_NIVEL_FILE.read_text(encoding="utf-8"))
 

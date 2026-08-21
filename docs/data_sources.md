@@ -333,7 +333,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Misma API que sección 3 (HidroWebService), otros dos endpoints:
   * `/EstacoesTelemetricas/HidroSerieCurvaDescarga/v1`: segmentos de curva-chave (coeficientes `Coef_a`, `Coef_h0`, `Coef_n` de `Q = A·(H−H0)^N`, por vigencia).
   * `/EstacoesTelemetricas/HidroSerieResumoDescarga/v1`: aforos reales (medições de campo), usados para validar la curva, no para calcular caudal.
-* El endpoint de curva filtra por `Data_Ultima_Alteracao` (fecha de modificación del registro en el sistema de ANA), no por vigencia — ver Decisión 017 y `docs/rating_curve_discharge_plan.md` §2.1 para el detalle de la calibración.
+* El endpoint de curva filtra por `Data_Ultima_Alteracao` (fecha de modificación del registro en el sistema de ANA), no por vigencia — ver Decisión 017 en `docs/decisions.md` para el detalle de la calibración y de la ventana de barrido adoptada.
 
 ### 8.2. Cobertura espacial
 
