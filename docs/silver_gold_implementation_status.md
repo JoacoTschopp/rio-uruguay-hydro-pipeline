@@ -4,7 +4,7 @@ Fecha de actualización: 2026-05-09
 
 ## Resumen
 
-La capa Silver/Gold definida en `docs/silver_gold_jobs_plan.md` quedó desplegada y ejecutada en Databricks.
+La capa Silver/Gold quedó desplegada y ejecutada en Databricks. El plan que la definió fue retirado del repositorio; la continuación vive en `docs/roadmap.md`.
 
 ## Jobs Databricks
 
