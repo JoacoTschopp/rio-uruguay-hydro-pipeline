@@ -506,6 +506,27 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Investigar el endpoint vivo actual antes de comprometerse a la estrategia de re-descarga
   periódica del ZIP.
 
+**Lado argentino/uruguayo de la cuenca (descartado por geografía, 2026-08-22)**
+
+* `alta_frontera` (`SIG/subcuencas_modelo.geojson`, polígono `subcuenca_1_frontera`, Decisión 018:
+  "Aporte hasta frontera Brasil/Argentina") queda **enteramente dentro de Brasil**: bounding box
+  lon -53,25 a -49,28, lat -28,77 a -26,34 (Río Grande do Sul / Santa Catarina), verificado leyendo
+  el GeoJSON directamente. No toca territorio argentino ni uruguayo — el punto de predicción
+  (`ana_74100000`, Iraí) está justo en el punto donde el río *llega* a ser frontera, aguas abajo de
+  toda la sub-cuenca que sí está en Gold. Por eso no hace falta evaluar SMN (Argentina) ni INUMET
+  (Uruguay) como fuente de temperatura para el alcance actual: no habría estaciones propias de esos
+  países dentro de la sub-cuenca que aportan al target.
+* Se confirmó igual que el SMN (`smn.gob.ar`) publica un dataset abierto de estaciones y
+  temperaturas mín/máx diarias sin autenticación en el portal nacional de datos abiertos
+  (`datos.gob.ar`, dataset "smn-listado-estaciones-meteorologicas-smn"), por si en el futuro se
+  revierte la Decisión 018 y se reabren `intermedia_paso_libres` o `baja_salto_grande` — esas dos sí
+  se extienden hacia el oeste/sur, cerca de o cruzando la frontera con Argentina (`baja_salto_grande`
+  llega a lon -58,46, ya en la zona de Salto Grande/Concordia). No se investigó el endpoint en
+  profundidad porque no aplica al alcance de hoy; queda como punto de partida documentado para
+  cuando corresponda.
+* INUMET (Uruguay) ni se evaluó: ninguna de las tres sub-cuencas de la cuenca alcanza latitudes
+  uruguayas (todas por encima de lat -31,9).
+
 ---
 
 ## 10. Reglas mínimas que debe cumplir una nueva fuente
