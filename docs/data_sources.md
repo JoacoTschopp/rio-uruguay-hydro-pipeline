@@ -77,14 +77,37 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Algunos campos numéricos vienen como string con coma decimal (`Chuva_Adotada`).
 * Frecuencia subdiaria; requiere agregación en Silver para granularidad diaria.
 * Posibles duplicados por `(codigoestacao, Data_Hora_Medicao)`; el daily ya hace dedupe por `Data_Atualizacao`.
-* **`Chuva_Adotada` es muy escasa en las 22 estaciones de `alta_frontera`** (Decisión 023,
-  2026-08-21): sólo 9 de las 22 reportan lluvia alguna vez, y sólo desde 2026-03-03 — 0 días de
-  lluvia antes de esa fecha en toda la historia. `weather.silver.rainfall_daily` (agregación diaria
-  por `codigoestacao`, `ETL_Silver_Rainfall_Daily.ipynb`) publica toda estación con dato real, sin
-  umbral de exclusión (R8); la cobertura real llega a Gold como columna
-  (`lluvia_agregado_alta_frontera_cobertura_pct`), no como portón binario. Otras ~513 estaciones de
-  la red sí tienen lluvia con historia profunda (hasta 1912), pero caen fuera de `alta_frontera` y
-  por lo tanto fuera del alcance de Gold (Decisión 018).
+* **`Chuva_Adotada` en las 22 estaciones con curva de `alta_frontera` (grupo A) es escasa**: sólo 9
+  de las 22 reportan lluvia alguna vez, y sólo desde 2026-03-03. Pero esto **no es representativo
+  de la cobertura real de lluvia de la sub-cuenca** — ver 3.10. `weather.silver.rainfall_daily`
+  (agregación diaria por `codigoestacao`, `ETL_Silver_Rainfall_Daily.ipynb`) publica toda estación
+  con dato real, sin umbral de exclusión (R8); la cobertura real llega a Gold como columna
+  (`lluvia_agregado_alta_frontera_cobertura_pct`), no como portón binario.
+
+### 3.10. Tabla de referencia `weather.silver.estacion_subcuenca`
+
+* **Qué es**: mapea cada `codigoestacao` del inventario ANA a su sub-cuenca (`alta_frontera`,
+  `intermedia_paso_libres`, `baja_salto_grande`). La usan tanto el agregado de lluvia como el de
+  caudal en `ETL_Gold_Training_Dataset_v0.ipynb` para filtrar a `alta_frontera` (Decisión 018).
+* **Origen del campo `subcuenca`**: viene resuelto por el proveedor en el mismo inventario que ya
+  usa `Daily_ANA.ipynb` como universo de descarga
+  (`/Volumes/weather/raw/ana_volume/estaciones_rio_uruguai_pluvio_fluvio.json`, columna
+  `subcuenca_nombre`). Se validó con un join espacial independiente (`geopandas`) contra
+  `SIG/subcuenca_1_frontera.gpkg`: 1.386/1.387 coincidencias (99,9%).
+* **Siembra**: `MERGE` idempotente en `notebooks/04_Silver/DDL_Silver_Gold.ipynb`, corre en cada
+  ejecución del job (`Silver_Gold_Initial_Load_v0` y `Silver_Gold_Daily_Incremental`), no es un paso
+  manual. Hasta 2026-08-22 la tabla tenía **sólo 22 filas** (el grupo A, sembradas a mano fuera de
+  cualquier notebook, origen no documentado) — ver Decisión 024. Desde esa fecha tiene las
+  **1.387** estaciones del inventario completo: 782 en `alta_frontera`, 581 en
+  `intermedia_paso_libres`, 24 en `baja_salto_grande`.
+* **Efecto en lluvia**: de las 782 estaciones de `alta_frontera` en el inventario, **332 tienen
+  `Chuva_Adotada` real** en `weather.bronze.ana_rio_uruguai`, con historia desde **1923-01-01**. El
+  hallazgo "0 días de lluvia en 26 años" de la Decisión 023 era un artefacto de esta tabla teniendo
+  sólo 22 filas, no una limitación de la fuente (Decisión 024). Con la tabla completa,
+  `training_dataset_v0.lluvia_acumulada_mm` pasa de 1,42% a 99,65% de filas no nulas, con 100% de
+  cobertura anual todos los años 2000-2025.
+* **No afecta caudal/nivel**: ese agregado depende de `weather.silver.river_discharge_daily`
+  (acotado a estaciones con curva de aforo vigente), no de `estacion_subcuenca`.
 
 ---
 
@@ -414,11 +437,74 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Estado: `No ingestada`.
 * Importancia para el punto crítico Salto Grande.
 
-### 9.3. Temperatura grandes ciudades Brasil
+### 9.3. Temperatura — INMET (Instituto Nacional de Meteorologia, Brasil)
 
-* Complemento o reemplazo de METAR aeropuertos.
-* Posibles proveedores: INMET (Instituto Nacional de Meteorologia).
-* Estado: `No ingestada`.
+* Complemento a METAR aeropuertos (Decisión de mantener METAR: sección 5). METAR cubre 4
+  aeropuertos, lejanos al eje del río; INMET tiene estaciones automáticas dedicadas dentro de la
+  cuenca.
+* Estado: **Investigada contra la fuente real (2026-08-22), no ingestada todavía.** Documentado acá
+  antes de escribir código (regla de la sección 10).
+
+**Catálogo de estaciones (verificado)**
+
+* Endpoint: `GET https://apitempo.inmet.gov.br/estacoes/T` (automáticas) / `.../estacoes/M`
+  (manuales/convencionales). Sin autenticación, pero **requiere un header `User-Agent` de
+  navegador**: con el `User-Agent` por defecto de `curl`/`requests` el servidor corta la conexión
+  TLS (`Connection reset`) antes de responder; con un `User-Agent` de Chrome responde `200` normal.
+* Devuelve JSON con 674 estaciones automáticas a nivel nacional: `CD_ESTACAO`, `DC_NOME`,
+  `SG_ESTADO`, `VL_LATITUDE`, `VL_LONGITUDE`, `VL_ALTITUDE`, `DT_INICIO_OPERACAO`, `CD_SITUACAO`
+  (`Operante`/`Pane`).
+* Filtrando a un bounding box aproximado de la cuenca alta (lat -29,5 a -26,5, lon -54,5 a -49,5):
+  **42 estaciones automáticas**, la mayoría operativas desde 2001-2019 (la más antigua, `A805`
+  Santo Augusto, RS, desde 2001-12) más una decena nuevas abiertas entre 2025 y 2026.
+
+**Histórico masivo (verificado, mecanismo recomendado para backfill)**
+
+* `GET https://portal.inmet.gov.br/uploads/dadoshistoricos/{AAAA}.zip` — un ZIP por año calendario,
+  **2000 a 2026 confirmados existentes** (HEAD 200 en ambos extremos probados). Sin autenticación,
+  mismo requisito de `User-Agent` de navegador.
+* Cada ZIP (~100 MB, probado con 2023: 107 MB, 567 archivos) trae **un CSV por estación,
+  nacional** (todos los tipos), no sólo la cuenca — hay que filtrar client-side por los 42 códigos
+  de estación de la cuenca. Confirmado: las 22 estaciones de la cuenca operativas en 2023 tienen su
+  CSV en el ZIP de ese año.
+* Formato del CSV (verificado en `INMET_S_RS_A805_SANTO AUGUSTO_01-01-2023_A_31-12-2023.CSV`):
+  encoding `latin-1`, separador `;`, decimal con coma, 8 líneas de metadata (`REGIAO`, `UF`,
+  `ESTACAO`, `CODIGO (WMO)`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`, `DATA DE FUNDACAO`) seguidas de
+  una fila de encabezado y filas horarias (`Data`, `Hora UTC`, y luego las variables). Campo de
+  temperatura relevante: `TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)` (instantánea), más máx/mín
+  de la hora anterior y punto de rocío. También trae `PRECIPITAÇÃO TOTAL, HORÁRIO (mm)` — mismo
+  archivo serviría para densificar lluvia si alguna vez hiciera falta.
+
+**Endpoint incremental/tiempo real (investigado, no funcional al 2026-08-22)**
+
+* La documentación comunitaria (paquetes `inmetpy`, scripts públicos en GitHub) describe rutas
+  `GET /estacao/{data_ini}/{data_fin}/{cod_estacao}` (horario) y
+  `GET /estacao/diaria/{data_ini}/{data_fin}/{cod_estacao}` (diario) sobre la misma base
+  `apitempo.inmet.gov.br`.
+* **Probado en vivo (2026-08-22)** con múltiples combinaciones de estación/rango
+  (`A001`/`A805`, rangos en 2015, 2025 y 2026): la ruta horaria responde `204 No Content` en
+  *todos* los casos (ruta reconocida, sin datos) y la ruta diaria y `/estacao/dados/{fecha}`
+  responden `404 E_ROUTE_NOT_FOUND`. El manual oficial
+  (`portal.inmet.gov.br/manual/manual-de-uso-da-api-estações`) también devuelve `404`.
+  **Conclusión: esa superficie de la API cambió o se dio de baja** desde que se escribieron esas
+  integraciones (coincide con reportes públicos de que `inmetpy` quedó roto por un cambio de
+  INMET). No sirve hoy para un job diario incremental tal como está documentada.
+* Alternativa para incrementalidad mientras no se identifique el endpoint vivo actual: re-descargar
+  periódicamente el ZIP del año en curso (los headers `Last-Modified`/`ETag`/`Content-Length`
+  permiten detectar con un `HEAD` si cambió antes de bajar los ~100 MB completos).
+
+**Diseño pendiente (no implementado esta sesión)**
+
+* Landing local (mismo patrón que `notebooks_local/ana_historic_backfill/`): descargar los ZIP
+  2000-2026, extraer sólo los CSV de los 42 códigos de estación de la cuenca, subir al Volume.
+* Tabla Bronze destino: `weather.bronze.inmet` (a definir DDL), clave lógica
+  `(codigo_estacao, data_hora_medicao)`.
+* Unificación con METAR en `weather.silver.temperature_daily`: agregación horaria → diaria
+  (min/max/avg) igual que METAR, con columna de trazabilidad de origen por registro (`fuente`:
+  `metar` | `inmet`) y regla de prioridad a definir (INMET más cercano al punto de predicción vs.
+  METAR más estable/limpio).
+* Investigar el endpoint vivo actual antes de comprometerse a la estrategia de re-descarga
+  periódica del ZIP.
 
 ---
 

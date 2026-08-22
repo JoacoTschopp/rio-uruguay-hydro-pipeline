@@ -3,10 +3,13 @@
 output_json/
 output_test/
 output_stateful_test/
+output_probe_chuva/
 historic_backfill_state.json
+alta_frontera_backfill_state.json
 last_sync.json
 backfill.lock
 logs/*.log
 __pycache__/
 dashboard_test.log
 dashboard_test.pid
+backfill_af_run2.out

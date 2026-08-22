@@ -893,3 +893,96 @@ optimista y falso.
   historia de lluvia más profunda que las del grupo A, cosa que no se investigó todavía.
 * `docs/gold_consolidation_contract.md` (R8) y `docs/data_sources.md` (§4, lluvia; §6, Salto
   Grande) se actualizan con estos números reales.
+
+---
+
+## Decisión 024: El hueco de lluvia de la Decisión 023 era un artefacto de `estacion_subcuenca`, no de la fuente — sembrado completo del inventario ANA
+
+### Estado
+
+`Aceptada` (2026-08-22), implementada contra Databricks real.
+
+### Contexto
+
+La Decisión 023 midió, contra la `estacion_subcuenca` que existía en ese momento, que sólo 9 de
+las 22 estaciones de `alta_frontera` reportaban `Chuva_Adotada`, y sólo desde 2026-03-03 — 0 días
+de lluvia en 26 años. Esa tabla de referencia (`weather.silver.estacion_subcuenca`) tenía **sólo
+22 filas**: las estaciones del grupo A (con curva de aforo), sembradas a mano en algún momento
+anterior a cualquier notebook versionado, nunca documentado. Ninguna de las ~760 estaciones
+exclusivamente pluviométricas o fluviométricas sin curva —que sí están en Bronze desde el job
+`All_Estacoes_ANA_Daily`, que descarga *todo* el inventario de la cuenca, no sólo el grupo A—
+tenía fila en `estacion_subcuenca`. El agregado de lluvia de Gold, al hacer `JOIN` contra esa
+tabla filtrada a `alta_frontera`, sólo podía ver esas 22 estaciones aunque la cuenca tuviera
+cientos de estaciones de lluvia reales.
+
+Se confirmó contra Databricks real (2026-08-22) que el inventario que ya usa `Daily_ANA.ipynb`
+como universo de descarga
+(`/Volumes/weather/raw/ana_volume/estaciones_rio_uruguai_pluvio_fluvio.json`) trae
+`subcuenca_nombre` ya resuelto por estación: 782 en `alta_frontera`, 581 en
+`intermedia_paso_libres`, 24 en `baja_salto_grande` (total 1.387). Cruzando ese inventario contra
+`weather.bronze.ana_rio_uruguai` (`Chuva_Adotada IS NOT NULL`), 332 estaciones de `alta_frontera`
+tienen lluvia real, con historia desde **1923-01-01** — 103 años antes del hallazgo "0 días" de la
+Decisión 023.
+
+### Decisión
+
+* **`weather.silver.estacion_subcuenca` se resiembra con el inventario completo** (las tres
+  sub-cuencas, 1.387 estaciones), no sólo las 22 del grupo A. Implementado como celda nueva en
+  `notebooks/04_Silver/DDL_Silver_Gold.ipynb` (`MERGE` idempotente por `codigoestacao`, ejecuta en
+  cada corrida del job — no sólo una vez a mano), y verificado también con el `MERGE` equivalente
+  corrido directo contra Databricks vía SQL warehouse (1.365 filas insertadas, 22 actualizadas,
+  1.387 totales).
+* **No hace falta tocar `ETL_Gold_Training_Dataset_v0.ipynb`.** Ya hacía el `JOIN` correcto contra
+  `estacion_subcuenca` filtrado a `alta_frontera` (Decisión 023); el bug estaba exclusivamente en
+  qué filas tenía esa tabla, no en la lógica de agregación.
+* **Se re-materializó todo el pipeline Silver→Gold** (`Silver_Gold_Initial_Load_v0`, `load_mode:
+  full`, corrido en Databricks: 7/7 tareas en verde) para que el agregado recalculara con la tabla
+  corregida.
+* El backfill dirigido a las 22 estaciones del grupo A
+  (`notebooks_local/ana_historic_backfill/run_backfill_alta_frontera.py`, iniciado en la sesión
+  2026-08-21 para investigar la Decisión 023) **queda como mejora secundaria, no como el
+  arreglo**: seguía corriendo al momento de este hallazgo (9/22 estaciones activas, retomando
+  ~2023-12) y se lo deja terminar, porque cada estación que reporte su propia lluvia en vez de
+  depender del agregado de vecinas es una señal más limpia, pero el hueco de cobertura que
+  bloqueaba el uso de la columna en Gold ya no existe con este cambio.
+
+### Verificación real contra Databricks (2026-08-22)
+
+| Métrica | Antes (Decisión 023) | Después (Decisión 024) |
+| --- | --- | --- |
+| Filas en `estacion_subcuenca` | 22 | 1.387 |
+| Estaciones de `alta_frontera` con `Chuva_Adotada` real | 9 | 332 |
+| Historia más antigua de lluvia real en `alta_frontera` | 2026-03-03 | 1923-01-01 |
+| `training_dataset_v0`, filas con `lluvia_acumulada_mm` no nulo | 138 / 9.730 (1,42%) | 9.696 / 9.730 (99,65%) |
+| Cobertura anual 2000-2025 (% de días con lluvia agregada) | — (no medible con 22) | 100% todos los años; 85,4% en 2026 (parcial, mes en curso) |
+| Promedio de estaciones que aportan al agregado diario | 0,13 | 73,7 (contra un universo de 782 mapeadas en `alta_frontera`) |
+
+Consultas ad hoc vía `databricks api post /api/2.0/sql/statements` contra el warehouse serverless
+`Serverless Starter Warehouse` (mismo mecanismo que las fases anteriores; no se usó notebook para
+medir, sólo para aplicar el cambio).
+
+### Justificación
+
+El principio que ya rige R1-R9 y la Decisión 023 —medir contra Databricks real antes de concluir,
+no confiar en un número agregado que puede ocultar la causa— se aplica un nivel más abajo acá: la
+Decisión 023 sí midió contra datos reales, pero contra una tabla de referencia (`estacion_subcuenca`)
+que nunca se auditó a sí misma. Sembrarla a mano con 22 filas, sin notebook ni fecha de origen, era
+exactamente el tipo de paso no reproducible que este roadmap busca eliminar (§4 del roadmap: "no
+cuenta como avance... modificar código sin registrar la decisión"). La corrección no fue ampliar la
+fuente de lluvia (la fuente siempre tuvo esta cobertura) sino corregir qué parte de la fuente el
+pipeline podía ver.
+
+### Consecuencias
+
+* **`lluvia_acumulada_mm` pasa de inutilizable a la feature con mejor cobertura de todo el dataset**
+  después del propio caudal/nivel. La limitación registrada en la Decisión 023 ("98,6% NULL") queda
+  obsoleta y se corrige en `data_sources.md` y en el roadmap.
+* El mismo problema podría existir para `intermedia_paso_libres` y `baja_salto_grande` si alguna
+  fase futura reabre esas sub-cuencas (Decisión 018 las mantiene fuera de Gold hoy); ya no hace
+  falta resembrarlas a mano porque quedaron sembradas en este mismo cambio.
+* La Fase 7 del roadmap ("ampliación del agregado con las 40 estaciones del grupo B") queda
+  parcialmente resuelta por este cambio para lluvia (ya están todas sembradas); para caudal/nivel
+  sigue pendiente tal como estaba, porque ese agregado depende de `river_discharge_daily`
+  (estaciones con curva), no de `estacion_subcuenca`.
+* `docs/data_sources.md` §3 (inventario ANA) y §4 (lluvia) se actualizan con el mecanismo de siembra
+  y los números reales de esta tabla.
