@@ -986,3 +986,146 @@ pipeline podía ver.
   (estaciones con curva), no de `estacion_subcuenca`.
 * `docs/data_sources.md` §3 (inventario ANA) y §4 (lluvia) se actualizan con el mecanismo de siembra
   y los números reales de esta tabla.
+
+---
+
+## Decisión 025: Ingesta de INMET y corrección del alcance espacial de `temp_global` en Gold
+
+### Estado
+
+`Aceptada` (2026-08-24), implementada e ingestada contra Databricks real.
+
+### Contexto
+
+La Fase 3 del roadmap dejaba pendiente la temperatura: ingestar INMET (investigación cerrada en
+la Decisión previa/`data_sources.md` §9.3, 2026-08-22) y aplicar a `weather.silver.temperature_daily`
+el mismo criterio R8 que ya se aplicó a lluvia (Decisiones 023/024) — sin umbral de exclusión,
+cobertura real como columna.
+
+Al diseñar la unificación METAR+INMET se encontró un segundo problema, de la misma familia que el
+que motivó la Decisión 024: el bloque `temp_global` de `ETL_Gold_Training_Dataset_v0.ipynb` promediaba
+**todos** los aeropuertos METAR con un simple `groupBy('fecha')`, sin ningún `JOIN` contra
+`weather.silver.estacion_subcuenca` — a diferencia de lluvia y caudal, nunca se había escopeado a
+`alta_frontera`. Geométricamente, además, **ninguno de los 4 aeropuertos METAR** (`SBGR` São Paulo,
+`SBCT`/`SBGL` — hay un mismatch preexistente entre `Daily_Temp_Airport.ipynb` y `Hist_NOAA.ipynb`
+sobre cuál es el cuarto aeropuerto, no se toca en esta decisión —, `SBPA` Porto Alegre, `SBFL`
+Florianópolis) cae dentro de ninguna de las tres sub-cuencas del modelo (`SIG/subcuencas_modelo.geojson`):
+`temp_media_c`/`temp_min_c`/`temp_max_c` en Gold nunca midieron la temperatura de la cuenca, sino un
+promedio de temperatura nacional brasileña.
+
+### Decisión
+
+**Catálogo de estaciones INMET.** `notebooks_local/inmet_backfill/fetch_station_catalog.py` descarga
+el catálogo nacional de INMET (`apitempo.inmet.gov.br/estacoes/T`, requiere `User-Agent` de navegador)
+y resuelve la sub-cuenca real de cada estación con un join espacial exacto (`geopandas.sjoin`,
+predicado `within`) contra `SIG/subcuencas_modelo.geojson` — el mismo método que la Decisión 024 usó
+para validar el inventario ANA de forma independiente. El bounding box usado en la investigación
+inicial (2026-08-22) daba 49 estaciones y se había estimado "42" a ojo; el join de polígono exacto da
+el número real: **27 estaciones dentro de alguna sub-cuenca — 15 en `alta_frontera`, 12 en
+`intermedia_paso_libres`, 0 en `baja_salto_grande`**.
+
+**Backfill histórico.** `notebooks_local/inmet_backfill/download_inmet_zips.py` descarga los 27 ZIP
+anuales (2000-2026, `portal.inmet.gov.br/uploads/dadoshistoricos/{AAAA}.zip`), extrae en memoria sólo
+los CSV de esas 27 estaciones (nunca escribe los ~2,6 GB completos de ZIP a disco) y produce un JSON
+por estación/año. Corrida completa 2026-08-24: **2.593.410 registros horarios**, 340 archivos
+estación/año, 0 años fallidos (26/26 desde 2001, más 2000 sin datos porque ninguna estación de la
+cuenca operaba todavía). `sync_to_databricks.py` sube catálogo y JSON a
+`weather.raw.inmet_volume` (mismo patrón que `notebooks_local/ana_historic_backfill/`, incluyendo
+el lock compartido `lock.py`).
+
+**Bronze.** `weather.bronze.inmet (codigo_estacao, data_hora_medicao, temp_c, source_file)`, MERGE
+append-only por `(codigo_estacao, data_hora_medicao)` en `ETL_Bronze_INMET.ipynb` (mismo patrón que
+`ETL_Bronze_Temp_Daily.ipynb` para METAR). Sólo se conservan filas con `temp_c` no nulo.
+
+**Silver.** `ETL_Silver_Temperature_Daily.ipynb` unifica METAR + INMET: `weather.silver.temperature_daily`
+gana `estacion_id` (= `icao_id` para METAR, = `codigo_estacao` para INMET) y `fuente`
+(`metar`|`inmet`); `icao_id` se conserva sin tocar. R8 aplica de entrada — no hay umbral de exclusión
+para ninguna de las dos fuentes.
+
+**Gold.** `ETL_Gold_Training_Dataset_v0.ipynb` reemplaza `temp_global` por `temp_alta_frontera`: un
+`JOIN` de `weather.silver.temperature_daily.estacion_id` contra el mismo universo
+`estacion_subcuenca` filtrado a `alta_frontera` que ya usa lluvia. `temp_media_c`/`temp_min_c`/
+`temp_max_c` mantienen sus nombres pero corrigen su alcance (igual que `lluvia_acumulada_mm` en la
+Decisión 024); se agregan `temp_agregado_alta_frontera_station_count` y
+`temp_agregado_alta_frontera_cobertura_pct` (mismo patrón que lluvia). `temp_station_count`
+(la columna vieja, sin escopear) queda deprecada.
+
+**Sin regla de prioridad entre fuentes.** El diseño original (`data_sources.md` §9.3) dejaba pendiente
+"una regla de prioridad a definir (INMET más cercano al punto de predicción vs. METAR más estable)".
+No hizo falta: dado que los 4 aeropuertos METAR están geográficamente fuera de las tres sub-cuencas,
+METAR e INMET nunca compiten por el mismo territorio dentro de `alta_frontera` — el agregado de Gold
+usa exclusivamente estaciones INMET.
+
+**Sin job de descarga periódica.** Igual que ANA histórico (Decisión 016), no se agregó ningún job
+Databricks de re-descarga diaria/incremental de INMET: el único mecanismo viable hoy (re-descargar el
+ZIP del año en curso) queda documentado como opción futura en `data_sources.md`, no implementado.
+`ETL_Bronze_INMET` sí se agregó a `databricks.yml` (tasks `silver_gold_initial_load_v0` y
+`silver_gold_daily_incremental`, antes de `ETL_Silver_Temperature_Daily`) para que cualquier archivo
+nuevo que se sincronice manualmente al Volume se mergee a Bronze en la próxima corrida.
+
+### Verificación real contra Databricks (2026-08-24)
+
+`Silver_Gold_Initial_Load_v0` corrido en `load_mode=full` contra Databricks real: 8/8 tareas en
+verde (incluyendo `ETL_Bronze_INMET`, `ETL_Silver_Temperature_Daily`, `ETL_Gold_Training_Dataset_v0`,
+`Validate_Training_Dataset_v0` y `Export_Gold_Snapshot`). Un primer intento falló dos veces y se
+corrigió en el camino (ver Consecuencias); la corrida final quedó limpia.
+
+| Métrica | Valor real |
+| --- | --- |
+| `weather.bronze.inmet` | 2.593.410 filas, 27 estaciones, 2001-12-05 a 2026-07-31 |
+| `weather.silver.temperature_daily`, filas `fuente = inmet` | 110.857 filas, 27 estaciones |
+| `weather.silver.temperature_daily`, filas `fuente = metar` | 47.215 filas, 5 estaciones (ver nota del mismatch SBCT/SBGL) |
+| Claves duplicadas `(fecha, estacion_id)` | 0 |
+| `weather.silver.estacion_subcuenca`, `alta_frontera` | 797 (782 ANA + 15 INMET) |
+| `training_dataset_v0`, filas con `temp_media_c` no nulo | 7.184 / 9.732 (73,8%) |
+| Cobertura diaria de `alta_frontera` por año | 0% en 2000-2005 (sin estaciones operando); 9,6% en 2006 (arranca a mitad de año); 99,2% en 2007; **100% todos los años desde 2008 hasta 2025**; 90,2% en 2026 (parcial, año en curso) |
+| Estaciones promedio que aportan al agregado diario | de 2,0 (2006) a 8-12 (2008 en adelante), sobre un universo de 15 mapeadas en `alta_frontera` |
+
+Verificado también localmente sin abrir Databricks: `export_gold_dataset.py --refresh --resumen`
+reprodujo las mismas 9.732 filas (2000-01-01 a 2026-08-23) y el mismo 26,2% de `temp_media_c` nulo,
+tras el corte por versión Delta (236 → 257).
+
+**Bug encontrado y corregido durante la implementación (no en el diseño, en la ejecución):**
+
+1. **Formato de fecha de INMET cambia en 2019.** El CSV histórico usa `DATA (YYYY-MM-DD)` con
+   guiones hasta 2018 y con barras (`YYYY/MM/DD`) desde 2019 en adelante. La primera corrida de
+   `download_inmet_zips.py` no normalizaba el separador y produjo `data_hora_medicao` con formato
+   mixto; `to_timestamp` sin formato explícito falló al parsear las filas 2019-2026
+   (`CAST_INVALID_INPUT`) y tumbó `ETL_Silver_Temperature_Daily`. Se corrigió normalizando `/` a
+   `-` antes de construir el timestamp, se re-descargaron los 8 años afectados (2019-2026) y se
+   volvieron a subir al Volume.
+2. **Migración de esquema con MERGE dejó filas huérfanas.** `weather.silver.temperature_daily`
+   pre-existía con `icao_id` como única clave; al agregar `estacion_id`/`fuente` por
+   `ALTER TABLE ADD COLUMNS`, las ~47.000 filas METAR previas quedaron con `estacion_id = NULL`.
+   El `MERGE` nuevo usa `t.estacion_id = s.estacion_id` como condición de match — en SQL,
+   `NULL = valor` nunca es verdadero, así que esas filas nunca matchearon y quedaron duplicadas
+   junto a las filas nuevas (mismo `fecha`/`icao_id`, `estacion_id` poblado). `Validate_Training_Dataset_v0`
+   lo detectó correctamente (`assert_unique` sobre `(fecha, estacion_id)`, con varias filas
+   `NULL` agrupando bajo la misma clave). Se corrigió con un `DELETE FROM
+   weather.silver.temperature_daily WHERE estacion_id IS NULL` (47.215 filas huérfanas) antes de
+   reintentar — una migración de esquema con cambio de clave sobre una tabla ya poblada necesita
+   limpiar las filas viejas, no sólo agregar columnas.
+
+Ambos bugs se encontraron porque el job realmente falló en Databricks (no se detectaron por
+inspección de código) — el mismo principio de "medir contra Databricks real" que ya justificó las
+Decisiones 023/024 detectó estos dos antes de que llegaran a producción.
+
+### Justificación
+
+El mismo principio que ya rige R1-R9 y las Decisiones 023/024 —medir contra Databricks real antes de
+concluir, no confiar en un número agregado que puede ocultar el alcance real— aplica acá: `temp_global`
+no estaba "roto" en el sentido de devolver `NULL` o fallar, devolvía un número plausible (temperatura
+promedio de estaciones meteorológicas brasileñas) que nunca fue la temperatura de la cuenca del punto
+de predicción. Sin el join espacial exacto tampoco se habría detectado que la estimación inicial de
+"42 estaciones" de la investigación de `data_sources.md` era, en los hechos, 27.
+
+### Consecuencias
+
+* `temp_media_c`/`temp_min_c`/`temp_max_c` en Gold dejan de ser temperatura nacional y pasan a ser
+  temperatura real de `alta_frontera`, con cobertura medida en vez de asumida.
+* `docs/data_sources.md` §9.3 y `docs/gold_consolidation_contract.md` (R8) se actualizan con el
+  mecanismo de ingesta y los números reales.
+* La Fase 3 del roadmap queda cerrada.
+* Si en el futuro se reabre `intermedia_paso_libres` o `baja_salto_grande` (Decisión 018), las 12
+  estaciones INMET de `intermedia_paso_libres` ya quedaron sembradas en `estacion_subcuenca` en este
+  mismo cambio (mismo catálogo, las tres sub-cuencas).

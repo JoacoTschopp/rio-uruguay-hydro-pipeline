@@ -442,8 +442,8 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Complemento a METAR aeropuertos (Decisión de mantener METAR: sección 5). METAR cubre 4
   aeropuertos, lejanos al eje del río; INMET tiene estaciones automáticas dedicadas dentro de la
   cuenca.
-* Estado: **Investigada contra la fuente real (2026-08-22), no ingestada todavía.** Documentado acá
-  antes de escribir código (regla de la sección 10).
+* Estado: **Ingestada (2026-08-24)**, Fase 3 del roadmap cerrada. Investigación 2026-08-22,
+  implementación y backfill histórico completo 2026-08-24.
 
 **Catálogo de estaciones (verificado)**
 
@@ -454,9 +454,16 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * Devuelve JSON con 674 estaciones automáticas a nivel nacional: `CD_ESTACAO`, `DC_NOME`,
   `SG_ESTADO`, `VL_LATITUDE`, `VL_LONGITUDE`, `VL_ALTITUDE`, `DT_INICIO_OPERACAO`, `CD_SITUACAO`
   (`Operante`/`Pane`).
-* Filtrando a un bounding box aproximado de la cuenca alta (lat -29,5 a -26,5, lon -54,5 a -49,5):
-  **42 estaciones automáticas**, la mayoría operativas desde 2001-2019 (la más antigua, `A805`
-  Santo Augusto, RS, desde 2001-12) más una decena nuevas abiertas entre 2025 y 2026.
+* Filtrando a un bounding box aproximado de la cuenca (lat -29,5 a -26,5, lon -54,5 a -49,5):
+  **49 estaciones automáticas** caen dentro del rectángulo, pero el bounding box es más grande
+  que el polígono real de la cuenca (incluye terreno vecino fuera de cualquier sub-cuenca). El
+  join espacial exacto contra `SIG/subcuencas_modelo.geojson` (`notebooks_local/inmet_backfill/
+  fetch_station_catalog.py`, `geopandas.sjoin` con predicado `within`) da el número real:
+  **27 estaciones dentro de alguna de las tres sub-cuencas — 15 en `alta_frontera`, 12 en
+  `intermedia_paso_libres`, 0 en `baja_salto_grande`** (esa sub-cuenca no cae en el bounding
+  box). Corrige la estimación de 42 hecha en la investigación inicial (2026-08-22), que era
+  sólo el filtro de bounding box sin el join de polígono. La mayoría de las 15 de
+  `alta_frontera` operan desde 2006-2008; unas pocas abrieron entre 2025 y 2026.
 
 **Histórico masivo (verificado, mecanismo recomendado para backfill)**
 
@@ -464,9 +471,9 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
   **2000 a 2026 confirmados existentes** (HEAD 200 en ambos extremos probados). Sin autenticación,
   mismo requisito de `User-Agent` de navegador.
 * Cada ZIP (~100 MB, probado con 2023: 107 MB, 567 archivos) trae **un CSV por estación,
-  nacional** (todos los tipos), no sólo la cuenca — hay que filtrar client-side por los 42 códigos
-  de estación de la cuenca. Confirmado: las 22 estaciones de la cuenca operativas en 2023 tienen su
-  CSV en el ZIP de ese año.
+  nacional** (todos los tipos), no sólo la cuenca — hay que filtrar client-side por los 27 códigos
+  de estación de la cuenca (confirmado en la implementación: `download_inmet_zips.py` matchea por
+  patrón `_{codigo}_` en el nombre de archivo dentro del ZIP).
 * Formato del CSV (verificado en `INMET_S_RS_A805_SANTO AUGUSTO_01-01-2023_A_31-12-2023.CSV`):
   encoding `latin-1`, separador `;`, decimal con coma, 8 líneas de metadata (`REGIAO`, `UF`,
   `ESTACAO`, `CODIGO (WMO)`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`, `DATA DE FUNDACAO`) seguidas de
@@ -489,22 +496,33 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
   **Conclusión: esa superficie de la API cambió o se dio de baja** desde que se escribieron esas
   integraciones (coincide con reportes públicos de que `inmetpy` quedó roto por un cambio de
   INMET). No sirve hoy para un job diario incremental tal como está documentada.
-* Alternativa para incrementalidad mientras no se identifique el endpoint vivo actual: re-descargar
-  periódicamente el ZIP del año en curso (los headers `Last-Modified`/`ETag`/`Content-Length`
-  permiten detectar con un `HEAD` si cambió antes de bajar los ~100 MB completos).
+* No se implementó re-descarga periódica del ZIP del año en curso como mecanismo incremental
+  (quedó fuera de esta fase, ver Decisión 025): no hay job diario de INMET en `databricks.yml`,
+  sólo el backfill histórico local. Queda documentado como opción futura si se identifica el
+  endpoint vivo actual, o si se decide vivir con la re-descarga del ZIP corriente.
 
-**Diseño pendiente (no implementado esta sesión)**
+**Implementación (2026-08-24, Decisión 025)**
 
-* Landing local (mismo patrón que `notebooks_local/ana_historic_backfill/`): descargar los ZIP
-  2000-2026, extraer sólo los CSV de los 42 códigos de estación de la cuenca, subir al Volume.
-* Tabla Bronze destino: `weather.bronze.inmet` (a definir DDL), clave lógica
-  `(codigo_estacao, data_hora_medicao)`.
+* Landing local en `notebooks_local/inmet_backfill/` (mismo patrón que
+  `notebooks_local/ana_historic_backfill/`): `fetch_station_catalog.py` resuelve las 27
+  estaciones de la cuenca (con sub-cuenca real via `geopandas.sjoin`) y
+  `download_inmet_zips.py` descarga los 27 ZIP anuales (2000-2026), extrae en memoria sólo
+  los CSV de esas estaciones (sin guardar los ~2,6 GB de ZIP en disco) y escribe JSON por
+  estación/año. Backfill completo corrido 2026-08-24: **2.593.410 registros horarios** en 340
+  archivos estación/año, 0 años fallidos. `sync_to_databricks.py` sube el catálogo y los JSON
+  al Volume `weather.raw.inmet_volume`.
+* Tabla Bronze: `weather.bronze.inmet (codigo_estacao STRING, data_hora_medicao STRING,
+  temp_c DOUBLE, source_file STRING)`, clave lógica `(codigo_estacao, data_hora_medicao)`
+  (DDL en `notebooks/04_Silver/DDL_Silver_Gold.ipynb`; MERGE append-only en
+  `notebooks/02_Bronze/ETL_Bronze_INMET.ipynb`, mismo patrón que `ETL_Bronze_Temp_Daily.ipynb`
+  para METAR). Sólo se conservan filas con temperatura no nula (tabla especifica de
+  temperatura, no un passthrough crudo genérico).
 * Unificación con METAR en `weather.silver.temperature_daily`: agregación horaria → diaria
-  (min/max/avg) igual que METAR, con columna de trazabilidad de origen por registro (`fuente`:
-  `metar` | `inmet`) y regla de prioridad a definir (INMET más cercano al punto de predicción vs.
-  METAR más estable/limpio).
-* Investigar el endpoint vivo actual antes de comprometerse a la estrategia de re-descarga
-  periódica del ZIP.
+  (avg/min/max) igual que METAR, con columna `fuente` (`metar`|`inmet`) y clave genérica
+  `estacion_id` (= `icao_id` para METAR, = `codigo_estacao` para INMET). **No hizo falta
+  ninguna regla de prioridad entre fuentes**: los 4 aeropuertos METAR están geográficamente
+  fuera de las tres sub-cuencas (ver Decisión 025), así que METAR e INMET nunca compiten por
+  el mismo territorio — Gold usa sólo INMET para el agregado de `alta_frontera`.
 
 **Lado argentino/uruguayo de la cuenca (descartado por geografía, 2026-08-22)**
 

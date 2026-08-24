@@ -1,10 +1,11 @@
 # Contrato de consolidación de `weather.gold.training_dataset_v0`
 
 Fecha de cierre de R1-R7 y R9: **2026-08-21** (Fase 2 de `docs/roadmap.md`). R8 se cerró para
-lluvia el mismo día en la Fase 3 (Decisión 023); temperatura queda pendiente. Este documento fija
-en código y en texto las nueve reglas (`R1`–`R9`) de la Decisión 019 y su enmienda. Los números de
-esta página son los reales, medidos contra el Gold regenerado el 2026-08-21 (versión Delta 244 de
-`weather.gold.training_dataset_v0`, tras la Fase 3).
+lluvia el 2026-08-21 (Decisión 023) y para temperatura el 2026-08-24 (Decisión 025), cerrando la
+Fase 3 completa. Este documento fija en código y en texto las nueve reglas (`R1`–`R9`) de la
+Decisión 019 y su enmienda. Los números de R1-R7 y R9 son los medidos el 2026-08-21; los de R8
+(lluvia y temperatura) están actualizados al 2026-08-24 (versión Delta 257 de
+`weather.gold.training_dataset_v0`).
 
 **El principio que ordena las nueve reglas:** el nivel nunca se pierde; lo que se puede
 perder es el caudal derivado de él.
@@ -85,7 +86,7 @@ veredictos distintos para la misma estación.
 `70100000` (MAPE 114,7%) y `70300000` (MAPE 138,2%); conservan su nivel y solo pierden el
 caudal, según la regla general.
 
-## R8 — Sin umbral de exclusión para lluvia (temperatura queda pendiente)
+## R8 — Sin umbral de exclusión para lluvia y temperatura
 
 **Dónde:** `ETL_Silver_Rainfall_Daily.ipynb` ya no mide un `missing_pct` global para decidir si
 publica o borra; publica toda estación con dato real y la medición de calidad queda como
@@ -110,9 +111,31 @@ ninguna de sus 69 estaciones activas cae en `alta_frontera` (59 en `baja_salto_g
 restantes en `intermedia_paso_libres`, según la columna `subcuenca_nombre` del inventario del proveedor).
 Conectarla violaría el mismo R2 que esta regla corrige para ANA.
 
-**Temperatura fuera de alcance de esta pasada.** El mismo criterio (sin umbral, cobertura como
-columna) queda pendiente para `weather.silver.temperature_daily` — tarea de la Fase 3 aún
-abierta, junto con la ingesta de INMET.
+**Temperatura (cerrado 2026-08-24, Decisión 025).** Mismo criterio que lluvia: sin umbral de
+exclusión, cobertura real como columna. Se sumó INMET (27 estaciones automáticas de la cuenca,
+15 en `alta_frontera`) a `weather.silver.temperature_daily`, unificado con METAR vía `estacion_id`
+y `fuente`. Se corrigió además un bug de alcance espacial en `ETL_Gold_Training_Dataset_v0.ipynb`:
+el bloque `temp_global` promediaba los 4 aeropuertos METAR sin ningún `JOIN` contra
+`estacion_subcuenca` — violaba R2 igual que el bug de lluvia de las Decisiones 023/024, sólo que
+sin datos faltantes de por medio (el número resultante era temperatura nacional brasileña, no de
+la cuenca). Los 4 aeropuertos METAR están geográficamente fuera de las tres sub-cuencas, así que
+el reemplazo (`temp_alta_frontera`, mismo patrón de `JOIN` que lluvia) usa exclusivamente
+estaciones INMET — no hizo falta ninguna regla de prioridad entre fuentes. Se agregan
+`temp_agregado_alta_frontera_station_count` y `_cobertura_pct`; `temp_station_count` (la columna
+vieja, sin escopear) queda deprecada.
+
+**Efecto medido** (2026-08-24, `Silver_Gold_Initial_Load_v0` en `load_mode=full`,
+`weather.gold.training_dataset_v0`): de las 9.732 filas totales, **7.184 (73,8%) tienen
+`temp_media_c` no nulo**. La cobertura por año es 0% en 2000-2005 (ninguna estación de
+`alta_frontera` operaba todavía — la primera, `A828` Erechim, arranca en 2006-11), 9,6% en 2006
+(arranca a mitad de año), 99,2% en 2007 y **100% todos los años desde 2008 hasta 2025** (90,2% en
+2026, año en curso, parcial); el promedio de estaciones que aportan al agregado diario crece de
+2,0 (2006) a 8-12 sobre un universo de 15 mapeadas en `alta_frontera`. Detalle completo, incluyendo
+dos bugs de ejecución encontrados y corregidos (formato de fecha de INMET cambia en 2019; migración
+de esquema con `MERGE` dejando filas huérfanas), en la Decisión 025.
+
+**Salto Grande y METAR fuera del agregado**, mismo motivo que lluvia: ninguna estación (SG o METAR)
+cae en `alta_frontera`.
 
 ## R9 — Cola sin target: se recorta en el exportador
 
@@ -152,3 +175,8 @@ las tres tareas en verde) antes de regenerar Gold.
   Databricks, mismo criterio de cierre que la Fase 1.
 - `python fechas_extrapoladas.py`: 0 fechas extrapoladas para la estación objetivo hoy
   (esperado, ver R5).
+- **Temperatura (2026-08-24, Decisión 025):** `Silver_Gold_Initial_Load_v0` en `load_mode=full`:
+  8/8 tareas en verde (job creció de 7 a 8 tareas con `ETL_Bronze_INMET`), incluyendo
+  `Validate_Training_Dataset_v0` y `Export_Gold_Snapshot`. `python export_gold_dataset.py
+  --refresh --resumen` reproduce localmente 9.732 filas, rango 2000-01-01 a 2026-08-23,
+  `temp_media_c` no nulo en 73,8% de las filas — sin abrir Databricks.

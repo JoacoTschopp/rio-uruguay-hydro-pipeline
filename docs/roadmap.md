@@ -1,6 +1,6 @@
 # Roadmap del dataset de tesis
 
-Fecha de corte: **2026-08-22**
+Fecha de corte: **2026-08-24**
 Rama de trabajo: `feature/ana-backfill-automation`
 Entregable final del roadmap: `weather.gold.training_dataset_v0` cerrado, documentado y descargable en local.
 
@@ -132,7 +132,7 @@ derivado de él.
 | R5 | Cota fuera de rango | Se extrapola y se marca; el registro se conserva como probable crecida real | Implementada |
 | R6 | Estación íntegramente fuera de tabla | Si **toda** la serie cae fuera del rango calibrado, se descarta su caudal y queda sólo el nivel | Implementada (1 estación en todo el universo: `66400390`, outlier de datos) |
 | R7 | Curva no confiable | **MAPE ≤ 30% contra aforos dentro del rango calibrado**. Resultado: 20/22 usables | Implementada (`70100000` 114,7%, `70300000` 138,2%) |
-| R8 | Cobertura de fuentes | **Sin umbral de exclusión**: se publica toda estación con dato y la cobertura viaja como columna | Pendiente (Fase 3) |
+| R8 | Cobertura de fuentes | **Sin umbral de exclusión**: se publica toda estación con dato y la cobertura viaja como columna | Implementada (Fase 3: lluvia 2026-08-22, temperatura 2026-08-24) |
 | R9 | Cola sin target | Se recorta **en el exportador**, por horizonte. Gold conserva las filas con target en `NULL` | Implementada (Fase 1) |
 
 **Tareas**
@@ -157,7 +157,7 @@ seguimiento en §7.
 
 ### Fase 3 — Lluvia y temperatura
 
-**Estimación:** ≈ 4-6 días · **Depende de:** Fase 1 · **Estado:** `En curso (lluvia cerrada 2026-08-22, corregida en dos pasadas; temperatura investigada, pendiente de implementar)`
+**Estimación:** ≈ 4-6 días · **Depende de:** Fase 1 · **Estado:** `Cerrada (2026-08-24)` — lluvia cerrada 2026-08-22 (corregida en dos pasadas), temperatura cerrada 2026-08-24 (Decisión 025)
 
 **Es el trabajo más importante del roadmap en contenido.** Sin forzante meteorológico el modelo sólo ve el
 propio río. Descarga e histórico se resuelven para **toda la cuenca**; a Gold entra sólo el agregado de
@@ -190,18 +190,20 @@ propio río. Descarga e histórico se resuelven para **toda la cuenca**; a Gold 
   el hallazgo de la Decisión 023 — sigue corriendo (retomando ~2022, 8/22 estaciones todavía activas
   al 2026-08-22) como mejora complementaria, ya no bloqueante tras la Decisión 024.
 
-**Tareas — temperatura**
+**Tareas — temperatura** (cerradas 2026-08-24, Decisión 025 — ver seguimiento en §7)
 
 - [x] Documentar INMET en `data_sources.md` antes de escribir código (regla de §10 de ese documento): endpoint, autenticación, cobertura, frecuencia, tabla Bronze destino. **Hecho 2026-08-22** (`data_sources.md` §9.3), contra la fuente real, no por referencia:
-  catálogo de estaciones (`apitempo.inmet.gov.br/estacoes/T`, 42 estaciones automáticas en la
-  cuenca, operativas desde 2001-2019 la mayoría) y descarga histórica masiva
+  catálogo de estaciones (`apitempo.inmet.gov.br/estacoes/T`) y descarga histórica masiva
   (`portal.inmet.gov.br/uploads/dadoshistoricos/{AAAA}.zip`, 2000-2026 confirmados, formato CSV
   verificado) **funcionan y fueron probados**; los endpoints incrementales documentados por
   librerías comunitarias (`inmetpy` y similares) **no funcionan hoy** (204/404 en vivo,
   2026-08-22) — API cambiada o dada de baja por INMET desde que esas integraciones se escribieron.
-- [ ] Landing + Bronze de INMET para las estaciones de la cuenca. **No implementado esta sesión** — diseño ya escrito en `data_sources.md` §9.3 (mismo patrón que `notebooks_local/ana_historic_backfill/`: descargar ZIP anuales, filtrar a los 42 códigos de estación de la cuenca, subir al Volume). Pendiente: identificar el endpoint vivo actual antes de comprometerse a re-descarga periódica del ZIP como mecanismo incremental.
-- [ ] Unificar METAR + INMET en `weather.silver.temperature_daily` con prioridad de fuente y trazabilidad de origen por registro.
-- [ ] Medir cobertura por año, con el mismo criterio R8 que en lluvia.
+  La estimación inicial de "42 estaciones en la cuenca" era sólo un filtro de bounding box; el
+  join espacial exacto contra los polígonos de sub-cuenca (hecho al implementar, 2026-08-24) dio
+  el número real: **27 estaciones — 15 en `alta_frontera`, 12 en `intermedia_paso_libres`**.
+- [x] Landing + Bronze de INMET para las estaciones de la cuenca. `notebooks_local/inmet_backfill/` (mismo patrón que `notebooks_local/ana_historic_backfill/`): backfill histórico completo 2000-2026 corrido 2026-08-24, **2.593.410 registros horarios**, 0 años fallidos. `weather.bronze.inmet` (MERGE append-only, `notebooks/02_Bronze/ETL_Bronze_INMET.ipynb`). No se implementó re-descarga periódica del ZIP como mecanismo incremental (decisión explícita, ver Decisión 025) — sin job Databricks de INMET en `databricks.yml`, sólo el backfill local.
+- [x] Unificar METAR + INMET en `weather.silver.temperature_daily` con trazabilidad de origen por registro. **No hizo falta regla de prioridad**: los 4 aeropuertos METAR están geográficamente fuera de las tres sub-cuencas (confirmado con el mismo join espacial), así que METAR e INMET nunca compiten por el mismo territorio dentro de `alta_frontera`.
+- [x] Medir cobertura por año, con el mismo criterio R8 que en lluvia. **Hallazgo (Decisión 025, 2026-08-24):** de las 9.732 filas de Gold, `temp_media_c` no nulo en **73,8%** (7.184 filas). Cobertura 0% en 2000-2005 (ninguna estación de `alta_frontera` operaba todavía), 9,6% en 2006, 99,2% en 2007, **100% todos los años desde 2008 hasta 2025**. Se corrigió además un bug de alcance espacial en Gold: `temp_global` promediaba los 4 aeropuertos METAR sin ningún `JOIN` a sub-cuenca (violaba R2 igual que el bug de lluvia de la Decisión 023/024, sin datos faltantes de por medio) — reemplazado por `temp_alta_frontera`, escopeado igual que lluvia y caudal.
 
 **Criterio de cierre:** las columnas de lluvia y temperatura salen pobladas en Gold, con la cobertura de cada
 una medida y documentada por año.
@@ -419,4 +421,4 @@ dónde vive ese test y qué quedó pendiente de verificar contra el entorno real
 | Fase 1 — Exportador local de Gold | `notebooks_local/gold_export/test_export_gold_dataset.py` (20 casos: filtros, regla R9, resumen, corte por versión Delta, lock compartido) — corre offline con `python -m pytest`; verificado además contra el Volume real (`Export_Gold_Snapshot` corrido en Databricks + `export_gold_dataset.py --resumen`/`--desde`/`--confiable`/`--horizonte` corridos contra el snapshot descargado) | Verde, local y contra Databricks real | Ninguno. Se creó el Volume `weather.raw.gold_export_volume` (no existía) y se corrigió el nombre en el código para seguir la convención `<fuente>_volume` del resto de `weather.raw`. |
 | Fase 2 — Contrato de consolidación y regeneración de Gold | `notebooks/06_Quality/Validate_River_Discharge.ipynb` y `Validate_Training_Dataset_v0.ipynb`, ambos como task final de sus jobs (`Rating_Curve_Discharge_Initial_Load` y `Silver_Gold_Initial_Load_v0`) — corridos en Databricks real, 3/3 y 7/7 tareas en verde respectivamente; verificado además con consultas SQL ad hoc contra `weather.silver.rating_curve_segments`/`river_discharge_daily` (warehouse serverless `Serverless Starter Warehouse`) y con `export_gold_dataset.py --refresh --resumen` / `fechas_extrapoladas.py --offline` contra el snapshot local | Verde, local y contra Databricks real | Ninguno. `docs/gold_consolidation_contract.md` documenta las nueve reglas con los conteos reales. |
 | Fase 3 (lluvia) — R8 sin umbral, agregado por sub-cuenca | `Validate_Training_Dataset_v0.ipynb` extendido con dos asserts nuevos (cobertura en `[0,1]`, `lluvia_is_usable` deprecada en `NULL`) — corrido en Databricks real dentro de `Silver_Gold_Initial_Load_v0` dos veces: 2026-08-21 (7/7 tareas en verde, versión Delta 244, con `estacion_subcuenca` todavía en 22 filas) y 2026-08-22 tras la Decisión 024 (7/7 en verde, `estacion_subcuenca` resembrada a 1.387 filas antes de correr el job); verificado además con consultas SQL ad hoc contra `weather.silver.rainfall_daily`/`estacion_subcuenca` y `weather.gold.training_dataset_v0` (warehouse serverless, vía `databricks api post /api/2.0/sql/statements`) | Verde, local (sintaxis) y contra Databricks real | Ninguno en el código. **Cerrado 2026-08-22:** el hallazgo "sólo 9/22 estaciones con lluvia desde 2026-03-03" (Decisión 023) era un artefacto de que `estacion_subcuenca` sólo tenía 22 filas; resembrada con el inventario completo (1.387 estaciones), la cobertura real de `alta_frontera` es 332 estaciones con lluvia desde 1923, y `lluvia_acumulada_mm` en Gold pasa a 99,65% no nulo (Decisión 024). El backfill dirigido a las 22 estaciones del grupo A (`run_backfill_alta_frontera.py`) sigue corriendo en background como mejora complementaria, no bloqueante. Nota operativa: los notebooks de este repo se sincronizan al Databricks Repo (`/Workspace/Users/joaquintschopp@gmail.com/rio-uruguay-hydro-pipeline`, git-linked a `main`) con `databricks workspace import --format JUPYTER --overwrite`, no con `databricks bundle deploy` (ese comando sólo sube a `.bundle/.../files`, un path que ningún job lee) — repetir este paso en cualquier sesión futura que edite notebooks antes de correr jobs. |
-| Fase 3 (temperatura) — investigación INMET | Sin test automatizado todavía (no hay código que probar: sólo investigación y documentación). Verificación real contra la fuente: `curl` con header `User-Agent` de navegador contra `apitempo.inmet.gov.br` y `portal.inmet.gov.br`, 2026-08-22 | Investigación cerrada, implementación pendiente | Catálogo de estaciones y descarga histórica por ZIP confirmados funcionales; endpoints incrementales documentados por librerías comunitarias confirmados **no funcionales** hoy (204/404). Ver `data_sources.md` §9.3 para el diseño de Landing+Bronze, todavía sin implementar. |
+| Fase 3 (temperatura) — INMET + R8 sin umbral, escopeo a `alta_frontera` | `Validate_Training_Dataset_v0.ipynb` extendido con el assert de cobertura en `[0,1]` para `temp_agregado_alta_frontera_cobertura_pct` — corrido en Databricks real dentro de `Silver_Gold_Initial_Load_v0` (2026-08-24, `load_mode=full`, 8/8 tareas en verde tras reparar dos fallos encontrados en el camino, ver Decisión 025); verificado además con consultas SQL ad hoc contra `weather.bronze.inmet`/`weather.silver.temperature_daily`/`estacion_subcuenca`/`weather.gold.training_dataset_v0` (warehouse serverless, vía `databricks api post /api/2.0/sql/statements`) y con `export_gold_dataset.py --refresh --resumen` contra el snapshot local | Verde, local y contra Databricks real | Ninguno en el código. **Cerrado 2026-08-24:** backfill INMET completo (27 estaciones de la cuenca, 2.593.410 registros horarios, 2000-2026); `temp_media_c` en Gold pasa de temperatura nacional (bug de alcance, nunca escopeada a sub-cuenca) a 73,8% no nulo real de `alta_frontera`, 100% de cobertura diaria 2008-2025. Dos bugs de ejecución encontrados y corregidos: (1) INMET cambia el separador de fecha de `-` a `/` a partir de 2019, rompía `to_timestamp`; (2) la migración de esquema de `temperature_daily` (agregar `estacion_id`/`fuente` a una tabla ya poblada) dejó ~47.000 filas METAR huérfanas con `estacion_id = NULL` que no matcheaban el nuevo `MERGE` — se limpiaron con un `DELETE` antes de reintentar. Detalle completo en la Decisión 025. |

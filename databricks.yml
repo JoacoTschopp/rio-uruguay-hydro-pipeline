@@ -34,9 +34,16 @@ resources:
               load_mode: full
               incremental_lookback_days: "14"
 
-        - task_key: ETL_Silver_Temperature_Daily
+        - task_key: ETL_Bronze_INMET
           depends_on:
             - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_INMET
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Bronze_INMET
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
             source: WORKSPACE
@@ -107,9 +114,16 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "14"
 
-        - task_key: ETL_Silver_Temperature_Daily
+        - task_key: ETL_Bronze_INMET
           depends_on:
             - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_INMET
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Bronze_INMET
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
             source: WORKSPACE
