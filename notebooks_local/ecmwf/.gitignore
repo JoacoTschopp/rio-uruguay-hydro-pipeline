@@ -1,0 +1,9 @@
+# Estado y logs regenerables del backfill local (re-descargables desde TIGGE/ECDS o re-bajables
+# desde el Volume de Databricks): no tiene sentido versionarlos. Mismo criterio que
+# ana_historic_backfill/.gitignore e inmet_backfill/.gitignore.
+tigge_backfill.lock
+tigge_backfill_supervised.log
+tigge_backfill_task.log
+tigge_test.log
+backfill_run.log
+__pycache__/

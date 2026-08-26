@@ -47,7 +47,7 @@ def _try_retrieve(client, run_date: date, area: dict, target: Path) -> bool:
         "time": "00:00:00",
         "area": area_to_cds_list(area),
         "grid": [0.25, 0.25],
-        "format": "netcdf",
+        "data_format": "netcdf",
     }
     try:
         client.retrieve(DATASET, request, str(target))

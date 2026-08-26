@@ -27,8 +27,8 @@ from common_ecmwf import (  # noqa: E402
     batch_fully_landed,
     compute_download_area,
     date_range_str,
-    flatten_ensemble_forecast_batch,
     iter_batches_backward,
+    iter_ensemble_forecast_batch_by_day,
     raw_filename,
     write_json,
 )
@@ -72,7 +72,7 @@ def _retrieve_batch(client, start: date, end: date, area: dict, target: Path) ->
         "time": "00:00:00",
         "area": area_to_cds_list(area),
         "grid": [0.25, 0.25],
-        "format": "netcdf",
+        "data_format": "netcdf",
     }
     try:
         client.retrieve(DATASET, request, str(target))
@@ -82,7 +82,10 @@ def _retrieve_batch(client, start: date, end: date, area: dict, target: Path) ->
         return False
 
 
-def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = False, force_reload: bool = False) -> None:
+def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = False, force_reload: bool = False) -> dict:
+    """Devuelve {"processed": N, "failed": bool} -- ver el docstring de la misma funcion en
+    historic_cf_tigge.py (Decision 030, incidente de rate-limit: el caller necesita saber si
+    hubo un fallo para no reintentar en bucle)."""
     latest = date.today() - timedelta(days=TIGGE_LAG_DAYS)
     batches = iter_batches_backward(EARLIEST_TIGGE_DATE, latest, BATCH_MONTHS)
 
@@ -92,7 +95,7 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
         for start, end in batches:
             pending = not batch_fully_landed("pf", start, end, RUN_TIME, JSON_DIR)
             print(f"  {start.isoformat()} .. {end.isoformat()}  {'PENDIENTE' if pending else 'completo'}")
-        return
+        return {"processed": 0, "failed": False}
 
     area = compute_download_area(GEOJSON_PATH)
     print(f"Area de descarga calculada: {area}")
@@ -104,6 +107,7 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
     client = cdsapi.Client()
 
     processed = 0
+    failed = False
     for start, end in batches:
         if processed >= max_batches_per_run:
             print(f"Limite de {max_batches_per_run} lotes por corrida alcanzado, se corta aca. Volver a correr para continuar.")
@@ -117,20 +121,30 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
         raw_path = _batch_raw_path(start, end)
         if not _retrieve_batch(client, start, end, area, raw_path):
             print("Se corta la ejecucion por el fallo anterior (no se reintenta en bucle).")
+            failed = True
             break
 
         ds = xr.open_dataset(raw_path, engine="netcdf4", decode_timedelta=False)
-        by_day = flatten_ensemble_forecast_batch(ds, tipo="pf", source_api="ecmwf_tigge_cdsapi_historic", unit_to_mm_factor=UNIT_TO_MM_FACTOR, area=None)
-        for run_date_iso, records in by_day.items():
+        n_days = 0
+        n_records = 0
+        for run_date_iso, records in iter_ensemble_forecast_batch_by_day(
+            ds, tipo="pf", source_api="ecmwf_tigge_cdsapi_historic", unit_to_mm_factor=UNIT_TO_MM_FACTOR, area=None
+        ):
             json_path = JSON_DIR / raw_filename("pf", date.fromisoformat(run_date_iso), RUN_TIME, "json")
             write_json(records, json_path)
-        print(f"OK lote {start.isoformat()}..{end.isoformat()}: {len(by_day)} dias, {sum(len(r) for r in by_day.values())} registros")
+            n_days += 1
+            n_records += len(records)
+            del records
+        ds.close()
+        print(f"OK lote {start.isoformat()}..{end.isoformat()}: {n_days} dias, {n_records} registros")
 
         processed += 1
         time.sleep(PAUSE_BETWEEN_REQUESTS_SECONDS)
 
-    if processed == 0:
+    if processed == 0 and not failed:
         print("Nada pendiente para procesar en este lote de trabajo (o limite en 0).")
+
+    return {"processed": processed, "failed": failed}
 
 
 if __name__ == "__main__":

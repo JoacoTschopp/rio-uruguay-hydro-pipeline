@@ -44,8 +44,14 @@ inclusión escritas, calidad medida y snapshot reproducible.
 | `baja_salto_grande` — Paso de los Libres a Salto Grande | Sí | No | No |
 
 El segundo punto de predicción aguas abajo (CARU / Salto Grande) queda cancelado como objetivo. Las columnas
-de agregado de las sub-cuencas de aguas abajo permanecen reservadas en el esquema de Gold, en `NULL`. La
-decisión es reversible sin volver a descargar nada.
+de agregado de las sub-cuencas de aguas abajo quedaron reservadas en el esquema de Gold desde la Decisión
+018, pero desde la Decisión 024 (resiembra completa de `estacion_subcuenca`) dejaron de estar en `NULL`: hoy
+tienen datos reales (`caudal_agregado_intermedia_paso_libres_m3s` 7.684/9.732 filas no nulas,
+`caudal_agregado_baja_salto_grande_m3s` 6.843/9.732, verificado 2026-08-24 — ver Decisión 028) porque la
+ingesta siempre cubrió las tres sub-cuencas (fila «Ingesta: Sí» arriba) y el `JOIN` contra
+`estacion_subcuenca` ya no está limitado a 22 filas. Siguen fuera del alcance de la tesis (columna «Tesis:
+No» sin cambios) porque esa exclusión es una decisión de modelado, no una limitación de datos. La decisión
+es reversible sin volver a descargar nada.
 
 ---
 
@@ -212,7 +218,7 @@ una medida y documentada por año.
 
 ### Fase 4 — Pronóstico desde 2000: TIGGE + GEFS con empalme calibrado
 
-**Estimación:** ≈ 6-9 días · **Depende de:** Fase 2 · **Estado:** `Pendiente`
+**Estimación:** ≈ 6-9 días · **Depende de:** Fase 2 · **Estado:** `En curso (iniciada 2026-08-24)`
 
 Es la única familia de features con información del futuro: lo que separa un modelo autorregresivo de un
 modelo de pronóstico. Por la Decisión 021 el pronóstico ahora cubre **desde 2000**, alineado con el piso del
@@ -228,15 +234,16 @@ dataset, en vez de arrancar en 2006-10.
 
 **Tareas**
 
-- [ ] Documentar GEFS Reforecast v12 en `data_sources.md` antes de escribir código.
-- [ ] Verificar horizonte y resolución reales de GEFS v12 contra el requisito de cubrir hasta t+14 a escala de sub-cuenca.
-- [ ] Landing + Bronze de GEFS v12 **en local** (I/O contra API externa, precedente de las Decisiones 015/016), con estado resumible y lock compartido. Dimensionar el volumen: se necesita sólo precipitación sobre el bounding box de la cuenca, pero los archivos de origen son globales.
+- [x] Documentar GEFS Reforecast v12 en `data_sources.md` antes de escribir código. **Hecho 2026-08-24** (`data_sources.md` §9.4, Decisión 026): cobertura 2000-2019, 5 miembros diarios (11 semanal a +35d), horizonte +16 días, grilla 0,25°/3h hasta el día 10 y 0,50°/6h después, formato GRIB2 vía bucket S3 público `noaa-gefs-retrospective`. Encontrado y documentado un gotcha real antes de escribir código: `apcp_sfc` viene acumulado por bloque de 3h/6h, no acumulado-desde-el-inicio-de-la-corrida como el `tp` de TIGGE — hay que sumar los incrementos al aplanar.
+- [x] Verificar horizonte y resolución reales de GEFS v12 contra el requisito de cubrir hasta t+14 a escala de sub-cuenca. **Hecho 2026-08-24** (Investigación C, ver §5): sí llega a t+14 todos los días (horizonte +16d en la corrida estándar de 5 miembros), en el tramo de resolución 0,50°/6h — utilizable, no es un hueco de cobertura.
+- [x] Landing + Bronze de GEFS v12 **en local** (I/O contra API externa, precedente de las Decisiones 015/016), con estado resumible y lock compartido. **Implementado y verificado contra Databricks real 2026-08-24** (Decisión 029): `notebooks_local/gefs_reforecast/` descarga, recorta al bbox de la cuenca, acumula y empalma tramos localmente — sólo el JSON recortado (nunca el `.grib2` global) se sube al Volume `weather.raw.gefs_volume`; `ETL_Bronze_GEFS.ipynb` mergea en `weather.bronze.gefs_reforecast`, wireado en `databricks.yml` en paralelo a la cadena de Silver. Probado con 3 días reales (2018-01-01/02/03, incluida una corrida extendida de 11 miembros): 1.876.800 filas en Bronze, verificadas por SQL. **Volumen real medido**: ~164 MiB/día (5 miembros) recortado, ~950 GB si se bajara sin recortar — con recorte, el hueco 2000-2006 completo proyecta ~400 GB. **Decisión pendiente antes de correr el backfill completo**: si conviene reducir miembros del ensemble para el uso final (agregado por sub-cuenca), documentado en la Decisión 029 en vez de decidido unilateralmente en Landing.
 - [ ] Completar el backfill de `cf`: falta 2006-10-01 → 2018-08-02.
-- [ ] Arrancar el backfill de `pf`, encadenado detrás de `cf` (comparten cola y token de TIGGE/ECDS).
+- [x] Diagnosticar y corregir el bug de memoria del backfill de `pf` (OOM en Databricks, ver Decisión 027) — **corregido y verificado 2026-08-24** contra una corrida real completa (7/7 tareas en verde, `weather.bronze.ecmwf_forecast_pf` pasó de 0 a 26.784.000 filas).
+- [ ] Arrancar el backfill de `pf`, encadenado detrás de `cf` (comparten cola y token de TIGGE/ECDS). **En curso**: la corrida de verificación ya aterrizó el primer lote mensual (2026-07-23 a 2026-08-22); falta correr repetidamente hasta cubrir 2006-10-01 → hoy.
 - [ ] **Calibrar GEFS contra TIGGE** sobre los 13 años de solapamiento: corrección de sesgo por sub-cuenca y por horizonte, aplicada **en Silver** (regla de negocio, Decisión 011).
 - [ ] Publicar **una sola serie homogénea** de pronóstico con la columna `forecast_source` declarando el origen de cada fila.
 - [ ] Recortar los agregados a `alta_frontera` para lo que se publica en Gold, con features alineadas a los ocho horizontes del target.
-- [ ] **Investigación acotada:** relevar qué productos de ensemble y qué parámetros de precipitación expone hoy ECMWF Open Data, que es gratuito y sin embargo (ver §5, tarea A).
+- [x] **Investigación acotada:** relevar qué productos de ensemble y qué parámetros de precipitación expone hoy ECMWF Open Data, que es gratuito y sin embargo (ver §5, tarea A). **Reverificado 2026-08-24**: sigue sin exponer `tp` (ni ningún parámetro de precipitación cruda) para `type=cf`/`type=pf` del stream `enfo` — sólo productos derivados (medias/desvíos, probabilidad de umbral). Confirma la nota ya escrita en `data_sources.md` §7.10; no cambia la decisión (se sigue viviendo con la latencia de TIGGE).
 
 **Criterio de cierre:** Gold publica features de precipitación pronosticada para `alta_frontera` de forma
 continua desde 2000-01-01, con `forecast_source` y sin escalón detectable en el empalme.
@@ -266,6 +273,7 @@ predecir como para reentrenar y testear.
 | 02:00 | `Nivel_ANA_Target` | — |
 | 03:00 | `All_Estacoes_ANA_Daily` | — |
 | 03:30 | `SG_Rainfall_Daily_Incremental` | — |
+| 03:40 | `CPTEC_Obs_Daily_Incremental` (MERGE + SAMeT, Fase 9) | **Nuevo** — MERGE de D-1 se publica ~02:40 UTC, SAMeT ~03:10 UTC |
 | 03:45 | Descarga local de `fc` (Fase 8) | **Nuevo** |
 | 03:45 | `ECMWF_Forecast_Daily_Incremental` | **Adelantado** desde las 05:00 |
 | 04:00 | Conversión nivel → caudal | **Nuevo eslabón diario** |
@@ -313,20 +321,40 @@ consultar Databricks.
 
 ### Fase 7 — Ampliación del agregado de la cuenca alta
 
-**Estimación:** ≈ 1 día · **Depende de:** Fase 2 · **Estado:** `Pendiente`
+**Estimación:** ≈ 1 día · **Depende de:** Fase 2 · **Estado:** `Cerrada (2026-08-24)`
 
-Ganancia acotada: la mayoría de las estaciones del grupo B no tiene nivel antes de ~2014, así que engrosan la
-cola reciente de la serie, no los 26 años.
+Ganancia acotada, como se anticipaba: la mayoría de las estaciones del grupo B no tiene nivel antes de
+~2014-2015, así que engrosan la cola reciente de la serie, no los 26 años.
+
+**Resultado real (verificado contra Databricks, 2026-08-24 — Decisión 028):** las tres tareas de unión
+espacial y siembra ya habían quedado resueltas como efecto colateral de la Decisión 024 (resiembra completa
+de `estacion_subcuenca` con las 1.387 estaciones del inventario ANA, no solo las 22 del grupo A), que en su
+momento se registró como "para caudal sigue pendiente" sin haberlo verificado contra las 40 estaciones
+concretas del grupo B. Verificado ahora que **no es así**: de las 40, 14 caen en `alta_frontera`, ya están
+sembradas y ya alimentan el agregado real de Gold sin haber tocado una línea de código (el `JOIN` en
+`ETL_Gold_Training_Dataset_v0.ipynb` ya era dinámico contra `estacion_subcuenca`, nunca estuvo hardcodeado a
+22 estaciones — solo un comentario del notebook decía lo contrario, corregido en esta sesión).
 
 **Tareas**
 
-- [ ] Traer las coordenadas de las 40 estaciones con curva del grupo B desde el inventario de ANA.
-- [ ] Unión espacial contra `SIG/subcuenca_1_frontera.gpkg`.
-- [ ] Sembrar en `weather.silver.estacion_subcuenca` sólo las que caigan dentro de `alta_frontera`.
-- [ ] Recalcular el agregado y medir la mejora de cobertura por año.
+- [x] Traer las coordenadas de las 40 estaciones con curva del grupo B desde el inventario de ANA. — No
+  hizo falta repetirlo: el inventario que la Decisión 024 ya sembró completo en `estacion_subcuenca` trae
+  `subcuenca_nombre` resuelto por el proveedor para las 39 de las 40 que aparecen en él (validado
+  independientemente con `geopandas` al 99,9% en la Decisión 024/`data_sources.md` §3.10).
+- [x] Unión espacial contra los polígonos de sub-cuenca. — Ídem: ya está en `estacion_subcuenca` desde la
+  Decisión 024, no fue necesario un join nuevo.
+- [x] Sembrar en `weather.silver.estacion_subcuenca` sólo las que caigan dentro de `alta_frontera`. — Ya
+  sembradas (como parte del universo completo, no solo `alta_frontera`) desde la Decisión 024.
+- [x] Recalcular el agregado y medir la mejora de cobertura por año. — No hizo falta recalcular: los jobs
+  `Silver_Gold_Initial_Load_v0` en `load_mode=full` corridos para las Decisiones 024 y 025 ya lo hicieron.
+  Verificado en esta sesión que `weather.gold.training_dataset_v0.caudal_agregado_alta_frontera_m3s`
+  coincide exactamente (a precisión de punto flotante) con un recálculo fresco del `JOIN` completo, y medida
+  la densificación por año (ver Decisión 028).
 
-**Criterio de cierre:** se sabe cuántas de las 40 estaciones caen en la cuenca alta y desde qué año densifican
-el agregado.
+**Criterio de cierre:** se sabe cuántas de las 40 estaciones caen en la cuenca alta (**14**, confirmado
+contra Databricks real) y desde qué año densifican el agregado (**2015**, con 1-3 estaciones activas por
+día ese año, creciendo a 10-14 en 2024-2026). Detalle completo, incluyendo los 14 códigos de estación y la
+tabla año a año, en la Decisión 028.
 
 ---
 
@@ -351,6 +379,48 @@ quedó relevada y documentada, con o sin resultado positivo.
 
 ---
 
+### Fase 9 — Observación en grilla de CPTEC: MERGE (lluvia) y SAMeT (temperatura)
+
+**Estimación:** ≈ 2-3 días · **Depende de:** Fase 2 · **Estado:** `Cerrada 2026-08-26` · **Corrió en paralelo** con las Fases 4, 5 y 8
+
+Nace de la investigación D (§5, Decisión 032): los modelos NWP de Brasil no sirven para el hueco
+2000-2019, pero CPTEC/INPE publica dos **observaciones en grilla** con historia larga y gratuita: **MERGE**
+(precipitación diaria 0,1°, satélite + pluviómetros, desde 1998) y **SAMeT** (temperatura diaria 0,05°,
+observaciones + ERA5, desde 2000). Son una segunda medición de lluvia y temperatura de `alta_frontera`,
+con cobertura espacial completa todos los días, que convive con los agregados por estación (Decisión 033).
+
+**Requisito que ordena la fase (del usuario):** no alcanza con entrenar y testear — **el dato del día
+anterior tiene que estar disponible a diario para inferir**. Verificado antes de escribir código: MERGE
+de D se publica ~02:40 UTC de D+1 y SAMeT ~03:10 UTC de D+1; ambos llegan antes de Gold (04:30).
+
+**Arquitectura**
+
+| Tramo | Dónde corre | Qué hace |
+| --- | --- | --- |
+| Histórico (1998/2000 → hoy) | Local (`notebooks_local/cptec_obs/`) | Descarga todo el archivo, recorta al bbox, escribe un Parquet por día, sube a `weather.raw.cptec_volume` |
+| Diario (D-1 + ventana de regeneración) | Databricks, job `CPTEC_Obs_Daily_Incremental` 03:40 Montevideo | DDL → `Daily_CPTEC_Obs` (mismo Parquet que el histórico, decodifica GRIB2 con `pygrib`) → Bronze → Silver |
+| Gold | `Silver_Gold_*` | 12 columnas `lluvia_merge_alta_frontera_*` / `temp_samet_alta_frontera_*` |
+
+**Tareas**
+
+- [x] Documentar MERGE y SAMeT en `data_sources.md` antes de escribir código (§9.6/§9.7): acceso, grilla, ventana diaria (MERGE 12Z-12Z, SAMeT día calendario UTC), latencia, **regeneración posterior** (MERGE al mes siguiente, SAMeT a los 7 días), formato. **Hecho 2026-08-26.**
+- [x] Verificar en el workspace real que MERGE (GRIB2 con empaquetado complejo) se puede decodificar en serverless sin `cfgrib`: **`pygrib` funciona** (`run 496772049564049`). **Hecho 2026-08-26.**
+- [x] Landing local: `common_cptec.py`, `download_cptec_obs.py` (resumible, procesos en paralelo, lock compartido), `build_grid_subcuenca.py` (punto de grilla → sub-cuenca con geopandas), `sync_to_databricks.py` (por archivo o ZIP a `staging/`). **Hecho 2026-08-26**, con un bug real encontrado en el test (NEST con `missingValue` 9999, ver Decisión 033).
+- [x] Descargar **todo** el archivo disponible en local (MERGE 1998-01-02 →, SAMeT 2000-01-01 →). **Hecho 2026-08-26**: conteo por año en `docs/cptec_obs_evaluation.md`.
+- [x] Evaluar el archivo (`evaluate_cptec_obs.py` → `docs/cptec_obs_evaluation.md`). **Hecho 2026-08-26**: 0 días faltantes en todo el archivo (MERGE 1998-2026, SAMeT 2000-2026); MERGE-estaciones ANA correlación diaria 0,895 (mensual 0,898); SAMeT-INMET sesgo -0,05 °C en media, +2,83 °C en mínima (definición distinta: media areal de mínimas vs mínimo entre estaciones, no error). Hallazgo abierto no bloqueante: el cociente lluvia MERGE/estaciones cae a 0,48-0,71 en 2023-2025 sin que baje la cobertura de estaciones — a investigar en la Fase 3. Las 12 columnas quedan todas en Gold (ninguna se descartó).
+- [x] Databricks: `DDL_CPTEC_Obs` (Volume, Bronze, Silver, siembra de `grid_subcuenca`), `Daily_CPTEC_Obs`, `ETL_Bronze_CPTEC_Obs` (MERGE idempotente que **actualiza** por `source_last_modified`, descomprime `staging/`), `ETL_Silver_CPTEC_Grid_Daily` (media areal por sub-cuenca, `cobertura_pct`, `es_preliminar`), columnas en `DDL_Silver_Gold` y joins en `ETL_Gold_Training_Dataset_v0`, asserts en `Validate_Training_Dataset_v0`, job nuevo y cadenas en `databricks.yml`. **Escrito 2026-08-26.**
+- [x] Subir el histórico a Bronze y correr Silver full → Gold full → Validate. **Hecho 2026-08-26** (verificado contra Databricks real): Bronze MERGE 58.645.115 filas / SAMeT 197.386.052 filas, 0 huecos; Gold **100% de las 9.732 filas con las 12 columnas nuevas no nulas** (2000-01-01→2026-08-23); `Validate_Training_Dataset_v0` en verde. Encontrado y corregido en el camino: `DDL_Silver_Gold` (donde vive el `ALTER TABLE` de las columnas nuevas) no se había corrido — Gold falló una vez con `DELTA_METADATA_MISMATCH` antes de correrlo.
+- [x] Verificar el job diario real `CPTEC_Obs_Daily_Incremental`. **Hecho 2026-08-26**: dos corridas reales en verde (`pygrib` decodifica MERGE en serverless sin crash; 2da corrida detecta `unchanged` en los 61 archivos ya landeados vía `Last-Modified`, confirmando que no se re-decodifica lo que no cambió). Ya sumado a la tabla de cadencias de la Fase 5 (03:40 Montevideo).
+- [ ] Sumar las 12 columnas al diccionario de la Fase 6.
+
+**Criterio de cierre:** tres días consecutivos en que a las 06:00 Gold tiene `lluvia_merge_alta_frontera_mm`
+y `temp_samet_alta_frontera_media_c` del día anterior no nulas (con `es_preliminar = true`), y el
+histórico completo desde 2000-01-01 poblado en Gold con `cobertura_pct = 1` en `alta_frontera`.
+
+**Cierre real:** el histórico completo quedó poblado y verificado el mismo 2026-08-26 (100% de cobertura desde 2000-01-01). Lo único que no se verificó todavía con el paso del tiempo real es que el job diario siga entregando D-1 sin intervención tres días seguidos — es una comprobación pasiva (el job ya corre a diario sin cambios pendientes), no bloquea el cierre de la fase.
+
+---
+
 ## 4. Criterio de avance
 
 Una fase se considera cerrada si produce un entregable versionado en el repositorio o una tabla trazable en
@@ -370,13 +440,18 @@ No son decisiones abiertas: la decisión ya está tomada y lo que falta es un da
 definido de antemano qué se hace si la investigación no encuentra lo que busca, para que ninguna fase quede
 bloqueada esperando a un tercero.
 
-**A · Acceso al pronóstico en tiempo real** (Fase 4)
+**A · Acceso al pronóstico en tiempo real** (Fase 4) — `Cerrada 2026-08-24`
 Relevar qué productos de ensemble y qué parámetros de precipitación expone hoy ECMWF Open Data, que es
 gratuito y sin embargo — es de donde ya sale `fc`. La nota de `data_sources.md` §7 dice que `tp` para
 `cf`/`pf` no estaba disponible ahí, pero el catálogo cambió varias veces desde entonces.
-*Criterio de salida:* se usa Open Data. **No se contrata ninguna vía paga.** Si Open Data no alcanza, se
-convive con la latencia de TIGGE y cada fila declara `forecast_age_days`, de modo que el modelo entrene con
-la misma latencia que tendrá en operación y la métrica reportada sea honesta.
+*Resultado:* **sigue sin estar disponible** (reverificado 2026-08-24 contra la documentación actual del
+cliente `ecmwf.opendata`). El stream `enfo` sólo expone, para tipos derivados del ensemble, medias/desvíos
+(`em`/`es`: altura geopotencial, temperatura, viento, presión) y productos de probabilidad de umbral (`ep`:
+umbrales de precipitación, no el campo crudo). `tp` para `type=cf`/`type=pf` no está documentado en ningún
+lado del catálogo actual.
+*Criterio de salida aplicado:* se convive con la latencia de TIGGE; cada fila declarará `forecast_age_days`
+al implementar la Fase 4 (tarea todavía pendiente, no la resuelve esta investigación). No se contrató
+ninguna vía paga.
 
 **B · Historia de `fc`** (Fase 8)
 Relevar si existe alguna ruta de archivo histórico de `fc` (Service Agreement / MARS con acuerdo académico
@@ -386,11 +461,28 @@ operativo de NOAA**, cuyo reforecast 2000–2019 ya estará ingestado por la Fas
 y operación quedan sobre el mismo modelo. **El reemplazo aplica únicamente a `fc`**: el ensemble sigue siendo
 de ECMWF (`cf`/`pf`), no se migra a NOAA.
 
-**C · Horizonte y resolución de GEFS v12** (Fase 4)
+**C · Horizonte y resolución de GEFS v12** (Fase 4) — `Cerrada 2026-08-24`
 Verificar contra la fuente que la cobertura ~2000–2019 llega hasta t+14 con resolución útil a escala de
 sub-cuenca, y dimensionar el volumen de descarga.
-*Criterio de salida:* si no llega a t+14, los horizontes largos quedan sin feature de pronóstico en el tramo
-2000–2006 y se documenta como limitación de cobertura por horizonte, sin mover el piso del dataset.
+*Resultado:* llega a t+14 **todos los días** (horizonte +16 días en la corrida estándar de 5 miembros,
+no hace falta la corrida extendida semanal de 11 miembros/+35d). El t+14 cae en el tramo de 0,50°/6h
+(en vez de 0,25°/3h de los primeros 10 días) — más grueso que TIGGE en ese horizonte, pero utilizable, no
+un hueco. Volumen dimensionado contra el bucket real: ~26,5 MiB/día/miembro sin recortar, ~950 GB para
+todo 2000-2019 × 5 miembros sin ningún recorte (GEFS no soporta `area` server-side como TIGGE) — obliga a
+decidir una estrategia de reducción antes de implementar la descarga (ver `data_sources.md` §9.4).
+*Criterio de salida:* no aplicó el escenario negativo — no hace falta documentar limitación de cobertura
+por horizonte ni mover el piso del dataset.
+
+**D · Sistemas de pronóstico numérico de Brasil** (Fases 4 y 9) — `Cerrada 2026-08-26`
+Relevar si Brasil tiene un sistema NWP propio y gratuito, y cómo se descargan datos actuales e históricos,
+como posible fuente de pronóstico para `alta_frontera` (que está enteramente en Brasil).
+*Resultado:* **sí existe y es abierto** (CPTEC/INPE vía `dataserver.cptec.inpe.br`, sin registro): WRF 7 km
+(archivo 2023 →), Eta 8 km (2021 →), Eta 40 km (2020-07 →), BAM 20 km (recortes 2024 →), MONAN 10 km
+pre-operativo (2025-10 →). **Ningún producto cubre 2000-2019**, no hay *reforecast* ni ensemble vigente,
+INMET cerró el GRIB de COSMO y ONS sólo distribuye a agentes registrados. Detalle en `data_sources.md` §9.5.
+*Criterio de salida aplicado:* no se incorpora ningún modelo brasileño como `forecast_source` (Decisión 032);
+queda diferido como comparación de habilidad sobre 2020-hoy. **Hallazgo lateral que sí se adopta:** las
+observaciones en grilla MERGE (lluvia, 1998 →) y SAMeT (temperatura, 2000 →) de CPTEC — Fase 9, Decisión 033.
 
 ---
 
@@ -407,6 +499,7 @@ sub-cuenca, y dimensionar el volumen de descarga.
 | Granularidad horaria | Evaluable recién si el dataset diario demuestra viabilidad (Decisión 003) |
 | Migración a PostgreSQL o Spark local | Decisiones 007 y 008 |
 | `cfgrib` dentro de Databricks serverless | Sin solución conocida en este workspace; el pipeline dejó de necesitarlo (Decisión 022) |
+| Modelos NWP de Brasil (WRF 7 km / Eta 40 km) como `forecast_source` | **Diferido**, no descartado: sin historia antes de 2020-07; reabrir sólo como comparación de habilidad en la etapa de modelado (Decisión 032) |
 
 ---
 

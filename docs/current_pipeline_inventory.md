@@ -105,6 +105,28 @@ Uso esperado dentro del dataset de tesis:
 
 ---
 
+### 3.4. Job: `CPTEC_Obs_Daily_Incremental` (agregado 2026-08-26, Fase 9)
+
+Secuencia:
+
+`DDL_CPTEC_Obs -> Daily_CPTEC_Obs -> ETL_Bronze_CPTEC_Obs -> ETL_Silver_CPTEC_Grid_Daily`
+
+Schedule: 03:40 America/Montevideo (06:40 UTC), después de que CPTEC publica MERGE (~02:40 UTC) y SAMeT
+(~03:10 UTC) del día anterior y antes de `Silver_Gold_Daily_Incremental` (04:30), que consume Silver.
+
+| Tarea | Descripción | Capa |
+| --- | --- | --- |
+| `DDL_CPTEC_Obs` | Volume `weather.raw.cptec_volume`, tablas Bronze/Silver, siembra de `grid_subcuenca` | DDL |
+| `Daily_CPTEC_Obs` | Baja D-1 y una ventana hacia atrás (45 d MERGE / 14 d SAMeT), decodifica (GRIB2 con `pygrib`, NetCDF4), recorta al bbox, escribe un Parquet por día | Landing |
+| `ETL_Bronze_CPTEC_Obs` | MERGE idempotente por `(fecha, latitude, longitude)`, actualiza si `source_last_modified` es más nuevo; descomprime `staging/` del backfill local | Bronze |
+| `ETL_Silver_CPTEC_Grid_Daily` | Media areal por `(fecha, subcuenca, fuente)` vía `grid_subcuenca`, `cobertura_pct`, `es_preliminar` | Silver |
+
+Modo de ejecución: `Serverless`. El histórico (MERGE 1998 →, SAMeT 2000 →) no pasa por este job: se descarga
+en local (`notebooks_local/cptec_obs/`) y se sube al mismo Volume; Bronze lo mergea con el mismo notebook.
+No participa de `Check_Bronze_Freshness` (Decisión 033). Ver `data_sources.md` §9.6/§9.7.
+
+---
+
 ## 4. Patrón actual de procesamiento
 
 El pipeline actual se puede resumir de la siguiente manera:

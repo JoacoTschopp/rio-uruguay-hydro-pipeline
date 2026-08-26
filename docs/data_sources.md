@@ -20,6 +20,9 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 | ECMWF — Pronóstico precipitación (cf + pf) | Pronóstico | Bronze + Silver + diaria | `weather.bronze.ecmwf_forecast_cf` / `_pf` | Diaria (grilla 0,25°) | Features futuras |
 | ANA — Curvas de aforo (rating curve) | Hidrológica | Bronze + Silver + Gold, grupo A completo | `weather.bronze.ana_rating_curve_segments` / `ana_discharge_measurements` | Estática (revisión trimestral) | Conversión nivel→caudal |
 | Evaporación                     | Meteorológica | No ingestada       | —                               | Diaria             | Features            |
+| CPTEC — MERGE (lluvia observada en grilla) | Observación en grilla | Bronze + Silver + Gold + diaria (Fase 9) | `weather.bronze.merge_precip_grid` | Diaria (0,1°, ventana 12Z-12Z) | Features lluvia (media areal `alta_frontera`) |
+| CPTEC — SAMeT (temperatura observada en grilla) | Observación en grilla | Bronze + Silver + Gold + diaria (Fase 9) | `weather.bronze.samet_temp_grid` | Diaria (0,05°, día UTC) | Features temperatura (media areal `alta_frontera`) |
+| CPTEC/INPE — Modelos NWP (WRF 7 km, Eta, BAM, MONAN) | Pronóstico | Evaluada, no ingestada (Decisión 032) | — | Diaria | Candidata a `forecast_source` sólo 2020+ |
 
 ---
 
@@ -106,8 +109,18 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
   sólo 22 filas, no una limitación de la fuente (Decisión 024). Con la tabla completa,
   `training_dataset_v0.lluvia_acumulada_mm` pasa de 1,42% a 99,65% de filas no nulas, con 100% de
   cobertura anual todos los años 2000-2025.
-* **No afecta caudal/nivel**: ese agregado depende de `weather.silver.river_discharge_daily`
-  (acotado a estaciones con curva de aforo vigente), no de `estacion_subcuenca`.
+* **Sí afecta caudal** (corrección 2026-08-24, Decisión 028): la Decisión 024 había registrado que
+  el agregado de caudal quedaba fuera de este cambio porque depende de
+  `weather.silver.river_discharge_daily` y no de `estacion_subcuenca` — afirmación incompleta.
+  `ETL_Gold_Training_Dataset_v0.ipynb` filtra `river_discharge_daily` a `alta_frontera` con el
+  mismo `JOIN` contra `estacion_subcuenca` que usa lluvia, así que el caudal sí depende de las dos
+  tablas a la vez (curva vigente **y** sub-cuenca). Al resembrar el inventario completo, la
+  Decisión 024 amplió sin saberlo también el universo del agregado de caudal: de las 40 estaciones
+  "grupo B" (con curva, fuera de la cuenca alta según el barrido de la Fase 2), 14 caen en
+  `alta_frontera` con la unión espacial real y ya contribuyen a
+  `caudal_agregado_alta_frontera_m3s` sin haber tocado el código de agregación (era dinámico desde
+  el principio). Detalle completo, incluyendo los 14 códigos y la densificación por año, en la
+  Decisión 028 (cierre de la Fase 7 del roadmap).
 
 ---
 
@@ -544,6 +557,339 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
   cuando corresponda.
 * INUMET (Uruguay) ni se evaluó: ninguna de las tres sub-cuencas de la cuenca alcanza latitudes
   uruguayas (todas por encima de lat -31,9).
+
+### 9.4. GEFS Reforecast v12 (NOAA) — pronóstico retrospectivo 2000-2019
+
+* Cierra el hueco 2000-01 → 2006-09 que TIGGE no cubre (`cf`/`pf` arrancan en 2006-10, ver 7.11):
+  la Decisión 021 baja el piso del pronóstico a 2000 empalmando esta fuente con TIGGE en el
+  solapamiento 2006-10 → 2019 (13 años).
+* Estado: **Landing + Bronze implementados y verificados contra Databricks real (2026-08-24,
+  Decisión 029)**. Pendiente: correr el backfill histórico completo (decisión de volumen/
+  miembros abierta, ver Decisión 029) y las tareas de Silver/calibración de la Fase 4.
+
+**Origen y acceso (verificado)**
+
+* `NOAA’s Global Ensemble Forecast System Version 12: Reforecast Data Storage Information`
+  (`https://noaa-gefs-retrospective.s3.amazonaws.com/Description_of_reforecast_data.pdf`), el
+  documento oficial de NOAA/PSL para este dataset.
+* Bucket S3 público **sin autenticación** (`noaa-gefs-retrospective`, acceso anónimo/`--no-sign-request`),
+  igual de gratuito que TIGGE Open Data — no hay ninguna vía paga que evaluar aquí (a diferencia
+  de la Investigación A de la Fase 4, que es sobre `fc`/ECMWF, no sobre GEFS).
+* Existe también un espejo en `ftp://ftp.emc.ncep.noaa.gov` (`GEFSv12/reforecast`), pero NOAA
+  recomienda AWS por ancho de banda — no se evalúa el FTP.
+
+**Cobertura temporal y miembros (verificado)**
+
+* Reforecasts retrospectivos **2000-01-01 a 2019-12-31**, una corrida diaria a las 00 UTC (no 4
+  corridas/día como el operativo real-time).
+* **5 miembros** la mayoría de los días: `c00` (control) + `p01`..`p04` (perturbados).
+  **Una vez por semana** (no se confirmó todavía si es miércoles fijo — pendiente de verificar al
+  implementar, leyendo los nombres de carpeta reales de un mes de muestra) se corre un ensemble
+  de **11 miembros** (`c00`..`p10`).
+* Horizonte: **+16 días** en la corrida diaria estándar de 5 miembros; **+35 días** en la corrida
+  semanal extendida de 11 miembros. **Cubre t+14 todos los días** (el horizonte máximo del
+  dataset de tesis, ver roadmap §1), satisfaciendo el criterio de salida de la Investigación C
+  de la Fase 4 sin necesidad de la corrida semanal extendida.
+
+**Formato, grilla y estructura de directorios (verificado)**
+
+* Formato **GRIB2** (no NetCDF como TIGGE/`cdsapi`) — mismo formato que `fc`/ECMWF Open Data,
+  pero sin el crash de `cfgrib`/`eckit` de la Decisión 013 porque acá no hace falta decodificar
+  in-process en Databricks serverless: la descarga corre en local (ver más abajo), igual que
+  `fc` (Decisión 022).
+* Grilla: **0,25° hasta el día +10**, cada 3 horas; **0,50° desde el día +10 en adelante**, cada
+  6 horas. Convención de longitud **0 a 359,75°E** (equivalente a TIGGE, no a la convención
+  -180/180 del resto del proyecto — requiere `normalize_longitude()`, igual que `common_ecmwf.py`).
+  El t+14 relevante para el dataset cae en el tramo de 0,50°/6h, no en el de 0,25°/3h — resolución
+  más gruesa que TIGGE en ese horizonte, pero utilizable (no descarta el horizonte, sólo lo
+  densifica menos).
+* Directorios (**verificado con un listado real del bucket, 2026-08-24, corrige/completa al
+  documento oficial que no menciona este nivel**):
+  `GEFSv12/reforecast/{yyyy}/{yyyymmdd00}/{miembro}/Days:1-10/{variable}_{yyyymmddhh}_{miembro}.grib2`
+  y `.../Days:10-16/{variable}_{yyyymmddhh}_{miembro}.grib2` — dos archivos por variable+fecha+miembro,
+  uno para el tramo de 0,25°/3h (días 1-10) y otro para el tramo de 0,50°/6h (días 10-16). Cada
+  archivo trae además un `.grib2.idx` (índice de mensajes GRIB2, unos pocos KB) al lado.
+* Variable de precipitación: **`apcp_sfc`** — precipitación total en kg/m² (≡ mm, sin conversión,
+  igual unidad que `tp_mm` de TIGGE). **Gotcha de diseño, no asumido, confirmado en la tabla de
+  variables del documento oficial:** a diferencia de `tp` de TIGGE (acumulado desde el inicio de
+  la corrida), `apcp_sfc` es la suma **del bloque de 3h o 6h más reciente únicamente** (steps
+  síncopicos 00/06/12/18 UTC acumulan las últimas 6h; 03/09/15/21 UTC acumulan las últimas 3h) —
+  es decir, viene **incremental por ventana**, no acumulado corrida-a-fecha. Para producir una
+  serie comparable a `tp_mm` de `cf`/`pf` (acumulado desde el inicio de la corrida, que es lo que
+  consume Silver hoy) hay que sumar los incrementos sucesivos al aplanar, no copiar el valor tal
+  cual. Esto se implementa en Silver o en el aplanado de Landing, a definir al implementar
+  (mismo principio de "regla de negocio en Silver" de la Decisión 011, pero conviene resolverlo
+  antes de escribir a JSON para no duplicar la lógica de acumulación en dos capas).
+
+**Volumen y dimensionamiento (medido contra el bucket real, 2026-08-24)**
+
+* Tamaño real de `apcp_sfc` para un día/miembro (`2018010100`, `c00`, medido con un listado S3
+  real, no una descarga completa): `Days:1-10/` = 25.426.815 bytes (~24,3 MiB, grilla global
+  0,25°, 80 pasos de 3h), `Days:10-16/` = 2.415.105 bytes (~2,3 MiB, grilla global 0,50°, pasos de
+  6h) → **~26,5 MiB por día/miembro, grilla global sin recortar**.
+* Con 5 miembros/día (la mayoría de los días) y ~26,5 MiB/miembro: **~132,5 MiB/día** de `apcp_sfc`
+  en crudo, global. Sobre el rango completo que hace falta para la Decisión 021 (2000-01 a 2019-12,
+  no sólo el hueco 2000-2006: el solapamiento 2006-2019 también hace falta para calibrar contra
+  TIGGE) — **~20 años × 132,5 MiB/día ≈ 950 GB** si se descargara el archivo global completo sin
+  recortar. Insostenible para bajar entero (compárese con TIGGE, que sí soporta recorte
+  server-side vía el parámetro `area` de `cdsapi`, ver 7.2).
+* **Cada archivo trae un `.grib2.idx` al lado** (JSON-lines con offset+longitud de cada mensaje
+  GRIB2 dentro del archivo) — confirmado en el listado real del bucket. Esto habilita HTTP Range
+  requests: se puede leer sólo los mensajes/pasos de tiempo que interesan sin bajar el archivo
+  completo, patrón usado por herramientas como `herbie`/`kerchunk` sobre este mismo dataset. **No
+  resuelve el recorte espacial** (el índice es por mensaje/step, no por sub-región de la grilla
+  dentro de un mensaje) — igual hay que decodificar cada mensaje descargado y recortar al bounding
+  box de la cuenca del lado del cliente, mismo patrón que `fc`/ECMWF Open Data (Decisión 013/022).
+* Implica: el diseño de la descarga debe usar el `.idx` para bajar sólo los mensajes de `apcp_sfc`
+  necesarios (no aplica acá porque el archivo ya es mono-variable, así que el `.idx` ahorra poco
+  para esta variable puntual) y, más importante, **evaluar reducir cobertura antes de implementar**
+  — por ejemplo bajar sólo `c00`+`p01` en vez de los 5 miembros, o preferir el bounding box exacto
+  de la cuenca en vez de la grilla global vía una librería que soporte recorte remoto
+  (`xarray`+`kerchunk` con index HTTP, a evaluar) — antes de comprometerse a los ~950 GB del cálculo
+  ingenuo. Pendiente de decidir al implementar, no bloqueante para el resto de la Fase 4.
+
+**Notebooks y rutas (implementado, Decisión 029)**
+
+* Landing local en `notebooks_local/gefs_reforecast/` (mismo patrón de estado resumible + lock
+  compartido que `ana_historic_backfill`/`inmet_backfill`): `common_gefs.py` (descarga, recorte,
+  acumulación, empalme de tramos), `download_gefs_backfill.py` (backfill resumible por día,
+  detecta miembros reales vía S3 en vez de asumir 5 fijos), `sync_to_databricks.py` (sube sólo
+  el JSON recortado, nunca el `.grib2` crudo).
+* DDL: `weather.raw.gefs_volume` y `weather.bronze.gefs_reforecast`, agregados a
+  `notebooks/04_Silver/DDL_Silver_Gold.ipynb`.
+* Bronze: `notebooks/02_Bronze/ETL_Bronze_GEFS.ipynb`, mismo patrón que `ETL_Bronze_ECMWF_CF.ipynb`
+  (`member` string en vez de `number` int como parte de la clave de `MERGE`).
+* `databricks.yml`: `ETL_Bronze_GEFS` corre en paralelo a la cadena de Silver dentro de
+  `silver_gold_initial_load_v0` y `silver_gold_daily_incremental` (depende sólo de
+  `DDL_Silver_Gold`/`Check_Bronze_Freshness` — GEFS todavía no tiene consumidor en Silver/Gold).
+* Silver de GEFS (recorte al polígono real + calibración contra TIGGE) queda pendiente, tareas
+  separadas de la Fase 4.
+
+---
+
+### 9.5. Pronóstico numérico de Brasil (CPTEC/INPE, INMET, ONS) — evaluado, no ingestado
+
+* Investigación del 2026-08-26 (Decisión 032), motivada por la pregunta de si Brasil tiene un
+  sistema de pronóstico numérico propio y gratuito con archivo histórico. **Sí lo tiene** (CPTEC/INPE),
+  es abierto y sin registro, pero **ningún producto brasileño cubre el período 2000-2019** que
+  necesita el dataset (Decisión 021): el archivo más largo arranca en 2020-07. Se documenta acá
+  como fuente candidata para una comparación de habilidad, no como reemplazo de TIGGE/GEFS.
+* Todo lo que sigue está **verificado contra los servidores reales el 2026-08-26** (listados,
+  cabeceras HTTP y descargas parciales), no contra documentación.
+
+**Acceso**
+
+* Servidor real: `https://dataserver.cptec.inpe.br/dataserver_modelos/…` (HTTP abierto, sin
+  registro, acepta `Range`). Las URLs históricas `ftp.cptec.inpe.br/modelos/tempo/…` redirigen
+  (301) ahí, salvo BAM y los productos observados (MERGE/SAMeT), que siguen en `ftp.cptec.inpe.br`.
+* WRF y Eta 8 km publican un `.inv` estilo `wgrib2` por archivo: con `Range` se baja sólo el
+  mensaje de precipitación (`APCP`) — **verificado**: 874 KB en vez de 204 MB por paso horario del WRF.
+
+**Modelos y archivo disponible (listado real)**
+
+| Modelo | Resolución / dominio | Corridas / horizonte | Formato, tamaño | Archivo |
+| --- | --- | --- | --- | --- |
+| WRF 7 km (CPT-WRF, IC/BC FV3GFS) | 0,07°, 57,9°S–17,7°N, 90,7°W–19,4°W | 00Z, +180 h horario, 89 vars | GRIB2 ~204 MB/paso (+ `.inv`) | 2023-01-01 → hoy |
+| Eta 8 km | 0,08°, Sudamérica | 00Z y 12Z, +264 h horario, 46 vars | GRIB2 ~99 MB/paso (+ `.inv`) | 2021-07 → hoy |
+| Eta 40 km (+ variante `ons_40km`) | 0,4°, 83°W–25,8°W, 50,2°S–12,2°N | 00Z, +264 h horario, 64 vars | GRIB1 12 MB/paso | 2020-07-16 → hoy |
+| BAM 20 km global (TQ0666L064) | 0,18° | 00Z, +264 h cada 6 h, 35 vars | GRIB2 ~99 MB/paso | recortes `pos`/`singleLevel` 2024-08 → hoy; `brutos` sólo 1 día |
+| MONAN 10 km global (pre-operativo, base MPAS, supercomputador Jaci) | 0,1°, 18 niveles | 00Z +264 h / 12Z +120 h, cada 3 h | NetCDF **4,3 GB/paso** | 6 días de prueba 2024-04/05; continuo 2025-10-01 → hoy |
+| Ensemble BAM (OENSMB09, 14+1 miembros) | 1° | +15 d | — | terminó 2020-04; CPTEC dejó de aportar a TIGGE ~2010 |
+
+* `APCP` del WRF viene **acumulado desde el inicio de la corrida** (como `tp` de TIGGE); el del Eta
+  8 km es **incremento horario** (como GEFS, gotcha de §9.4). Todos los dominios contienen la cuenca.
+* Patrones de URL: `…/wrf/ams_07km/brutos/YYYY/MM/DD/00/WRF_cpt_07KM_YYYYMMDD00_YYYYMMDDHH.grib2`,
+  `…/eta/ams_08km/brutos/YYYY/MM/DD/{00,12}/Eta_ams_08km_YYYYMMDDHH_YYYYMMDDHH.grib2`,
+  `…/eta/ams_40km/brutos/YYYY/MM/DD/00/eta_40km_YYYYMMDD00+YYYYMMDDHH.grb`,
+  `https://ftp.cptec.inpe.br/modelos/tempo/BAM/TQ0666L064/recortes/pos/YYYY/MM/DD/00/GPOSNMC…P.grib2`,
+  `…/monan/10km/brutos/YYYY/MM/DD/{00,12}/MONAN_DIAG_G_POS_GFS_….nc`.
+
+**Lo que no existe (verificado)**
+
+* Ningún *reforecast* ni historia previa a 2020-07; ningún ensemble brasileño operativo público hoy.
+* INMET (COSMO 7 km / 2,8 km): el aviso de 2021 prometía GRIB en `ftp://ftp.inmet.gov.br/cosmo` con
+  3 meses de retención; el FTP **rechaza el login anónimo (`530`)** al 2026-08-26. Sólo imágenes en
+  `vime.inmet.gov.br`. Contacto: `cgmn@inmet.gov.br`.
+* ONS usa Eta 40 km + GEFS + ECMWF por cuenca en SINtegre (registro de agente del sector); el portal
+  de datos abiertos sólo tiene precipitación observada discontinuada.
+* No hay política de retención publicada para el dataserver: lo listado es lo que había ese día.
+
+**Estado:** evaluado, **no ingestado** (Decisión 032). Si se reabre, la opción con historia útil es
+Eta 40 km (2020→, ~3 GB/día entero) o WRF 7 km (2023→, sólo `APCP` por byte-range ≈ 160 MB/día) como
+`forecast_source` adicional para comparar habilidad en `alta_frontera` — material de tesis, no reemplazo.
+
+### 9.6. MERGE (CPTEC/INPE) — precipitación diaria observada en grilla
+
+* Producto operativo de CPTEC/INPE que combina la estimación satelital **GPM-IMERG V07B** con
+  pluviómetros (INMET, CEMADEN, ANA, PCDs, centros regionales) mediante el método de Rozante et al.
+  (2010, 2020, 2024). Es **observación** (análisis), no pronóstico: no colisiona con la Decisión 021
+  (que descarta ERA5 sólo *como pronóstico*). Ingestado por la Decisión 033.
+* Estado: **Landing local + Landing diario en Databricks + Bronze + Silver + Gold implementados**
+  (2026-08-26, Fase 9 del roadmap). Evaluación del archivo completo en `docs/cptec_obs_evaluation.md`.
+
+**Origen y acceso (verificado 2026-08-26)**
+
+* Diario: `https://ftp.cptec.inpe.br/modelos/tempo/MERGE/GPM/DAILY/{AAAA}/{MM}/MERGE_CPTEC_{AAAAMMDD}.grib2`
+  (~360-520 KB). HTTP abierto, sin registro; conviene `User-Agent` de navegador como con INMET.
+* Horario (no ingestado): `…/MERGE/GPM/HOURLY/{AAAA}/{MM}/{DD}/MERGE_CPTEC_{AAAAMMDDHH}.grib2`, desde 2009.
+* Tarball de toda la base 1998-2024 (`…/DAILY/MERGE_NEW_1998_2024.tar.gz`, 4,1 GB, 2025-05-22) — no se
+  usa: los archivos diarios individuales son la misma base y siguen el mismo patrón que el job diario.
+* Documentación: `…/MERGE/GPM/MERGE_READ-ME.pdf` (2025-05-28), `Rozante_et.al.2010.pdf`,
+  `Rozante_et.al.2020.pdf`, `Rozante.2024.pdf` (comparación IMERG V06B/V07B).
+
+**Cobertura espacial**
+
+* Grilla regular **0,1°**, 1001 × 924 puntos, lon −120,05 → −19,95 (servida en convención 0-360:
+  239,95 → 339,95, requiere `normalize_longitude()`), lat −60,05 → 32,25. Cubre toda la cuenca.
+* Recorte en Landing al bounding box de las 3 sub-cuencas (`compute_download_area()` con grilla 0,1° y
+  1 celda de margen: N −26,1 / O −58,6 / S −32,0 / E −49,1) → **5.605 puntos por día**, sin NaN.
+* Puntos por sub-cuenca (unión espacial de centros de celda, `grid_subcuenca.json`): `alta_frontera`
+  566, `intermedia_paso_libres` 1.187, `baja_salto_grande` 482.
+* Densidad de pluviómetros (`NEST`) en `alta_frontera` el 2026-08-25: 143 de 566 puntos con al menos
+  un pluviómetro, 199 pluviómetros en total. Serie por año en `docs/cptec_obs_evaluation.md`.
+
+**Cobertura temporal, ventana y latencia**
+
+* Archivo diario desde **1998-01-02** hasta el día anterior, sin huecos detectados (conteo por año en
+  `docs/cptec_obs_evaluation.md`).
+* **Ventana diaria: acumulado de 12Z del día anterior a 12Z del día** (Rozante 2024; verificado
+  sumando los horarios del 2026-07-22, día con 29 mm de media en la cuenca: correlación 0,95 contra
+  la suma 13Z(D-1)→12Z(D) y 0,62 contra el día calendario UTC). El GRIB lleva `dataTime=1200`.
+  **No coincide con el día de las estaciones ANA** (`rainfall_daily` agrupa por fecha de la medición):
+  Gold publica ambas medidas y deja el desfase declarado en el diccionario de columnas.
+* **Latencia: el archivo del día D aparece ~02:40 UTC de D+1** (medido 2026-08-21 → 26: 02:38-02:40
+  UTC todos los días), consistente con IMERG *Late* (14 h tras 12Z). Llega antes del job diario de
+  las 03:40 Montevideo (06:40 UTC) y de Gold (04:30).
+* **Regeneración (importante para el diseño):** CPTEC reescribe el mes completo **en los primeros días
+  del mes siguiente** (medido: 2026-07-15 → 2026-08-01; 2026-06-01 → 2026-07-01; 2026-04-01 → 2026-05-04;
+  2026-01-01 → 2026-02-02; 2025-06-01 → 2025-07-01), presumiblemente con los pluviómetros completos.
+  Además **toda la base fue reconstruida el 2025-05-04/06** (nueva base V07B). No se observó una
+  tercera versión (IMERG *Final*, ~3,5 meses) — un archivo de 2026-04 seguía con fecha 2026-05-04 en
+  agosto. Por eso: el registro guarda `source_last_modified`, Bronze actualiza cuando llega una
+  versión más nueva y el job diario re-baja los últimos 45 días; Silver marca `es_preliminar`.
+
+**Formato (verificado con ecCodes)**
+
+* GRIB2, `centre=255`, grilla `regular_ll`, empaquetado **`grid_complex_spatial_differencing`**
+  (template 5.3, 12 bits) con *missing value management* (sin bitmap): los faltantes vienen como
+  `missingValue=9999`, hay que reemplazarlos explícitamente (bug encontrado en el test: sin esto todos
+  los puntos parecían tener pluviómetro).
+* **Dos mensajes por archivo:** el primero es la precipitación en kg/m² ≡ mm (CPTEC lo etiqueta como
+  `rdp`, «Precipitation from radar», disciplina 0 / categoría 15 / parámetro 5); el segundo es **NEST**,
+  la cantidad de pluviómetros por punto de grilla, mal etiquetado como `prmsl`. Se identifican por
+  orden, no por nombre.
+* En local se decodifica con ecCodes (`decode_merge_eccodes`); en Databricks serverless con
+  **`pygrib`** (verificado en este workspace el 2026-08-26, `run 496772049564049`), porque
+  `cfgrib`/`eccodes` abortan el kernel (Decisión 013).
+
+**Notebooks, rutas y tablas**
+
+* Landing local (histórico): `notebooks_local/cptec_obs/` — `common_cptec.py` (descarga, decodificación,
+  recorte, aplanado vectorizado a Parquet), `download_cptec_obs.py` (backfill resumible, procesos en
+  paralelo, lock compartido), `build_grid_subcuenca.py` (catálogo punto → sub-cuenca con geopandas),
+  `sync_to_databricks.py` (sube Parquet por archivo o en ZIP a `staging/`), `evaluate_cptec_obs.py`
+  (agregados locales + reporte).
+* Landing diario en Databricks: `notebooks/00_Landing/CPTEC/Daily_CPTEC_Obs.ipynb` — baja D-1 y la
+  ventana de 45 días, compara `Last-Modified` con el Parquet ya landeado y re-escribe sólo lo que cambió.
+* Volume: `weather.raw.cptec_volume/merge/daily/MERGE_AAAA_MM_DD.parquet` (**Parquet, no JSON**: un
+  archivo por día, ~12 KB recortado; ~130 MB para todo el archivo), `staging/` (ZIP del backfill local),
+  `catalogo/grid_subcuenca.json`.
+* Bronze: `weather.bronze.merge_precip_grid` (`ETL_Bronze_CPTEC_Obs.ipynb`, MERGE idempotente por
+  `(fecha, latitude, longitude)` con `whenMatchedUpdateAll` si `source_last_modified` es más nuevo;
+  `CLUSTER BY (fecha)`; descomprime `staging/` antes de leer).
+* Silver: `weather.silver.precip_grid_daily` (`ETL_Silver_CPTEC_Grid_Daily.ipynb`): por `(fecha,
+  subcuenca, fuente='merge')` media areal, máximo, puntos, `cobertura_pct`, `puntos_con_pluviometro`,
+  `pluviometros`, `source_last_modified`, `es_preliminar` (= el archivo no fue tocado después de su
+  publicación inicial de D+1, `source_last_modified < fecha + 2 días`; la regeneración mensual llega
+  siempre después). Asignación por `weather.silver.grid_subcuenca` (`grilla='merge_0p1'`).
+* Gold (`alta_frontera`): `lluvia_merge_alta_frontera_mm`, `_max_mm`, `_acum_3d_mm`, `_acum_7d_mm`,
+  `_pluviometros`, `_cobertura_pct`, `_es_preliminar`.
+* Jobs: `CPTEC_Obs_Daily_Incremental` (03:40 Montevideo: DDL → Landing → Bronze → Silver);
+  `Silver_Gold_Initial_Load_v0` y `Silver_Gold_Daily_Incremental` incluyen `ETL_Silver_CPTEC_Grid_Daily`
+  antes de Gold. **No entra en `Check_Bronze_Freshness`**: un corte del servidor de CPTEC no debe
+  frenar Gold (la fila queda en `NULL` y `es_preliminar`/cobertura lo declaran).
+
+**Campos clave (Bronze)**
+
+* `fecha`: día D de la ventana 12Z(D-1)→12Z(D). `latitude`/`longitude`: centro de celda, −180/180,
+  redondeado a 3 decimales (clave estable para el join con `grid_subcuenca`).
+* `prec_mm`: precipitación acumulada (kg/m² ≡ mm). `nest`: pluviómetros en el punto (0 si ninguno).
+* `source_file`, `source_last_modified` (Last-Modified HTTP, UTC), `source_api`
+  (`cptec_merge_gpm_daily`), `extracted_at`, `ingestion_date`, `loaded_at`, `updated_at`.
+
+**Limitaciones conocidas**
+
+* La ventana 12Z-12Z desfasa el dato ~12 h respecto del día calendario de las estaciones; para
+  acumulados de 3/7 días es irrelevante, para el día puntual hay que tenerlo presente al modelar.
+* Los valores de los últimos ~30 días son preliminares hasta la regeneración mensual; en operación
+  la inferencia siempre usa la versión preliminar (es la única que existe a D+1).
+* Dependencia de un servidor externo sin SLA (`500`/`ECONNRESET` esporádicos observados): la descarga
+  reintenta con backoff y el resto del pipeline no se bloquea si un día falta.
+
+### 9.7. SAMeT (CPTEC/INPE) — temperatura diaria observada en grilla
+
+* *South American Mapping of Temperature*: TMAX, TMIN y TMED diarias sobre Sudamérica combinando
+  observaciones (SYNOP/GTS, METAR, PCDs, centros regionales, con control de calidad de CPTEC) con
+  **ERA5 corregido por gradiente vertical de temperatura** (*lapse rate* estimado por región y
+  estación del año; Rozante et al. 2021). Complemento en grilla de las estaciones INMET (§9.3).
+  Ingestado por la Decisión 033; estado igual que MERGE (§9.6).
+
+**Origen y acceso (verificado 2026-08-26)**
+
+* `https://ftp.cptec.inpe.br/modelos/tempo/SAMeT/DAILY/{TMED|TMAX|TMIN}/{AAAA}/{MM}/SAMeT_CPTEC_{VAR}_{AAAAMMDD}.nc`
+  (~1,7-1,8 MB cada uno, tres archivos por día). Climatología 2000-2020 en `…/SAMeT/CLIMATOLOGY/`.
+* Documentación: `…/SAMeT/Read-me.pdf`, `…/SAMeT/Rozante_et_al_2021.pdf`.
+
+**Cobertura espacial**
+
+* Grilla regular **0,05°** (~5 km), 1001 × 1381 puntos, lon −83 → −33, lat −56 → 13. NetCDF4 (zlib),
+  variables `tmed|tmax|tmin` y `nobs` (observaciones usadas por punto), `_FillValue = −9,99e8`,
+  `time = minutes since AAAA-MM-DD 00:00`.
+* Recorte en Landing (grilla 0,05°, 1 celda de margen: N −26,15 / O −58,55 / S −31,95 / E −49,2) →
+  20.792 puntos, de los cuales **20.278 con dato**: los 514 NaN son océano en la esquina SE
+  (lon −52 → −49,3, lat −31,85 → −29). **Las tres sub-cuencas quedan 100% cubiertas**: 2.269 /
+  4.749 / 1.922 puntos.
+* Observaciones dentro de `alta_frontera`: pocas (`nobs` = 8 el 2026-08-25, de 2.269 puntos) — el campo
+  está sostenido sobre todo por ERA5 corregido; en los puntos con estación reproduce la estación
+  (MAE 0,15 °C contra INMET, ver abajo).
+
+**Cobertura temporal, ventana y latencia**
+
+* Archivo diario desde **2000-01-01** hasta el día anterior (conteo por año en `docs/cptec_obs_evaluation.md`).
+* **Ventana diaria: día calendario UTC (00Z-23Z)**, la misma que `temperature_daily`. Verificado
+  contra INMET horario (Bronze) en 7 estaciones de `alta_frontera`, 2026-04-13 → 17: con la ventana
+  00-23 UTC el error SAMeT − INMET es 0,15 °C (TMAX), 0,15 °C (TMED) y 0,22 °C (TMIN); con ventanas
+  12Z-12Z sube a 1-2,6 °C.
+* **Latencia:** TMED y TMAX del día D se publican ~03:02-03:08 UTC de D+1; **TMIN de D ya está a las
+  ~17:06 UTC del mismo D** (la mínima ocurre de madrugada; el resto del día se completa con pronóstico).
+  Las tres llegan antes del job de las 06:40 UTC.
+* **Regeneración:** el READ-ME lo dice explícitamente — el producto diario se genera con
+  observaciones + pronóstico numérico y **se regenera cuando llega ERA5** (retraso de 5 días);
+  medido: reescritura a los **7 días** (TMED/TMAX 03:03 UTC de D+7, TMIN 17:08 UTC de D+7:
+  2026-08-01 → 08-08, 06-01 → 06-08, 01-01 → 01-08). Toda la base se regeneró el 2022-06-01.
+  Mismo mecanismo que MERGE: `source_last_modified`, re-descarga de 14 días en el job diario,
+  `es_preliminar` (= modificado antes de D+7).
+
+**Notebooks, rutas y tablas**
+
+* Mismos scripts locales y mismo notebook de Landing que MERGE (§9.6): las tres variables se bajan y se
+  aplanan juntas en un registro por punto (`SAMET_AAAA_MM_DD.parquet`, ~340 KB/día, ~3,3 GB en total).
+* Volume: `weather.raw.cptec_volume/samet/daily/`. Bronze: `weather.bronze.samet_temp_grid`
+  (`tmed_c`, `tmax_c`, `tmin_c`, `nobs_tmed`, `nobs_tmax`, `nobs_tmin`, mismos metadatos que MERGE).
+* Silver: `weather.silver.temp_grid_daily` por `(fecha, subcuenca, fuente='samet')`: `temp_media_c`,
+  `temp_max_c`, `temp_min_c` (**medias areales** de tmed/tmax/tmin), `temp_max_abs_c`/`temp_min_abs_c`
+  (extremos de la grilla), `puntos_grilla`, `cobertura_pct`, `nobs_total`, `source_last_modified`,
+  `es_preliminar`. `grid_subcuenca` con `grilla='samet_0p05'`.
+* Gold (`alta_frontera`): `temp_samet_alta_frontera_media_c`, `_max_c`, `_min_c`, `_cobertura_pct`,
+  `_es_preliminar`. Conviven con `temp_media_c`/`temp_min_c`/`temp_max_c` de INMET; no las reemplazan.
+
+**Limitaciones conocidas**
+
+* No es una observación pura: fuera de las estaciones es ERA5 corregido, y en los primeros 7 días es
+  ERA5 + pronóstico. Para entrenar es una serie homogénea; para inferir a D+1 es la versión preliminar.
+* La media areal de máximas/mínimas no es comparable con el `min`/`max` entre estaciones que publica
+  el agregado INMET (extremos de la red): son definiciones distintas, no un sesgo.
+* `nobs` dentro de la cuenca es bajo (una decena de estaciones); la calidad local depende de ERA5.
 
 ---
 

@@ -1129,3 +1129,833 @@ de predicción. Sin el join espacial exacto tampoco se habría detectado que la 
 * Si en el futuro se reabre `intermedia_paso_libres` o `baja_salto_grande` (Decisión 018), las 12
   estaciones INMET de `intermedia_paso_libres` ya quedaron sembradas en `estacion_subcuenca` en este
   mismo cambio (mismo catálogo, las tres sub-cuencas).
+
+---
+
+## Decisión 026: Investigación de GEFS Reforecast v12 (NOAA) — cobertura, formato y gotcha de precipitación acumulada
+
+### Estado
+
+`Aceptada` (2026-08-24), investigación cerrada contra la fuente real, implementación pendiente
+(Fase 4 del roadmap).
+
+### Contexto
+
+La Fase 4 del roadmap (Decisión 021) exige documentar GEFS Reforecast v12 en `data_sources.md`
+antes de escribir código (regla de §10 de ese documento) y resolver la Investigación C: verificar
+que la cobertura 2000-2019 llega hasta t+14 con resolución útil a escala de sub-cuenca.
+
+### Hallazgos (verificados contra el documento oficial de NOAA/PSL, no por referencia a librerías
+comunitarias)
+
+* Fuente: `noaa-gefs-retrospective` (S3 público, sin autenticación, `--no-sign-request`) — mismo
+  costo cero que TIGGE Open Data, ninguna vía paga involucrada.
+* Cobertura: 2000-01-01 a 2019-12-31, una corrida diaria a las 00 UTC, 5 miembros (`c00`+`p01..p04`)
+  la mayoría de los días, 11 miembros (`c00..p10`) una vez por semana.
+* Horizonte: **+16 días** en la corrida estándar de 5 miembros — **cubre t+14 todos los días**,
+  sin necesitar la corrida extendida de 11 miembros/+35 días. Cierra la Investigación C de la Fase
+  4 con resultado positivo: no hace falta documentar una limitación de cobertura por horizonte.
+* Resolución: 0,25°/3h hasta el día +10, 0,50°/6h desde el día +10 — el t+14 del dataset cae en el
+  tramo de resolución más gruesa, pero sigue siendo un pronóstico real utilizable, no un hueco.
+* Formato GRIB2 (no NetCDF), un archivo por variable+fecha+miembro, directorio
+  `GEFSv12/reforecast/{yyyy}/{yyyymmdd00}/{miembro}/`. Variable de precipitación: `apcp_sfc`
+  (kg/m² ≡ mm, misma unidad que `tp_mm` de TIGGE).
+* **Gotcha de diseño encontrado en la tabla de variables (no un supuesto):** `apcp_sfc` viene
+  acumulado **por bloque de 3h/6h más reciente**, no acumulado desde el inicio de la corrida como
+  el `tp` de TIGGE. Sumarlo ingenuamente como si fuera acumulado-desde-el-inicio produciría una
+  serie de precipitación pronosticada sistemáticamente subestimada frente a `cf`/`pf` — hay que
+  acumular los incrementos sucesivos al aplanar/consolidar, antes de comparar o calibrar contra
+  TIGGE (Decisión 021).
+
+### Justificación
+
+Documentar antes de implementar (regla de §10 de `data_sources.md`) evitó dos riesgos concretos:
+construir el pipeline sobre el supuesto incorrecto de que GEFS es acumulado-desde-el-inicio como
+TIGGE (hubiera contaminado el empalme calibrado de la Decisión 021 con un sesgo sistemático), y
+sub-invertir en la Investigación C sin haber verificado el horizonte real contra la fuente.
+
+### Consecuencias
+
+* `docs/data_sources.md` §9.4 documenta la fuente completa (cobertura, formato, grilla, gotcha de
+  acumulación, volumen medido contra el bucket real).
+* La Investigación C de la Fase 4 (§5 del roadmap) queda cerrada: GEFS v12 sí llega a t+14 con
+  resolución útil, sin degradar el criterio de salida.
+* Pendiente para la implementación (no resuelto en esta decisión): dónde acumular los incrementos
+  de `apcp_sfc` (¿en el aplanado de Landing o en Silver?).
+* Volumen dimensionado contra el bucket real (listado S3, no descarga completa): ~26,5 MiB/día/miembro
+  sin recortar (grilla global), ~950 GB si se bajara el rango completo 2000-2019 × 5 miembros sin
+  ningún recorte — cifra que obliga a decidir una estrategia de recorte/reducción de cobertura antes
+  de implementar (ver `data_sources.md` §9.4, "Volumen y dimensionamiento"). TIGGE no tiene este
+  problema porque sí soporta recorte `area` server-side; GEFS no.
+* No cambia ninguna decisión previa: reafirma la Decisión 021 (empalme GEFS+TIGGE) con los datos
+  reales en vez de la expectativa inicial.
+
+---
+
+## Decisión 027: Diagnóstico y corrección del OOM en el backfill histórico de `pf` (TIGGE)
+
+### Estado
+
+`Aceptada` (2026-08-24), causa raíz diagnosticada, corrección implementada y **verificada contra
+una corrida real completa en Databricks**: `ECMWF_Forecast_Historic_Backfill` corrió con
+`max_batches_per_run=1`, las 7 tareas en verde (`Historic_ECMWF_CF` → Bronze → Silver →
+`Historic_ECMWF_PF` → Bronze → Silver), sin OOM. `weather.bronze.ecmwf_forecast_pf` pasó de 0 a
+**26.784.000 filas** (31 días, 2026-07-23 a 2026-08-22, un lote mensual completo) y
+`weather.silver.ecmwf_forecast_pf_basin` (recortado al polígono) quedó en 10.812.800 filas —
+confirmado con una consulta SQL real contra el warehouse serverless, no por el estado "SUCCESS"
+del job solamente.
+
+### Contexto
+
+El job `ECMWF_Forecast_Historic_Backfill` (Decisión 012, `data_sources.md` §7.11) lleva desde el
+28/07 sin lograr aterrizar ninguna fila de `pf` en Bronze (`weather.bronze.ecmwf_forecast_pf`
+seguía en 0 filas al 2026-08-24, confirmado con una consulta SQL real contra el warehouse
+serverless). El run más reciente antes de esta decisión (`415433127125022`, 2026-08-05) falló con
+`Execution ran out of memory` / `SIGKILL (exit code 137)` en el task `Historic_ECMWF_PF`, al pedir
+el primer lote (2026-07-04..2026-08-03, 31 días × 50 miembros).
+
+### Diagnóstico
+
+La causa **no** era el tamaño de la descarga GRIB/NetCDF en sí (el archivo `.nc` de un lote
+mensual de `pf` es del mismo orden de magnitud que el `.nc` anual de `cf`, que sí funciona). La
+causa real está en `flatten_ensemble_forecast_batch()` (`common_ecmwf.py` y su copia inline en
+`Historic_ECMWF_PF.ipynb`): la función recorre **todo el lote completo** (reftimes × miembros ×
+steps × puntos de grilla) y construye un único `dict` con **todos los días del lote** en memoria
+antes de devolver nada — recién ahí el caller escribe los JSON.
+
+Con la grilla real de la cuenca (~975 puntos, medida contra `SIG/subcuencas_modelo.geojson`), un
+lote mensual de `pf` genera 31 días × 50 miembros × 16 steps × 975 puntos ≈ **24,2 millones de
+records** (`dict` de Python) simultáneos en memoria antes del primer `write_json()` — del orden de
+15-20 GB sólo en objetos Python, sobre un compute serverless con memoria acotada (Databricks Free
+Edition). El caso de `cf` no sufre esto porque no tiene la dimensión `number` (50 miembros) y usa
+`flatten_forecast_batch()`, que genera ~5,3 millones de records por lote anual — 4,5x menos, un
+margen que alcanza a no reventar.
+
+### Corrección
+
+Se agregó `iter_ensemble_forecast_batch_by_day()` (generador) en `common_ecmwf.py` y en la copia
+inline de `Historic_ECMWF_PF.ipynb`: procesa y devuelve **un día (reftime) a la vez**, en vez de
+acumular el lote completo. El caller (`historic_pf_tigge.py` y la celda 5 del notebook) escribe y
+descarta cada día apenas se genera (`del records`), acotando el pico de memoria a ~780.000 records
+(un día) en vez de ~24,2 millones (el lote completo) — **~31x menos**, sin cambiar el request a la
+API, el formato de los JSON de salida, ni el tamaño de lote (`BATCH_MONTHS=1`). `flatten_forecast_batch()`
+de `cf` no se tocó (no está roto).
+
+Deploy: `databricks workspace import` directo al Databricks Repo (no `bundle deploy`, ver memoria
+de sesión sobre sync), verificado con `workspace export` antes de disparar el job — confirma la
+lección operativa ya registrada en la Decisión previa sobre notebooks (Fase 3, lluvia): nunca
+confiar en que el bundle sube el cambio.
+
+### Justificación
+
+Reducir el tamaño de lote (menos días o menos miembros por request) habría sido un parche más
+fácil de escribir, pero no ataca la causa real (records de Python acumulados en memoria) y
+degrada la eficiencia de la reconstrucción histórica (más requests contra la cola de TIGGE/ECDS,
+más tiempo total). El generador resuelve la causa raíz sin tocar el contrato con la API externa
+ni el tamaño de lote ya calibrado (1 mes, elegido en la Decisión 012 para no generar un orden de
+magnitud de fields excesivo del lado de la API — un problema distinto al de memoria del lado del
+cliente que resolvió esta decisión).
+
+### Consecuencias
+
+* Desbloquea el backfill histórico de `pf`, detenido desde el 28/07 sin ninguna fila en Bronze.
+* Aplica también, por diseño, a cualquier lote futuro más grande (ej. si se decidiera subir
+  `max_batches_per_run` o `BATCH_MONTHS` para `pf`): el pico de memoria queda acotado por día, no
+  por tamaño de lote.
+* Verificado: la corrida de prueba dejó `pf` con datos reales en Bronze y Silver por primera vez
+  desde que existe el job (28/07). Sigue el mismo patrón, sin límite artificial de lotes,
+  `Historic_ECMWF_PF` puede correr repetidamente (mismo criterio operativo que `cf`, Decisión 012)
+  hasta completar el rango 2006-10-01 → hoy — trabajo que queda abierto en la Fase 4, esta
+  decisión sólo desbloquea que avance.
+
+---
+
+## Decisión 028: Cierre de la Fase 7 — 14 de las 40 estaciones "grupo B" sí caen en `alta_frontera`, y ya densifican el agregado de caudal sin haber tocado código
+
+### Estado
+
+`Aceptada` (2026-08-24), verificada contra Databricks real. Cierra la Fase 7 del roadmap.
+
+### Contexto
+
+El barrido de curvas de aforo de la Fase 2 (`docs/roadmap.md` §2) clasificó 62 estaciones de toda
+la cuenca con curva usable: 22 en `alta_frontera` (grupo A, con historia profunda, mapeadas a mano
+en `weather.silver.estacion_subcuenca` desde la Decisión 017) y 40 "con curva, fuera de la cuenca
+alta" (grupo B), excluidas del agregado de Gold. Esa clasificación de las 40 nunca tuvo una unión
+espacial real detrás: grupo B era, por construcción, "todo lo que no es grupo A"
+(`notebooks_local/ana_rating_curve/grupo_b_hechas.txt`, 40 códigos), y en el momento del barrido
+`estacion_subcuenca` solo tenía las 22 filas del grupo A — no había con qué comparar la ubicación
+real de esas 40.
+
+La Decisión 024 (2026-08-22) resembró `estacion_subcuenca` con el inventario completo de ANA
+(1.387 estaciones, `subcuenca_nombre` resuelto por el proveedor y validado al 99,9% con un join
+espacial independiente en `geopandas`), motivada por un bug de cobertura de lluvia — no por la
+Fase 7. Su sección "Consecuencias" registró que la Fase 7 "queda parcialmente resuelta... para
+caudal/nivel sigue pendiente tal como estaba, porque ese agregado depende de
+`river_discharge_daily`... no de `estacion_subcuenca`". Esa afirmación no se verificó contra las
+40 estaciones concretas del grupo B ni contra el código real de
+`ETL_Gold_Training_Dataset_v0.ipynb`. Esta decisión hace esa verificación.
+
+### Investigación
+
+**1. Identificación de las 40 estaciones grupo B.** `notebooks_local/ana_rating_curve/grupo_b_hechas.txt`
+lista 40 códigos (`66400390`, `71385400`, ..., `77500000`); `SIG/estaciones_ana_nivel_historico.geojson`
+confirma las 22 del grupo A (`70100000`...`74100000`); sin superposición entre ambos conjuntos.
+
+**2. Estado real de `estacion_subcuenca` para las 40 (consulta SQL vía warehouse serverless,
+`d8aaafcf1fdb6645`):**
+
+| Resultado | Estaciones |
+| --- | ---: |
+| No están en `estacion_subcuenca` | 1 (`66400390`) |
+| `alta_frontera` | **14** |
+| `intermedia_paso_libres` | 23 |
+| `baja_salto_grande` | 2 |
+| **Total con fila en la tabla** | **39** |
+
+`66400390` es la estación que activó R6 (`weather.gold`/`gold_consolidation_contract.md`): una
+única lectura de nivel de ~200 m, descartada como outlier (`caudal_metodo='descartado_r6'`,
+`caudal_m3s IS NULL`). No tener mapeo de sub-cuenca es irrelevante para el agregado porque nunca
+aporta caudal de todos modos.
+
+Los 14 códigos de `alta_frontera`: `71385400`, `71386500`, `71890500`, `72080000`, `73203000`,
+`73204000`, `73330250`, `73340000`, `73552000`, `73553000`, `73560000`, `73570000`, `73600700`,
+`73691000`.
+
+**3. Las 14 ya tienen caudal real en `weather.silver.river_discharge_daily`** (consultado
+directo): entre 392 y 4.083 filas cada una, todas con al menos una fila `caudal_m3s IS NOT NULL`
+(rango de fechas desde 2013-08-09 hasta hoy, la mayoría `caudal_metodo='interpolado'`, dos
+`sin_curva` en tramos sin vigencia). Una de ellas, `73552000`, tiene `caudal_confiable=false` en
+456 de sus 458 filas (curva probablemente floja); no se excluyó porque la agregación nunca filtró
+por `caudal_confiable`, ni siquiera para las dos sospechosas del grupo A (`70100000`, `70300000`,
+R7) — mismo criterio que ya regía antes de esta decisión.
+
+**4. El código de agregación de caudal (`ETL_Gold_Training_Dataset_v0.ipynb`, celda 3,
+`subcuenca_daily`) ya era dinámico**, no hardcodeado a 22 estaciones:
+
+```python
+subcuenca_daily = (
+    spark.table(DISCHARGE_TABLE).alias('d')
+    .join(spark.table(SUBCUENCA_TABLE).alias('sc'), 'codigoestacao', 'inner')
+    .groupBy('fecha', 'subcuenca')
+    .agg(F.sum('caudal_m3s').alias('caudal_agregado_m3s'), ...)
+)
+```
+
+Un comentario del notebook decía lo contrario ("Hoy solo el grupo A... está mapeado... hasta que
+el grupo B tenga curva y mapeo de sub-cuenca") — quedó desactualizado por la Decisión 024 y se
+corrigió en esta sesión (cambio de comentario únicamente, sin tocar lógica; no requirió redeploy
+al Repo de Databricks porque no cambia el comportamiento de ningún job).
+
+**5. El agregado real de Gold ya refleja las 14 estaciones nuevas**, sin que se haya escrito
+ningún código para esta decisión. Consulta directa: `SUM(DISTINCT codigoestacao)` con
+`caudal_m3s IS NOT NULL` unido a `estacion_subcuenca` filtrado a `alta_frontera` da **36**
+estaciones (22 grupo A + 14 grupo B), y el valor de
+`weather.gold.training_dataset_v0.caudal_agregado_alta_frontera_m3s` coincide exactamente (a
+precisión de punto flotante) con un recálculo fresco del `JOIN` completo para tres fechas de
+muestra:
+
+| Fecha | Valor en Gold (m³/s) | Recálculo fresco (m³/s) |
+| --- | ---: | ---: |
+| 2010-06-01 | 3.926,511379856865 | 3.926,511379856864 |
+| 2020-01-15 | 1.311,787461527658 | 1.311,787461527658 |
+| 2025-06-01 | 1.420,576914703768 | 1.420,576914703768 |
+
+Esto confirma que las corridas `full` de `Silver_Gold_Initial_Load_v0` disparadas para las
+Decisiones 024 (2026-08-22) y 025 (2026-08-24) ya recalcularon el agregado con las 14 estaciones
+nuevas — no hace falta una corrida adicional para esta decisión.
+
+**6. Densificación por año** (estaciones grupo-B nuevas que aportan al agregado, promedio diario
+por año, 2000-2026, `river_discharge_daily` con `caudal_m3s IS NOT NULL` unido a `estacion_subcuenca`):
+
+| Año | Estaciones grupo B activas (máx. en el año) | Promedio diario de estaciones grupo B aportando |
+| --- | ---: | ---: |
+| 2000-2014 | 0 | 0,00 |
+| 2015 | 3 | 1,08 |
+| 2016 | 3 | 2,97 |
+| 2017 | 3 | 2,87 |
+| 2018 | 6 | 3,57 |
+| 2019 | 6 | 5,68 |
+| 2020 | 6 | 5,98 |
+| 2021 | 6 | 5,83 |
+| 2022 | 8 | 6,08 |
+| 2023 | 8 | 7,65 |
+| 2024 | 9 | 8,79 |
+| 2025 | 12 | 10,74 |
+| 2026 (parcial, 200 días) | 14 | 12,48 |
+
+Confirma lo que anticipaba el roadmap ("la mayoría de las estaciones del grupo B no tiene nivel
+antes de ~2014"): la densificación arranca en **2015**, no en 2000, y crece de forma sostenida
+hasta hoy.
+
+**7. Hallazgo colateral, fuera del alcance de `alta_frontera` pero descubierto en la misma
+verificación:** las columnas `caudal_agregado_intermedia_paso_libres_m3s` y
+`caudal_agregado_baja_salto_grande_m3s`, descritas en el roadmap como "reservadas... en NULL"
+(Decisión 018), **también dejaron de estar en NULL** por el mismo mecanismo — 23 y 2 de las 40
+estaciones del grupo B caen en esas dos sub-cuencas respectivamente. Verificado:
+`weather.gold.training_dataset_v0` tiene 7.684/9.732 filas con `caudal_agregado_intermedia_paso_libres_m3s`
+no nulo y 6.843/9.732 con `caudal_agregado_baja_salto_grande_m3s` no nulo (antes de la Decisión 024
+ambas columnas eran 100% `NULL`, porque `estacion_subcuenca` solo tenía las 22 filas de
+`alta_frontera`). No cambia el alcance de la tesis (Decisión 018, "Tesis: No" para esas dos
+sub-cuencas sigue vigente — es una decisión de modelado, no una limitación de datos), pero corrige
+la descripción del roadmap §1 y de `data_sources.md` §3.10, que afirmaban que el caudal no se veía
+afectado por la resiembra de `estacion_subcuenca`.
+
+### Decisión
+
+* **No se escribió código nuevo.** El `JOIN` dinámico en `ETL_Gold_Training_Dataset_v0.ipynb` ya
+  hacía exactamente lo que pedían las tareas de la Fase 7 (unión espacial + siembra + recálculo)
+  como efecto colateral de la Decisión 024. Se corrigió únicamente el comentario desactualizado en
+  esa celda del notebook (sin cambio de lógica, sin redeploy necesario).
+* Se corrige `docs/data_sources.md` §3.10, que registraba (heredado de la Decisión 024) que el
+  agregado de caudal "no se ve afectado" por la resiembra de `estacion_subcuenca` — afirmación
+  incompleta: sí se ve afectado, y las 14 estaciones nuevas de `alta_frontera` lo demuestran.
+* Se cierra la Fase 7 del roadmap con el criterio de cierre cumplido: se sabe cuántas de las 40
+  caen en la cuenca alta (14) y desde qué año densifican el agregado (2015).
+* El hallazgo colateral sobre `intermedia_paso_libres`/`baja_salto_grande` se deja documentado
+  (roadmap §1, este documento) pero no se actúa sobre él: está fuera del alcance de la tesis por
+  decisión de modelado explícita (Decisión 018), no por falta de datos.
+
+### Justificación
+
+El mismo patrón que ya aparece en las Decisiones 023, 024 y 025 (INMET "42" estimado vs. "27" con
+join exacto; lluvia "0 días" vs. "332 estaciones reales") se repite acá: una clasificación gruesa
+de la Fase 2 ("40 fuera de la cuenca alta") no tenía detrás una unión espacial real, y una
+afirmación de la Decisión 024 ("para caudal sigue pendiente") tampoco se verificó contra el código
+ni contra las estaciones concretas. El principio operativo del repo —medir contra Databricks real
+antes de concluir, no asumir que una clasificación anterior sigue vigente— aplica igual cuando la
+sospecha es "puede que ya esté resuelto" que cuando es "puede que esté roto": en ambos casos hace
+falta la consulta real, no la inferencia.
+
+### Consecuencias
+
+* `caudal_agregado_alta_frontera_m3s` en `weather.gold.training_dataset_v0` pasa de 22 a **36**
+  estaciones contribuyentes reales (22 grupo A + 14 grupo B), ya materializado, ya verificado — sin
+  ninguna corrida adicional de job.
+* La densificación es más significativa desde 2018-2019 en adelante (3 → 6 → 8 → 12-14
+  estaciones), lo que mejora la representatividad del agregado en la parte más reciente de la
+  serie, coherente con la expectativa original del roadmap.
+* Las 26 estaciones restantes de las 40 (23 en `intermedia_paso_libres`, 2 en `baja_salto_grande`,
+  1 sin mapeo por ser un outlier descartado por R6) no aportan a `alta_frontera` y no requieren
+  ninguna acción adicional.
+* Se corrige el comentario de `ETL_Gold_Training_Dataset_v0.ipynb` (celda `subcuenca_daily`),
+  `docs/data_sources.md` §3.10 y el roadmap §1/Fase 7 (`docs/roadmap.md`) para reflejar el estado
+  real: el agregado de caudal sí depende de `estacion_subcuenca`, tanto como el de lluvia y
+  temperatura.
+* Queda documentado, pero fuera de esta decisión, que `intermedia_paso_libres` y
+  `baja_salto_grande` ya tienen agregados de caudal reales en Gold (7.684 y 6.843 filas no nulas
+  respectivamente) — disponibles si una fase futura reabriera esas sub-cuencas (Decisión 018), sin
+  necesidad de ingesta ni mapeo adicional.
+
+---
+
+## Decisión 029: Implementación del landing local de GEFS Reforecast v12 — descarga masiva en local, sólo se sube a Databricks el recorte a la cuenca
+
+### Estado
+
+`Aceptada` (2026-08-24), implementada y **verificada contra Databricks real**: 3 días reales
+(2018-01-01 a 2018-01-03, incluida una corrida extendida de 11 miembros) descargados, recortados,
+subidos y mergeados en `weather.bronze.gefs_reforecast` — 1.876.800 filas, `tp_mm` en rango
+`[0.0, 347.0]`, sin duplicados.
+
+### Contexto
+
+La Decisión 026 documentó GEFS Reforecast v12 antes de escribir código (regla de §10 de
+`data_sources.md`) y midió que descargar el rango completo sin recortar pesaría ~950 GB (grilla
+global, GEFS no soporta recorte `area` server-side como TIGGE). El usuario pidió explícitamente
+que, si la descarga es masiva, se haga en local y sólo se suba a Databricks lo que corresponde a
+la cuenca — el mismo principio que ya rige `ana_historic_backfill` e `inmet_backfill` (Decisiones
+015/016, 025).
+
+### Diseño e implementación
+
+* `notebooks_local/gefs_reforecast/`: mismo patrón que `inmet_backfill` (descarga a un
+  directorio temporal, recorta/procesa en memoria, borra el archivo crudo, nunca lo sube).
+  * `common_gefs.py`: descarga HTTPS directa al bucket público `noaa-gefs-retrospective` (sin
+    autenticación), recorte al bounding box de la cuenca (`compute_download_area()`, reusada de
+    `notebooks_local/ecmwf/common_ecmwf.py` vía import cruzado, mismo patrón que INMET reusa
+    `lock.py` de `ana_historic_backfill`), `cumsum()` sobre el eje `step` para convertir el
+    incremento por bloque de `apcp_sfc` en acumulado-desde-el-inicio-de-la-corrida (comparable a
+    `tp_mm` de TIGGE, gotcha de la Decisión 026), y un offset exacto (sin interpolar: los puntos
+    de grilla de 0,50° son subconjunto exacto de los de 0,25°, mismo origen factor 2x) para
+    empalmar el tramo `Days:1-10` (0,25°/3h) con `Days:10-16` (0,50°/6h) en una sola serie
+    cumulativa continua.
+  * `download_gefs_backfill.py`: resumible (`gefs_backfill_state.json`), lock compartido
+    (`notebooks_local/ana_historic_backfill/lock.py`), lista miembros reales por fecha vía el
+    listado S3 (`list_members()`) en vez de asumir 5 fijos — confirmado empíricamente que
+    2018-01-03 (miércoles) trajo 11 miembros (`c00`..`p10`), validando que la corrida extendida
+    semanal existe y se detecta sola.
+  * `sync_to_databricks.py`: sube sólo los JSON ya recortados y aplanados (`output_json/`) al
+    Volume `weather.raw.gefs_volume/json/`, nunca los `.grib2` crudos (se borran localmente
+    apenas se procesan, igual que los ZIP de INMET).
+* **Gotcha nuevo, encontrado al implementar, no documentado en el PDF oficial de NOAA ni en la
+  Decisión 026:** el archivo `Days:1-10` de cada miembro perturbado (`p01`..`p10`) mezcla dos
+  `dataType` de GRIB2 en un solo archivo — 79 mensajes `pf` (steps +6h a +240h) y **un mensaje
+  `cf`** para el primer step (+3h), que `cfgrib` no puede leer sin `filter_by_keys` explícito.
+  Verificado que ese mensaje "cf" es idéntico entre miembros perturbados en el mismo punto de
+  grilla (compartido porque la dispersión del ensemble todavía no creció en +3h, sólo mal
+  etiquetado por el codificador de NOAA) — se lee con ambos `filter_by_keys` y se concatena para
+  no perder el primer step. El tramo `Days:10-16` y el miembro `c00` no tienen este problema.
+* DDL: `weather.raw.gefs_volume` y `weather.bronze.gefs_reforecast` agregados a
+  `notebooks/04_Silver/DDL_Silver_Gold.ipynb` (mismo patrón que INMET). Bronze:
+  `notebooks/02_Bronze/ETL_Bronze_GEFS.ipynb`, mismo patrón que `ETL_Bronze_ECMWF_CF.ipynb` con
+  `member` (string: `c00`/`p01`..`p10`) en vez de `number` (int) como parte de la clave de
+  `MERGE`.
+* `databricks.yml`: `ETL_Bronze_GEFS` agregado a `silver_gold_initial_load_v0` y
+  `silver_gold_daily_incremental`, dependiendo sólo de `DDL_Silver_Gold`/`Check_Bronze_Freshness`
+  — corre en paralelo a la cadena principal de Silver, no la bloquea ni depende de ella (GEFS
+  todavía no tiene consumidor en Silver/Gold). Desplegado con `databricks bundle deploy`
+  (a diferencia del contenido de los notebooks, la definición de tareas de un job sí se actualiza
+  por bundle deploy — sólo el contenido de los notebooks requiere `workspace import` al Repo por
+  separado, ver memoria de sesión sobre sync).
+
+### Verificación contra Databricks real
+
+`DDL_Silver_Gold` y `ETL_Bronze_GEFS` corridos como `databricks jobs submit` ad hoc (no se corrió
+el job completo para no re-ejecutar el resto de la cadena de Silver/Gold sólo para validar una
+rama nueva e independiente): ambos en verde. `sync_to_databricks.py` subió 3 archivos JSON reales
+(2018-01-01/02/03). Consulta SQL directa contra el warehouse serverless confirmó
+`weather.bronze.gefs_reforecast`: 3 días, 11 miembros distintos, 1.876.800 filas, `tp_mm` entre
+0,0 y 347,0 mm (rango sano, sin negativos ni outliers evidentes).
+
+### Volumen real medido — pendiente de decisión antes de correr el backfill completo
+
+* Un día de 5 miembros produce **~164 MiB de JSON recortado** (463.200 registros); un día de 11
+  miembros (corrida extendida semanal), ~338 MiB. Es una reducción enorme frente a los ~950 GB
+  sin recortar (Decisión 026), pero **igual es un volumen no trivial acumulado**: el hueco
+  prioritario 2000-01-01 → 2006-09-30 (~2.459 días, mayoría de 5 miembros) proyecta del orden de
+  **~400 GB** de JSON recortado si se baja con los 5 miembros estándar completos; extender al
+  solapamiento 2006-2019 para la calibración (Decisión 021) sumaría un orden de magnitud similar
+  otra vez.
+* **No se decidió todavía** si conviene reducir miembros (ej. sólo `c00`, o `c00`+1 perturbado)
+  para el uso como feature de precipitación agregada por sub-cuenca — probablemente no hace falta
+  el ensemble completo de 5-11 miembros si el destino final es un agregado por `alta_frontera`,
+  pero **reducir miembros ahora sería una decisión de modelado tomada dentro de Landing**, un
+  lugar equivocado según el principio ya usado en R8/R9 (Decisiones 019/023): las reglas de
+  agregación y selección viven en Silver/Gold, no en Landing. Landing baja lo que la fuente
+  publica; el recorte de miembros, si se decide, debería aplicarse ahí explícitamente y
+  documentarse como tal.
+* Pendiente de decidir con el usuario antes de lanzar el backfill completo (no bloquea lo ya
+  implementado y verificado en esta decisión).
+
+### Consecuencias
+
+* El mecanismo de landing local + subida acotada para GEFS queda implementado y probado de punta
+  a punta contra datos reales — la tarea "Landing + Bronze de GEFS v12 en local" de la Fase 4
+  queda **mecánicamente resuelta**; lo que falta es correr el backfill completo (acotado por la
+  decisión de volumen de arriba) y las tareas posteriores de la fase (calibración contra TIGGE,
+  serie homogénea, recorte a `alta_frontera` en Silver/Gold).
+* `docs/data_sources.md` §9.4 se actualiza de "investigada, no implementada" a implementada y
+  verificada, con el gotcha de `dataType` documentado.
+* `docs/roadmap.md` Fase 4 se actualiza: la tarea de Landing+Bronze pasa de pendiente a
+  mecánicamente resuelta con una nota de la decisión de volumen abierta.
+
+---
+
+## Decisión 030: El backfill histórico de TIGGE (`cf`+`pf`) se mueve a ejecución local, con Task Scheduler
+
+### Estado
+
+`Aceptada` (2026-08-24), implementada y corriendo contra datos reales.
+
+### Contexto
+
+El backfill histórico de `cf`/`pf` (Decisión 012) corría como job de Databricks
+(`ECMWF_Forecast_Historic_Backfill`), con `max_batches_per_run` acotado y disparado a mano
+repetidamente. El usuario preguntó, mientras el backfill local de GEFS (Decisión 029) corría en
+paralelo, si no convenía aplicar el mismo patrón a TIGGE: bajar en local (más control y
+visibilidad) y subir solo el JSON ya aplanado — el mismo principio que ya rige
+ANA/INMET/GEFS (Decisiones 015/016/025/029).
+
+Al revisar, ya existían scripts locales espejo (`notebooks_local/ecmwf/historic_cf_tigge.py`,
+`historic_pf_tigge.py`, con las credenciales de `cdsapi` ya configuradas en `~/.cdsapirc` del
+usuario) que nunca se habían usado como vía de ejecución real — solo como espejo 1:1 de los
+notebooks de Databricks. Convertirlos en la vía principal fue mecánico.
+
+### Implementación
+
+* `notebooks_local/ecmwf/run_tigge_backfill.py`: orquestador nuevo. Corre `cf` hasta agotar lo
+  pendiente y **recién después** arranca `pf` — nunca los dos en paralelo (regla dura de la
+  Decisión 012, sigue vigente corra donde corra: comparten cuenta/token con la misma cola de
+  TIGGE/ECDS). Sincroniza cada `--sync-every-calls` llamadas exitosas.
+* `notebooks_local/ecmwf/sync_to_databricks.py`: nuevo, sube en paralelo (mismo patrón que
+  `gefs_reforecast/sync_to_databricks.py`) los JSON de `cf_tigge/json/` y `pf_tigge/json/` al
+  mismo Volume/carpeta que ya lee `ETL_Bronze_ECMWF_CF`/`_PF` — Bronze no distingue si el
+  archivo vino del job diario, del backfill de Databricks o de este backfill local.
+* **Siembra de estado local sin re-descargar lo ya aterrizado**: `historic_cf_tigge.py`/
+  `historic_pf_tigge.py` deciden qué lotes están completos mirando el disco local
+  (`batch_fully_landed()`), que arrancaba vacío — sin sembrarlo, el backfill local hubiera
+  vuelto a pedir los ~8 años de `cf` (2018-08→2026-08) y el mes de `pf` que **ya están en
+  Bronze**, desperdiciando cuota de la cola de TIGGE/ECDS. Se listó el Volume real
+  (`databricks fs ls`) y se crearon 2.941 archivos JSON vacíos (`cf`) y 30 (`pf`) con los
+  nombres exactos ya presentes remotamente. Es seguro: `sync_to_databricks.py` sólo sube
+  archivos que **no** están ya en el Volume por nombre, así que estos placeholders vacíos
+  nunca se suben (ya existen remotamente con contenido real).
+* **Lock dedicado, no el compartido**: `tigge_lock.py` (nuevo, mismo mecanismo que
+  `ana_historic_backfill/lock.py` pero con su propio archivo). GEFS, ANA, INMET y TIGGE pegan
+  contra APIs completamente distintas (S3 público, ANA, INMET, ECDS/TIGGE) y no hay motivo
+  para serializarlos entre sí — de hecho corrieron en paralelo durante esta sesión sin
+  problema. Compartir el lock de `ana_historic_backfill` (como hacían INMET/GEFS) hubiera
+  bloqueado a TIGGE mientras GEFS seguía corriendo.
+
+### Por qué Task Scheduler y no una corrida lanzada desde la sesión de Claude Code
+
+Confirmado empíricamente (no en la documentación de ninguna herramienta): un proceso lanzado
+en background desde esta sesión de Claude Code tiene un límite de vida no documentado, del
+orden de 20-40 minutos, después del cual se lo mata sin que sea un crash del proceso ni un
+error de código (mismo patrón visto y resuelto para el backfill de GEFS con un supervisor que
+lo reinicia solo). Para GEFS esto no importa mucho: cada descarga tarda segundos, así que un
+reinicio pierde poco. Para TIGGE, un solo request de `cdsapi.retrieve()` contra un año viejo
+(2006-2018) puede tardar **más** que ese límite — confirmado con dos intentos consecutivos del
+mismo lote (2017-08-23..2018-08-22) que nunca llegaron a completarse, sólo a quedar
+`accepted` en la cola de MARS, antes de que el proceso fuera matado. Un supervisor que
+reinicia el mismo request una y otra vez sin que nunca tenga tiempo de terminar no es una
+solución — es un bucle infinito sin progreso.
+
+La solución fue la misma que ya existía para el backfill de ANA (Decisión 016): una tarea
+programada de Windows (`notebooks_local/ecmwf/scheduler/register_tasks.ps1`,
+`run_backfill_task.ps1`), que no está sujeta al límite de la sesión — corre hasta completar o
+hasta el `ExecutionTimeLimit` de 6 horas, con redisparo horario (`IgnoreNew`) para retomar si
+se corta. Registrada y disparada manualmente el 2026-08-24; confirmado el proceso corriendo
+bajo un PID de Task Scheduler, independiente de la sesión.
+
+### Consecuencias
+
+* El backfill histórico de `cf`+`pf` corre ahora en local, vía Task Scheduler, sin intervención
+  manual repetida de "Run now" en Databricks.
+* `docs/data_sources.md` §7.11 va a necesitar actualizarse cuando el backfill termine (vía de
+  ejecución real, no la del job de Databricks) — pendiente, no bloqueante.
+* El job `ECMWF_Forecast_Historic_Backfill` de Databricks queda sin uso activo pero no se
+  elimina de `databricks.yml` en esta decisión — decisión de limpieza aparte, no urgente.
+* Patrón reusable: cualquier backfill local futuro que dependa de un request individual lento
+  (no descargas rápidas en paralelo como GEFS) debería usar Task Scheduler desde el principio,
+  no un supervisor de sesión.
+
+### Addendum (2026-08-24, mismo día): colisión real con el job de Databricks — pausado, no abandonado
+
+Antes de moverse a local, se había intentado un supervisor que disparaba
+`ECMWF_Forecast_Historic_Backfill` en Databricks repetidamente (`databricks jobs run-now`). El
+primer intento pareció fallar por el mismo bug de mangling de rutas de MSYS que afectó otros
+comandos de esta sesión (el archivo local donde se iba a guardar la respuesta nunca se creó) —
+pero el **request a la API de Databricks sí se había enviado con éxito**: el job quedó
+corriendo del lado de Databricks (run `221810619993260`, iniciado 20:48) sin que hubiera
+ninguna confirmación visible localmente. La sesión asumió que el intento había fallado por
+completo y siguió adelante con el backfill local (Decisión 030, arrancado ~21:59).
+
+Resultado: **durante poco más de una hora, el job de Databricks (`Historic_ECMWF_CF` →
+`Historic_ECMWF_PF`) y el backfill local (`cf` primero) corrieron en simultáneo**, ambos
+pegándole a la misma cola de TIGGE/ECDS con la misma cuenta — exactamente la condición que la
+Decisión 012 prohíbe. Se detectó al revisar `databricks jobs list-runs` sin filtro (no
+`--job-id`) para chequear el estado del merge de Bronze de GEFS, y aparecer ahí una corrida de
+`ECMWF_Forecast_Historic_Backfill` en estado `RUNNING` que no debía existir.
+
+**Corrección aplicada:** se deshabilitó la tarea programada de Windows
+(`Disable-ScheduledTask`), se mató el proceso local (`taskkill /T /F` sobre el PID del lock) y
+se dejó correr únicamente el job de Databricks, que ya llevaba más de una hora de ventaja y
+progreso real (`cf` completo, `pf` en curso). No se pudo determinar si la colisión causó algún
+daño real (ej. throttling silencioso, cuota consumida) — no se evaluó como bloqueante porque
+ambos procesos son resumibles por diseño (`batch_fully_landed()`/Bronze `MERGE`) y no hay
+escritura destructiva en ningún punto.
+
+**Lección operativa, para no repetir:** después de cualquier `databricks jobs run-now` (o
+`submit`) cuyo resultado local no se pueda confirmar por un error de la propia sesión (no un
+error de la API), verificar el estado real vía `databricks jobs list-runs` (sin `--job-id`,
+trae las corridas más recientes de todo el workspace) **antes** de asumir que no se disparó y
+de lanzar una vía alternativa que pueda competir por el mismo recurso. "No pude confirmarlo
+localmente" no es lo mismo que "no pasó".
+
+**Estado al cierre de esta sesión:** el backfill local de TIGGE queda con toda su
+infraestructura lista (`run_tigge_backfill.py`, `tigge_lock.py`, `sync_to_databricks.py`,
+Task Scheduler registrado pero deshabilitado) para retomarse en una sesión futura, una vez que
+se confirme que el job de Databricks terminó o se decida cancelarlo explícitamente — no se
+retoma automáticamente sin esa verificación previa, por la misma razón de este addendum.
+
+---
+
+## Decisión 031: Corrección del wrapper de Task Scheduler de TIGGE, parametro `format` deprecado, y hueco documentado por cinta danada de ECMWF
+
+### Estado
+
+`Aceptada` (2026-08-26), implementada y corriendo contra datos reales.
+
+### Contexto
+
+Al retomar la sesión, la tarea programada `TIGGE_Backfill_Download` (Decisión 030) llevaba
+~9,5 horas fallando en silencio cada corrida horaria: exit code 1, log sin ninguna salida de
+Python, lock huérfano (el `finally: lock.release()` nunca corría). El reporte de la sesión
+anterior decía que la tarea había quedado deshabilitada (ver addendum arriba) — no era así: el
+`Disable-ScheduledTask` de esa sesión no sobrevivió, o nunca se aplicó a esta tarea, y siguió
+disparando sola cada hora sin que nadie lo supervisara.
+
+### Causa raíz #1: `2>&1`/`*>>` de PowerShell sobre un comando nativo, con `$ErrorActionPreference = "Stop"`
+
+`run_backfill_task.ps1` capturaba la salida de `python.exe` con el operador nativo de
+redirección de PowerShell (`*>>`). `cdsapi` loguea mensajes informativos ("Request ID is...",
+"status has been updated to...") por **stderr** en cada corrida, incluso exitosa. En
+PowerShell 5.1, redirigir el stderr de un ejecutable externo así lo envuelve en un
+`NativeCommandError` — con `$ErrorActionPreference = "Stop"` (ya seteado arriba en el script)
+eso aborta el script **al instante**, antes de que Python imprima nada y sin pasar por el
+`finally` de `tigge_lock.py`. Confirmado reproduciendo el wrapper exacto a mano: mismo exit
+code 1, mismo log vacío.
+
+Un primer intento de arreglo (`2>&1 | Out-File -Encoding utf8`, para además resolver que el
+log mezclaba UTF-8 del header con UTF-16 de la salida de Python) tenía el mismo problema —
+detectado probándolo a mano antes de confiarlo al scheduler. **Arreglo real:** redirigir vía
+`cmd /c "... >> log 2>&1"` — la redirección ocurre a nivel de SO, sin que PowerShell
+reinterprete el stderr del proceso nativo como un error propio.
+
+Un segundo síntoma relacionado, ya con el fix de `cmd /c` puesto: una corrida murió con
+`STATUS_CONTROL_C_EXIT` (`^C` literal en el log) exactamente en una ventana donde la sesión de
+Claude Code estaba parando un proceso de prueba propio con comandos de PowerShell
+(`Get-Process`, `TaskStop`) — indicio de que administrar procesos con el tool de PowerShell de
+la sesión puede propagar una señal de Ctrl+C al proceso del scheduler. No se investigó el
+mecanismo exacto; la mitigación aplicada fue dejar de usar el tool de PowerShell para
+consultar/administrar procesos mientras hay una corrida real en curso (se usa `schtasks` desde
+Bash para disparar la tarea, y sólo lectura de archivos para monitorear).
+
+### Causa raíz #2 (secundaria, de bajo impacto): parámetro `format` deprecado por ECDS
+
+`cdsapi` acepta hoy `"data_format"` en vez de `"format"` — corregido en los 4 scripts locales
+(`historic_cf_tigge.py`, `historic_pf_tigge.py`, `landing_cf_tigge.py`, `landing_pf_tigge.py`).
+Verificado que **no** es lo que rompe el job diario de Databricks (`ECMWF_Forecast_Daily_Incremental`,
+últimas 5 corridas en `SUCCESS`) — los notebooks de Databricks siguen con `format` y no hace
+falta sincronizar el cambio con urgencia.
+
+### Causa raíz #3 (la que realmente bloqueaba el avance): cinta dañada en el archivo de ECMWF
+
+Con las dos causas anteriores resueltas, el mismo lote (`cf` 2017-08-25..2018-08-24) seguía
+fallando. El `print` de `_retrieve_batch` trunca el error a 300 caracteres; reproduciendo la
+request a mano se obtuvo el mensaje completo:
+
+```
+AccessError: Requested data is on one or more damaged tape: J0018900.
+https://confluence.ecmwf.int/display/UDOC/MARS+data+unavailability+in+ECMWF+tape+library
+```
+
+Es un problema de infraestructura de ECMWF (tape física dañada), no de la request ni de este
+pipeline. Reintentar no sirve — por eso el mismo lote bloqueaba el orquestador desde ayer:
+`run_source()` corta toda la fuente `cf` en el primer fallo, y como el lote más nuevo pendiente
+siempre es el mismo (los lotes se recalculan desde hoy hacia atrás), cada disparo horario volvía
+a chocar contra el mismo punto sin poder llegar a los lotes más viejos.
+
+**Decisión del usuario:** este tramo (2006-2019) es sólo para calibrar el empalme GEFS/TIGGE
+(Fase 4) — quedan otros ~12 años de solapamiento, así que perder este año no es crítico.
+Se saltea explícitamente en vez de investigar si es parcialmente recuperable.
+
+### Implementación del skip
+
+* `historic_cf_tigge.py`: `KNOWN_UNAVAILABLE_RANGES` (lista de `(inicio, fin, motivo)`) y
+  `_known_unavailable_reason(start, end)`, comparando por **solapamiento** contra una ventana
+  generosa (2017-06-01..2018-11-30) — no por igualdad exacta, porque el rango exacto de cada
+  lote corre ~1 día por día respecto de `date.today()` (`TIGGE_LAG_DAYS`/`BATCH_MONTHS`), así
+  que una tupla de fechas fija dejaría de matchear al día siguiente. El `for` principal de
+  `run()` saltea el lote (imprime el motivo, `continue`) en vez de tratarlo como fallo fatal.
+* `run_tigge_backfill.py._pending_batches()`: sin excluir también acá los lotes marcados como
+  no disponibles, el conteo de pendientes nunca llega a 0 y el `while True` de `run_source()`
+  queda en loop infinito llamando a `module.run()` sin ningún progreso posible (bug encontrado
+  antes de que llegara a producirse, al razonar la implementación — no se observó en una
+  corrida real).
+* **Alcance: sólo `cf`.** No se confirmó que `pf` pegue contra la misma cinta (todavía no llegó
+  a pedir ese rango) — `historic_pf_tigge.py` no define `KNOWN_UNAVAILABLE_RANGES`, así que si
+  el mismo problema aparece ahí se va a frenar igual que antes, no se saltea solo.
+
+### Verificado contra datos reales
+
+Corrida real disparada después del fix (2026-08-26 ~08:16): saltó los dos lotes que se
+solapan con la cinta dañada (2016-2017 y 2017-2018, cada uno con el motivo impreso), y bajó de
+verdad el siguiente lote real (2015-08-25..2016-08-24, 16,9 MB) — primera descarga histórica
+nueva desde el 2026-08-25 12:36. Quedan ~7 lotes reales de `cf` (2006-2015).
+
+### Consecuencias
+
+* `docs/data_sources.md` §7.11/§9 (o donde corresponda documentar TIGGE) va a necesitar una
+  nota sobre el hueco de cobertura 2017-06..2018-11 en `cf` cuando se cierre la Fase 4 —
+  pendiente, no bloqueante.
+* Si `pf` encuentra el mismo problema en el mismo rango, extender `KNOWN_UNAVAILABLE_RANGES` a
+  `historic_pf_tigge.py` (o moverlo a `common_ecmwf.py` si termina siendo compartido) en vez de
+  duplicar la lógica.
+
+
+---
+
+## Decisión 032: Los modelos de pronóstico numérico de Brasil (CPTEC/INPE) se evalúan y no se incorporan por ahora
+
+### Estado
+
+`Aceptada` (2026-08-26). Investigación cerrada con criterio de reapertura definido; sin código.
+
+### Contexto
+
+El usuario preguntó si Brasil tiene un sistema de pronóstico meteorológico propio, si es gratuito y
+cómo se descargan datos actuales e históricos. La pregunta es pertinente porque la sub-cuenca de la
+tesis (`alta_frontera`) está enteramente en Brasil y el pronóstico hoy sale sólo de ECMWF (TIGGE
+`cf`/`pf`, Open Data `fc`) y de NOAA (GEFS Reforecast v12 para 2000-2019, Decisión 021).
+
+### Qué se encontró (verificado contra los servidores reales el 2026-08-26)
+
+* **CPTEC/INPE tiene un sistema NWP completo, abierto y sin registro**, servido por HTTP en
+  `dataserver.cptec.inpe.br` (las URLs viejas de `ftp.cptec.inpe.br/modelos/tempo` redirigen ahí).
+  Modelos con archivo: WRF 7 km (00Z, +180 h horario, GRIB2 ~204 MB/paso, **2023-01 → hoy**), Eta 8 km
+  (00Z/12Z, +264 h, **2021-07 → hoy**), Eta 40 km (00Z, +264 h, GRIB1 12 MB/paso, **2020-07-16 → hoy**,
+  el más largo), BAM 20 km global (recortes **2024-08 → hoy**), MONAN 10 km global pre-operativo
+  (NetCDF de 4,3 GB por paso, continuo **2025-10 → hoy**). Detalle y patrones de URL en
+  `data_sources.md` §9.5.
+* WRF y Eta 8 km publican un `.inv` estilo `wgrib2` y el servidor acepta `Range`: se puede bajar sólo
+  `APCP` (874 KB en vez de 204 MB por paso, verificado). `APCP` del WRF viene acumulado desde el inicio
+  (como `tp` de TIGGE); el de Eta 8 km es incremento horario (como GEFS).
+* **Lo que no existe:** ningún *reforecast* ni archivo anterior a 2020-07; ningún ensemble público
+  vigente (el de BAM terminó en 2020-04 y CPTEC dejó de aportar a TIGGE alrededor de 2010); INMET no
+  expone más el GRIB de COSMO (el FTP rechaza el login anónimo); ONS sólo distribuye pronósticos por
+  cuenca a agentes registrados (SINtegre).
+
+### Decisión
+
+* **No se incorpora ningún modelo brasileño como `forecast_source` en esta etapa.** La Fase 4 sigue
+  con TIGGE + GEFS: son las únicas fuentes que cubren 2000-2019, y el dataset arranca en 2000-01-01
+  (Decisión 019 enmendada / 021). Un modelo que arranca en 2020 no reemplaza a ninguna de las dos.
+* La investigación queda registrada en `data_sources.md` §9.5 para no repetirla.
+* **Criterio de reapertura:** si en la etapa de modelado se quiere una comparación de habilidad entre
+  sistemas de pronóstico sobre `alta_frontera` (material de tesis, no de ingeniería), la opción con
+  historia útil es **Eta 40 km (2020 →, ~3 GB/día entero)** o **WRF 7 km (2023 →, sólo `APCP` por
+  byte-range ≈ 160 MB/día)**, como tercera `forecast_source` sobre el tramo 2020-hoy, con el mismo
+  patrón de landing local de GEFS. No como reemplazo.
+
+### Justificación
+
+Sumar una tercera familia de pronóstico ahora agrega volumen y trabajo de empalme sin resolver
+ningún hueco del dataset: el problema de cobertura (2000-2006) ya lo cierra GEFS y el tramo
+operativo ya lo cubre TIGGE. La comparación de habilidad es valiosa, pero es una pregunta de
+modelado que conviene formular cuando exista el baseline, no antes.
+
+### Consecuencias
+
+* `roadmap.md` §5 registra la investigación D como cerrada y §6 deja el tema como *diferido*, no
+  como *fuera de alcance*.
+* Hallazgo lateral de la misma investigación: CPTEC publica además **observaciones en grilla** con
+  historia larga (MERGE desde 1998, SAMeT desde 2000) — eso sí cierra una necesidad real y se
+  incorpora por la Decisión 033.
+
+---
+
+## Decisión 033: MERGE (lluvia) y SAMeT (temperatura) de CPTEC/INPE entran como observación en grilla, con histórico local y camino diario Bronze → Silver → Gold en Databricks
+
+### Estado
+
+`Aceptada` (2026-08-26), implementación en la **Fase 9** de `roadmap.md` (corre en paralelo con las
+demás fases). Verificación contra Databricks real al final de esta decisión.
+
+### Contexto
+
+Al investigar los modelos NWP de Brasil (Decisión 032) aparecieron dos productos **observados** de
+CPTEC/INPE, gratuitos y con historia larga: **MERGE** (precipitación diaria 0,1°, satélite GPM-IMERG
+V07B + pluviómetros, desde 1998-01-02) y **SAMeT** (temperatura TMAX/TMED/TMIN diaria 0,05°,
+observaciones + ERA5 corregido por *lapse rate*, desde 2000-01-01). Hoy la lluvia y la temperatura
+de `alta_frontera` en Gold salen de agregados por estación (ANA e INMET): dependen de qué estaciones
+reportan cada día (`*_cobertura_pct`) y de la posición de la red. Una grilla observada que cubre el
+100% de la sub-cuenca todos los días es una segunda medición de la misma variable, con cobertura
+espacial completa. El usuario fijó tres requisitos: documentar la fuente, descargar **todo** el
+archivo disponible y evaluarlo, y —lo más importante para la tesis y para operar— que el **dato del
+día anterior esté disponible a diario para inferir**, no sólo para entrenar/testear; con el histórico
+descargado en local y subido a Bronze, y el diario como pipeline en Databricks con todo el camino
+Bronze → Silver → Gold.
+
+### Qué se verificó antes de escribir código (regla de §10 de `data_sources.md`)
+
+* **Latencia diaria (viabilidad del requisito operativo):** MERGE del día D aparece a las **02:39-02:40
+  UTC de D+1** (seis días consecutivos medidos); SAMeT TMED/TMAX de D a las **03:02-03:08 UTC de D+1**
+  y TMIN de D a las 17:06 UTC del mismo D. Todo antes de las 04:30 Montevideo de Gold. **Viable.**
+* **Ventanas diarias:** MERGE acumula **12Z(D-1) → 12Z(D)** (paper Rozante 2024 y verificado sumando
+  horarios de un día lluvioso: correlación 0,95 contra 0,62 del día calendario). SAMeT usa el **día
+  calendario UTC**, igual que `temperature_daily` (verificado contra INMET horario de Bronze en 7
+  estaciones de `alta_frontera`: MAE 0,15 °C en las tres variables; las ventanas 12Z dan 1-2,6 °C).
+* **Regeneración posterior (el hallazgo que más condiciona el diseño):** CPTEC reescribe MERGE **en
+  los primeros días del mes siguiente** (pluviómetros completos) y SAMeT **a los 7 días** (ERA5, lo dice
+  su READ-ME); además ambas bases fueron reconstruidas enteras (MERGE 2025-05-04/06 con V07B, SAMeT
+  2022-06-01). Medido con `Last-Modified` HTTP sobre archivos de distintas edades.
+* **Formato:** MERGE es GRIB2 con empaquetado complejo con diferenciación espacial y *missing value
+  management* (dos mensajes: precipitación etiquetada `rdp` y NEST —pluviómetros por punto— etiquetada
+  `prmsl`); SAMeT es NetCDF4 (`tmed|tmax|tmin` + `nobs`). Decodificar GRIB2 en Databricks serverless con
+  `cfgrib`/`eccodes` aborta el kernel (Decisión 013), así que **se probó `pygrib` en el workspace real
+  antes de diseñar** (`run 496772049564049`, `SUCCESS`; `grib2io` no instala). `netCDF4` ya se usa en
+  `Daily_ECMWF_CF` sin problema.
+* **Cobertura espacial:** ambas grillas cubren la cuenca completa; SAMeT sólo tiene NaN en el océano de
+  la esquina SE del bounding box, fuera de las tres sub-cuencas. Puntos por sub-cuenca: MERGE 566 /
+  1.187 / 482, SAMeT 2.269 / 4.749 / 1.922.
+
+### Decisión y diseño
+
+1. **Histórico en local, diario en Databricks — mismo formato de aterrizaje.** `notebooks_local/cptec_obs/`
+   descarga todo el archivo (MERGE 1998 →, SAMeT 2000 →) en paralelo, recorta al bounding box de las 3
+   sub-cuencas y escribe **un Parquet por producto y día** (`MERGE_AAAA_MM_DD.parquet`,
+   `SAMET_AAAA_MM_DD.parquet`). `Daily_CPTEC_Obs.ipynb` (Databricks serverless) produce exactamente el
+   mismo archivo para D-1 y una ventana hacia atrás. Bronze no distingue de dónde vino cada archivo
+   (mismo principio que el backfill de TIGGE, §7.11).
+2. **Parquet, no JSON (desviación consciente del patrón GEFS/ECMWF):** SAMeT son ~20.300 puntos × ~9.700
+   días ≈ 200 M de filas; en JSON aplanado serían ~25 GB, en Parquet ~3,3 GB. Spark lo lee nativo y el
+   Landing diario lo escribe con `pyarrow`. MERGE pesa ~130 MB en total.
+3. **Recorte espacial en dos pasos:** Landing baja el bounding box (sin geometría, como ECMWF/GEFS);
+   Silver asigna cada punto a su sub-cuenca con **`weather.silver.grid_subcuenca`** (centros de celda
+   dentro del polígono real, calculado en local con `geopandas` por `build_grid_subcuenca.py` y sembrado
+   desde el Volume por el DDL). Es el equivalente en grilla de `estacion_subcuenca` (Decisión 024) y
+   respeta la Decisión 011: la regla de negocio vive en Silver.
+4. **Regeneración → versión explícita.** Cada registro lleva `source_last_modified` (Last-Modified HTTP).
+   El Landing diario compara la cabecera del origen con el Parquet ya landeado y re-baja sólo lo que
+   cambió (ventana de 45 días para MERGE, 14 para SAMeT); Bronze hace `MERGE` por
+   `(fecha, latitude, longitude)` y **actualiza** cuando llega una versión más nueva; Silver recalcula la
+   ventana incremental (60 días) y expone **`es_preliminar`** (MERGE: el archivo no fue tocado después de su publicación
+   inicial, `source_last_modified < fecha + 2 días` — un umbral fijo por mes clasificaba mal los meses
+   regenerados el día 1, como julio 2026; SAMeT: modificado antes de D+7). Gold propaga el flag. Así la inferencia a D+1 usa el dato preliminar
+   —el único que existe— y lo declara; el entrenamiento, semanas después, ya ve el definitivo.
+5. **Silver agrega por `(fecha, subcuenca, fuente)`:** media areal (`prec_media_mm`, `temp_media_c`,
+   `temp_max_c`, `temp_min_c` como medias areales de las tres variables), máximos, `cobertura_pct`
+   (= puntos con dato / puntos de la sub-cuenca, R8: cobertura como columna, sin portón), densidad de
+   observaciones (`pluviometros`, `puntos_con_pluviometro`, `nobs_total`). Bronze tiene
+   `CLUSTER BY (fecha)` y el `MERGE` acota por rango de fechas para podar.
+6. **Gold suma 12 columnas de `alta_frontera`**, que **conviven** con las de estación (no las
+   reemplazan): `lluvia_merge_alta_frontera_mm`, `_max_mm`, `_acum_3d_mm`, `_acum_7d_mm`, `_pluviometros`,
+   `_cobertura_pct`, `_es_preliminar` y `temp_samet_alta_frontera_media_c`, `_max_c`, `_min_c`,
+   `_cobertura_pct`, `_es_preliminar`. La ventana 12Z-12Z de MERGE queda declarada (los acumulados de
+   3/7 días la vuelven irrelevante; el día puntual no).
+7. **Jobs:** nuevo `CPTEC_Obs_Daily_Incremental` a las **03:40 Montevideo** (DDL → Landing → Bronze →
+   Silver), después de la publicación de ambos productos y antes de Gold (04:30).
+   `Silver_Gold_Initial_Load_v0` incorpora DDL + Bronze (full) + Silver (full) de CPTEC antes de Gold;
+   `Silver_Gold_Daily_Incremental` incorpora Silver (incremental) antes de Gold. **CPTEC no entra en
+   `Check_Bronze_Freshness`:** un corte del servidor de CPTEC no debe frenar Gold; la fila queda en
+   `NULL` y `cobertura_pct`/`es_preliminar` lo declaran.
+8. **Carga masiva a Bronze por ZIP:** con ~20.000 Parquet, un `databricks fs cp` por archivo tarda
+   horas; `sync_to_databricks.py --bundle` sube ZIP sin compresión a `staging/` y
+   `ETL_Bronze_CPTEC_Obs` los descomprime en `daily/` antes de leer.
+
+### Justificación
+
+Tener el histórico completo (28 años de lluvia, 26 de temperatura, sin huecos) en el mismo formato que
+el diario elimina el problema clásico de "una fuente para entrenar y otra para operar". Exponer la
+regeneración como columna (`es_preliminar`) en vez de esperar la versión final mantiene el requisito de
+las 06:00 (Fase 5) sin mentir sobre la calidad del dato. Probar `pygrib` en el workspace real antes de
+diseñar evitó repetir el callejón de la Decisión 013 y permitió cumplir el pedido de que el diario
+corra en Databricks, no en local.
+
+### Consecuencias
+
+* Nuevas tablas: `weather.bronze.merge_precip_grid`, `weather.bronze.samet_temp_grid`,
+  `weather.silver.grid_subcuenca`, `weather.silver.precip_grid_daily`, `weather.silver.temp_grid_daily`;
+  Volume `weather.raw.cptec_volume`. 12 columnas nuevas en Gold (entran al diccionario de la Fase 6).
+* `data_sources.md` §9.6/§9.7 documentan las fuentes; `docs/cptec_obs_evaluation.md` es el reporte
+  generado por `evaluate_cptec_obs.py` sobre el archivo completo.
+* Bug encontrado y corregido en el test local: sin reemplazar `missingValue` (9999) del *missing value
+  management*, NEST daba "pluviómetro en todos los puntos". Está documentado en `common_cptec.py`.
+* Desprolijidad encontrada al generar notebooks por script: nbformat exige `execution_count`/`outputs`
+  en las celdas de código y Databricks rechaza el notebook si faltan ("may not be a valid notebook") —
+  corregido antes de la primera corrida real.
+* **Verificado contra Databricks real (2026-08-26):** histórico completo cargado (MERGE 58.645.115 filas
+  1998-01-02→hoy, SAMeT 197.386.052 filas 2000-01-01→hoy, 0 huecos en ambos); `Silver_Gold` corrido en
+  modo `full` tras agregar las 12 columnas con `DDL_Silver_Gold` (paso que se había olvidado ejecutar la
+  primera vez — el `ALTER TABLE` vive en un notebook separado de `ETL_Gold_Training_Dataset_v0` y no se
+  corre solo): **100% de las 9.732 filas de Gold (2000-01-01→2026-08-23) quedan con
+  `lluvia_merge_alta_frontera_mm` y `temp_samet_alta_frontera_media_c` no nulos**. `Validate_Training_
+  Dataset_v0` en verde. Reporte completo en `docs/cptec_obs_evaluation.md`: 0 días faltantes en el
+  archivo completo de ambos productos; MERGE-estaciones correlación diaria 0,895 (mensual 0,898);
+  SAMeT-INMET sesgo -0,05 °C en media (correlación 0,991). **Hallazgo abierto, no bloqueante:** el
+  cociente lluvia anual MERGE/estaciones cae de ~0,9 a 0,71/0,48/0,58 en 2023-2025 sin que la cobertura
+  de estaciones baje (sube de 0,13 a 0,20) — sugiere una estación ANA nueva con posible error de
+  unidades, a investigar en la Fase 3, no en esta decisión.

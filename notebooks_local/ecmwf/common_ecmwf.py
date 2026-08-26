@@ -416,6 +416,78 @@ def flatten_ensemble_forecast_batch(
     return out
 
 
+def iter_ensemble_forecast_batch_by_day(
+    ds,
+    tipo: str,
+    source_api: str,
+    unit_to_mm_factor: float,
+    area: Optional[dict] = None,
+):
+    """Igual que flatten_ensemble_forecast_batch, pero como generador que devuelve un dia
+    (reftime) por vez en vez de acumular el lote completo en un dict antes de devolver nada.
+
+    Necesario para pf: un lote de 31 dias x 50 miembros x 16 steps x ~975 puntos de grilla
+    genera ~24M records simultaneos si se materializan todos antes de escribir el primer
+    JSON (~15-20 GB de objetos dict de Python) y tira OOM en el compute serverless. Escribiendo
+    y descartando cada dia apenas se genera, el pico de memoria queda acotado a un dia
+    (~780.000 records), sin cambiar el request a la API ni el archivo de salida."""
+    tp = ds["tp"]
+    lats = ds["latitude"].values
+    lons = ds["longitude"].values
+    numbers = ds["number"].values
+
+    reftime_dim = _reftime_dim_name(tp)
+    if reftime_dim is None:
+        run_date, run_time = date.today(), "00"
+        if "time" in ds.coords:
+            run_date, run_time = _reftime_to_run_date_time(ds["time"].values)
+        yield run_date.isoformat(), flatten_ensemble_forecast(
+            ds, run_date, run_time, tipo, source_api, unit_to_mm_factor, area=area
+        )
+        return
+
+    reftimes = ds[reftime_dim].values
+    steps = ds["step"].values if "step" in tp.dims else [None]
+
+    for rt_idx, rt_val in enumerate(reftimes):
+        run_date, run_time = _reftime_to_run_date_time(rt_val)
+        tp_day = tp.isel({reftime_dim: rt_idx})
+        extracted_at = datetime.now(timezone.utc).isoformat()
+        records: list[dict] = []
+        for number_idx, number_val in enumerate(numbers):
+            tp_member = tp_day.isel(number=number_idx)
+            for step_idx, step_val in enumerate(steps):
+                step_hours = _step_to_hours(step_val)
+                valid_dt = _compute_valid_datetime(run_date, run_time, step_hours)
+                slice_2d = tp_member.isel(step=step_idx).values if "step" in tp_member.dims else tp_member.values
+                for i, lat in enumerate(lats):
+                    for j, lon in enumerate(lons):
+                        lon_norm = normalize_longitude(float(lon))
+                        if area is not None and not point_in_bbox(float(lat), lon_norm, area):
+                            continue
+                        value = slice_2d[i, j]
+                        if value is None:
+                            continue
+                        value_f = float(value)
+                        if math.isnan(value_f):
+                            continue
+                        records.append({
+                            "run_date": run_date.isoformat(),
+                            "run_time": run_time,
+                            "step_hours": int(step_hours),
+                            "valid_datetime": valid_dt.isoformat(),
+                            "valid_date": valid_dt.date().isoformat(),
+                            "latitude": float(lat),
+                            "longitude": lon_norm,
+                            "number": int(number_val),
+                            "tp_mm": value_f * unit_to_mm_factor,
+                            "tipo": tipo,
+                            "source_api": source_api,
+                            "extracted_at": extracted_at,
+                        })
+        yield run_date.isoformat(), records
+
+
 def iter_batches_backward(earliest: date, latest: date, step_months: int):
     """Genera lotes [start, end] desde el mas reciente hacia el mas antiguo, de tamanio
     step_months (12 para lotes anuales/cf, 1 para lotes mensuales/pf), acotados a

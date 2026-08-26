@@ -26,7 +26,20 @@ de nivel **no se perdió**: sigue completa desde 1941 en `weather.silver.river_l
 
 **Dónde:** `weather.silver.estacion_subcuenca` (Decisión 018), consumida en
 `ETL_Gold_Training_Dataset_v0.ipynb` para los agregados `caudal_agregado_<subcuenca>_*`.
-Ya estaba implementada antes de esta fase; sin cambios.
+Ya estaba implementada antes de esta fase; sin cambios de código.
+
+**Efecto medido (2026-08-24, Fase 7 del roadmap, Decisión 028):** el `JOIN` de
+`caudal_agregado_alta_frontera_m3s` contra `estacion_subcuenca` siempre fue dinámico, nunca
+hardcodeado a las 22 estaciones del grupo A. La resiembra completa de `estacion_subcuenca` en la
+Decisión 024 (782 estaciones en `alta_frontera`, no solo 22) amplió sin código nuevo el universo
+del agregado de caudal: de las 40 estaciones "grupo B" con curva del barrido de la Fase 2
+(clasificadas entonces como "fuera de la cuenca alta"), **14 caen realmente en `alta_frontera`**
+con la unión espacial real (validada al 99,9% con `geopandas`, Decisión 024). Hoy 36 estaciones
+distintas (22 grupo A + 14 grupo B) contribuyen a `caudal_agregado_alta_frontera_m3s`, verificado
+contra Databricks real: el valor de esa columna en `weather.gold.training_dataset_v0` coincide
+exactamente con un recálculo fresco del `JOIN` completo para fechas de muestra en 2010, 2020 y
+2025. Las estaciones nuevas empiezan a densificar el agregado en **2015** (1-3 activas por día ese
+año) y llegan a 10-14 activas por día en 2024-2026. Detalle completo en la Decisión 028.
 
 ## R3 — Estación sin curva de aforo: el nivel se conserva
 
