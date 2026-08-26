@@ -43,4 +43,26 @@ Register-ScheduledTask -TaskName "TIGGE_Backfill_Download" `
     -Force
 
 Write-Host "Tarea registrada: TIGGE_Backfill_Download (corrida continua, redisparo 1h)."
+
+# ECMWF_FC_Daily_Download: Fase 8 del roadmap, urgente (Decision 013) -- ECMWF Open Data solo
+# retiene ~12 corridas (2-3 dias) de `fc`, asi que se redispara cada 4h para no perder ninguna
+# de las 4 corridas diarias (00/06/12/18 UTC). Cada corrida es corta (una descarga + sync), no
+# hace falta el ExecutionTimeLimit largo de TIGGE.
+$FcSettings = New-ScheduledTaskSettingsSet `
+    -MultipleInstances IgnoreNew `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+
+$FcAction = New-ScheduledTaskAction -Execute "powershell.exe" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptDir\run_fc_task.ps1`""
+$FcTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Hours 4) -RepetitionDuration (New-TimeSpan -Days 3650)
+
+Register-ScheduledTask -TaskName "ECMWF_FC_Daily_Download" `
+    -Action $FcAction -Trigger $FcTrigger -Settings $FcSettings `
+    -Description "Descarga local de fc (ECMWF Open Data) cada 4h -- Fase 8, urgente por retencion corta de la fuente." `
+    -Force
+
+Write-Host "Tarea registrada: ECMWF_FC_Daily_Download (redisparo 4h)."
 Write-Host "Revisar/administrar desde el Programador de tareas de Windows (taskschd.msc)."

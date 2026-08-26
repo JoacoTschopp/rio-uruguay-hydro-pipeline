@@ -23,9 +23,15 @@ from pathlib import Path
 LOCAL_DIR = Path(__file__).parent
 CF_JSON_DIR = LOCAL_DIR / "local_data" / "ecmwf_volume" / "cf_tigge" / "json"
 PF_JSON_DIR = LOCAL_DIR / "local_data" / "ecmwf_volume" / "pf_tigge" / "json"
+FC_JSON_DIR = LOCAL_DIR / "local_data" / "ecmwf_volume" / "fc_opendata" / "json"
 
 VOLUME_CF_JSON_DIR = "dbfs:/Volumes/weather/raw/ecmwf_volume/cf_tigge/json"
 VOLUME_PF_JSON_DIR = "dbfs:/Volumes/weather/raw/ecmwf_volume/pf_tigge/json"
+# Mismo Volume que ya existe para cf/pf -- el subdirectorio fc_opendata/json todavia no tiene
+# lector en Bronze (Fase 8, tarea pendiente: no hay ETL_Bronze_ECMWF_FC.ipynb todavia), pero
+# subir ya evita perder el archivo local si algo pasa con esta maquina mientras se resuelve el
+# resto de la fase -- el dato crudo importa mas que tenerlo consumido a tiempo.
+VOLUME_FC_JSON_DIR = "dbfs:/Volumes/weather/raw/ecmwf_volume/fc_opendata/json"
 
 
 def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
@@ -96,13 +102,14 @@ def _sync_dir(profile: str, local_dir: Path, remote_dir: str, label: str, log, m
 def sync(profile: str, log=print) -> dict:
     cf_summary = _sync_dir(profile, CF_JSON_DIR, VOLUME_CF_JSON_DIR, "cf", log)
     pf_summary = _sync_dir(profile, PF_JSON_DIR, VOLUME_PF_JSON_DIR, "pf", log)
+    fc_summary = _sync_dir(profile, FC_JSON_DIR, VOLUME_FC_JSON_DIR, "fc", log)
     combined = {
-        "uploaded": cf_summary["uploaded"] + pf_summary["uploaded"],
-        "failed": cf_summary["failed"] + pf_summary["failed"],
-        "skipped": cf_summary["skipped"] + pf_summary["skipped"],
-        "errors": cf_summary["errors"] + pf_summary["errors"],
+        "uploaded": cf_summary["uploaded"] + pf_summary["uploaded"] + fc_summary["uploaded"],
+        "failed": cf_summary["failed"] + pf_summary["failed"] + fc_summary["failed"],
+        "skipped": cf_summary["skipped"] + pf_summary["skipped"] + fc_summary["skipped"],
+        "errors": cf_summary["errors"] + pf_summary["errors"] + fc_summary["errors"],
     }
-    log(f"\nListo. cf: {cf_summary}, pf: {pf_summary}")
+    log(f"\nListo. cf: {cf_summary}, pf: {pf_summary}, fc: {fc_summary}")
     return combined
 
 

@@ -1959,3 +1959,308 @@ corra en Databricks, no en local.
   cociente lluvia anual MERGE/estaciones cae de ~0,9 a 0,71/0,48/0,58 en 2023-2025 sin que la cobertura
   de estaciones baje (sube de 0,13 a 0,20) — sugiere una estación ANA nueva con posible error de
   unidades, a investigar en la Fase 3, no en esta decisión.
+
+---
+
+## Decisión 034: Trabajo paralelo mientras corre el backfill de `pf` — recuperación de `fc` local, extensión de GEFS 2006-2019 con filtro de sincronización
+
+### Estado
+
+`Aceptada` (2026-08-26), implementada y verificada parcialmente (GEFS extendido corriendo en
+background al cierre de esta decisión, `fc` verificado con una corrida real).
+
+### Contexto
+
+El backfill de `pf` (TIGGE) va a tardar varios días más (Decisión 030). La Decisión 012 sólo
+restringe TIGGE/ECDS — GEFS (bucket NOAA público) y `fc` (ECMWF Open Data) son APIs distintas,
+sin cuota compartida, así que pueden correr en la misma máquina al mismo tiempo sin reabrir el
+incidente de rate-limit. Esta decisión resume el trabajo lanzado en paralelo para que el resto
+del roadmap esté lo más cerca posible de cerrado cuando `pf` termine.
+
+### `fc` local (Fase 8) — recuperado y corriendo
+
+`landing_fc_opendata.py` existía y fue borrado en el commit `ac6deab` (reorganización de
+`notebooks_local/`, no una decisión deliberada de discontinuarlo). Se restauró tal cual desde
+`git show ac6deab~1:...` y se verificó con una corrida real contra la fuente: bajó la corrida
+2026-08-26T06:00, la recortó al bbox de la cuenca con `cfgrib` (sin el crash de Spark Connect
+serverless que motivó la Decisión 013 — acá corre en local, ese problema no existe) y escribió
+17.280 registros aplanados. Se registró la tarea de Windows `ECMWF_FC_Daily_Download`
+(`notebooks_local/ecmwf/scheduler/run_fc_task.ps1` + entrada agregada a `register_tasks.ps1`),
+redisparo cada 4h (hay 4 corridas/día de `fc`, a las 00/06/12/18 UTC) — urgente porque ECMWF
+Open Data sólo retiene ~12 corridas (2-3 días); cada día sin bajar es dato perdido para
+siempre. `sync_to_databricks.py` de `notebooks_local/ecmwf/` (ya usado por `cf`/`pf`) se
+extendió con un tercer directorio (`FC_JSON_DIR`/`VOLUME_FC_JSON_DIR`) para subir también los
+JSON de `fc` al Volume — aunque todavía **no existe `ETL_Bronze_ECMWF_FC.ipynb`** (pendiente,
+tarea posterior de la Fase 8): subir ya evita perder el archivo local si algo le pasa a esta
+máquina mientras se resuelve el resto de la fase.
+
+### GEFS — extensión 2006-10 → 2019-12 lanzada, con filtro de miembro en sync
+
+El hueco prioritario de GEFS (2000-01-01 → 2006-09-30) ya estaba completo y sincronizado desde
+el 2026-08-24 (2462/2465 días; 3 fallidos, sin reintentar todavía) — esto no estaba reflejado en
+`roadmap.md` (fecha de corte 08-24, quedó desactualizado antes de que esa corrida terminara).
+Faltaba extender a 2006-10 → 2019-12 (13 años), el tramo que la Decisión 021/Fase 4 necesita
+para calibrar el empalme GEFS↔TIGGE contra el solapamiento real. La Decisión 029 había dejado
+pendiente, explícitamente, si convenía reducir miembros del ensemble antes de bajar ese tramo
+(volumen dimensionado en ~780 GB de tráfico con el ensemble completo).
+
+**Decisión del usuario:** mantener el ensemble completo en la descarga (no reducir en Landing,
+mismo principio ya escrito en la Decisión 029), pero sincronizar a Databricks sólo el miembro de
+control `c00`. Implementado en `notebooks_local/gefs_reforecast/sync_to_databricks.py`: el JSON
+diario que escribe `download_gefs_backfill.py`/`run_full_backfill.py` en `output_json/` sigue
+conteniendo todos los miembros tal cual los publica la fuente (no se toca la descarga); antes de
+subir, `sync()` filtra cada archivo a los registros con `member in {"c00"}` (`_stage_filtered()`,
+escribe una copia temporal en `output_json_staged/`, nunca modifica el original) y sube esa
+copia. `sync()` acepta `members=None` (o `--all-members` en el CLI) para subir el ensemble
+completo sin volver a descargar nada, si más adelante se decide lo contrario. Filtrar en el
+punto de sync, no en Landing, sigue el mismo principio ya usado para R8/R9 (Decisiones 019/023):
+las reglas de selección/agregación viven donde se declaran explícitamente, no escondidas dentro
+de la descarga.
+
+Lanzado `run_full_backfill.py --from-date 2006-10-01 --to-date 2019-12-31 --workers 8
+--sync-every-days 30 --profile joaquintschopp@gmail.com` en background (lock compartido con
+`ana_historic_backfill`, libre en este momento). Confirmado arrancando: 4 días procesados en el
+primer minuto con 8 workers en paralelo.
+
+### Consecuencias
+
+* `docs/roadmap.md` Fase 4 se actualiza: `cf` completo, hueco de GEFS 2000-2006 completo,
+  extensión 2006-2019 en curso. Fase 8: primera tarea (arrancar la descarga cuanto antes) hecha;
+  falta todavía `ETL_Bronze_ECMWF_FC.ipynb` y encadenarlo en la Fase 5.
+* Los 3 días fallidos del backfill de GEFS 2000-2006 (`2000-06-27`, `2001-08-09`, `2005-03-07`)
+  quedan pendientes de reintentar — no bloquean la extensión, que corre sobre un rango distinto.
+* Si la extensión de GEFS pega contra algún error persistente de la fuente (equivalente a la
+  cinta dañada de TIGGE, Decisión 031), documentar acá o en una decisión nueva antes de saltear
+  ningún rango.
+
+---
+
+## Decisión 035: Calibración GEFS c00 → TIGGE cf, implementada y testeada offline; el solapamiento real disponible hoy es 0 días
+
+### Estado
+
+`Aceptada` (2026-08-26), lógica implementada y verificada con tests offline; verificación
+contra datos reales de solapamiento pendiente de que la extensión de GEFS (Decisión 034)
+avance lo suficiente.
+
+### Contexto
+
+La Decisión 021 (Fase 4 del roadmap) exige calibrar el sesgo de GEFS Reforecast v12 contra
+TIGGE `cf` sobre el solapamiento 2006-10→2019-12, por sub-cuenca y por horizonte, antes de
+publicar una serie homogénea de pronóstico. Sólo se sincroniza el miembro `c00` de GEFS a
+Databricks (Decisión 034), así que la comparación correcta es GEFS `c00` vs TIGGE `cf` — ambos
+son el determinista/control de cada sistema.
+
+Medida la cobertura real en Bronze (2026-08-26, warehouse serverless `d8aaafcf1fdb6645`):
+GEFS `c00` tiene 2.468 fechas de corrida (2000-01-01 → 2018-01-03, la extensión 2006-10→2019-12
+todavía no llegó más allá de esa fecha); TIGGE `cf` tiene 4.132 fechas dentro de la ventana
+2006-10→2019-12 (backfill histórico ya mergeado a Bronze en esta sesión, ver más abajo). El
+solapamiento real (mismo `run_date` en ambas fuentes) es **0 fechas hoy**: las únicas tres
+fechas de GEFS `c00` dentro de la ventana (2018-01-01/02/03) caen exactamente dentro del hueco
+documentado y aceptado de TIGGE (2017-06→2018-11, cinta MARS dañada, Decisión 031) — TIGGE
+recién retoma el 2018-08-03. No es un defecto del pipeline de calibración: es la intersección
+real de dos huecos de cobertura ya conocidos por separado.
+
+Como efecto colateral de esta investigación se corrieron dos `databricks jobs submit` ad hoc
+de una sola tarea cada uno (no se tocó `silver_gold_initial_load_v0` ni
+`silver_gold_daily_incremental`): `ETL_Bronze_ECMWF_CF` (mergeó el backfill histórico completo
+de `cf` que ya estaba subido al Volume desde las Decisiones 030/031 pero nunca se había
+mergeado a la tabla Bronze — terminado con éxito, TIGGE `cf` pasó a cubrir 2006-10→hoy en
+Bronze) y `ETL_Bronze_GEFS` (mergea el avance ya sincronizado de la extensión de GEFS —
+seguía corriendo al cierre de esta decisión, sin bloquear nada).
+
+### Diseño e implementación
+
+* `notebooks_local/forecast_calibration/calibration.py`: funciones puras de pandas, sin Spark.
+  * `horizon_steps(h)`: mapea cada uno de los 8 horizontes de la Decisión 019 (t+1..t+7, t+14)
+    al par de `step_hours` (múltiplos de 24h) que hay que restar sobre el `tp_mm` acumulado.
+    t+14 se define como la lluvia del día 14 puntual (step 312→336), no el acumulado de toda
+    la segunda semana — igual criterio que t+1..t+7.
+  * `tag_points()`: mismo criterio que `tag_points()` de `ETL_Silver_ECMWF_CF.ipynb` (buffer
+    0,15°, `sjoin` contra `SIG/subcuencas_modelo.geojson`).
+  * `daily_horizon_precip()`, `aggregate_by_subcuenca()`: precipitación diaria por horizonte y
+    promedio simple por sub-cuenca (mismo criterio sin ponderar de R8, Decisión 023).
+  * `compute_bias_table()`: sesgo **aditivo** (`media(TIGGE − GEFS)`) por `(subcuenca,
+    horizonte)`, medido únicamente sobre `run_date` con dato real en ambas fuentes. Elegido
+    sobre un factor multiplicativo porque la serie es fuertemente cero-inflada (un cociente
+    por día queda indefinido en los días secos) y el sesgo aditivo es estable con pocas
+    muestras — la situación real de hoy. Multiplicativo (cociente de sumas, no media de
+    cocientes) queda implementado para reevaluar con el solapamiento completo.
+  * `apply_bias()`: aplica el sesgo a la serie completa, clampea a 0, y marca
+    `calibrado=False` en cualquier `(subcuenca, horizonte)` sin evidencia real para
+    corregirlo — no inventa un sesgo por interpolación.
+* `notebooks_local/forecast_calibration/test_calibration.py`: 18 tests offline (sin Databricks
+  ni red), incluido un caso que reproduce el gotcha real de GEFS (puntos de la grilla 0,25°
+  que no son subconjunto de la grilla 0,5° del tramo `Days:10-16` — un `NaN` que en el primer
+  borrador se colaba en el conteo `n_points`, encontrado y corregido antes de cerrar esta
+  decisión).
+* `notebooks_local/forecast_calibration/db_query.py` + `run_calibration_check.py`: pull de
+  datos reales de Bronze vía el CLI `databricks` ya autenticado, tageo, cálculo y aplicación
+  de sesgo sobre el solapamiento real disponible en el momento de la corrida — sin fabricar
+  ningún dato si el solapamiento es 0.
+
+**No se implementó como notebook de Silver de producción.** Con 0 días de solapamiento real
+hoy, comprometerse a una tabla/DDL de Silver violaría el criterio de avance del roadmap
+("no cuenta como avance... generar tablas sin validar su granularidad"). La lógica de
+`calibration.py` está escrita para trasladarse 1:1 a PySpark en cuanto el solapamiento
+alcance un tamaño defendible.
+
+### Verificación
+
+* `python -m pytest notebooks_local/forecast_calibration/test_calibration.py -v`: **18/18
+  verde**, offline.
+* `python notebooks_local/forecast_calibration/run_calibration_check.py`, corrido contra
+  Bronze real (2026-08-26): mide la cobertura real de ambas tablas, arma el solapamiento real
+  (0 fechas) y termina explícitamente sin calibrar nada — no hay tabla de sesgo que mostrar
+  todavía. Verificado también que `weather.bronze.ecmwf_forecast_cf` en la ventana
+  2006-10→2007-04 ya tiene 183 fechas reales (por el merge ad hoc de esta sesión): en cuanto
+  la extensión de GEFS llegue a ese tramo, este mismo script va a producir una tabla de sesgo
+  real sin cambios de código.
+
+### Consecuencias
+
+* El pipeline de calibración queda listo y probado; lo único que falta es volumen real de
+  solapamiento, que depende de un proceso ya en marcha (Decisión 034) y fuera del control de
+  esta decisión.
+* `weather.bronze.ecmwf_forecast_cf` pasó a tener el backfill histórico completo mergeado
+  (6.560 fechas, 2006-10-01→hoy) como efecto colateral de esta investigación — dato relevante
+  para cerrar la Decisión 030/031, no se tocó `docs/data_sources.md` §7.11 en esta decisión
+  (queda desactualizado, pendiente para quien cierre esa fase).
+* Acción de seguimiento, no bloqueante: re-correr `run_calibration_check.py` periódicamente
+  mientras avanza la extensión de GEFS; en cuanto haya solapamiento real, generar la tabla de
+  sesgo definitiva y recién ahí evaluar si conviene productivizar el notebook de Silver.
+
+---
+
+## Decisión 036: Cierre de la Fase 6 — reporte de calidad y diccionario de columnas de `training_dataset_v0`
+
+### Estado
+
+`Aceptada` (2026-08-26), verificada contra Databricks real. Cierra el ~80% de la Fase 6 del roadmap
+(lo que depende de las Fases 2, 3, 7 y 9, ya cerradas); lo que depende de la Fase 4 (pronóstico)
+queda marcado como pendiente explícito.
+
+### Contexto
+
+La Fase 6 pedía cuatro cosas: faltantes por columna/año, discontinuidades temporales y verificación
+de fuga de target; un diccionario completo de columnas; cobertura por `caudal_metodo` y por veredicto
+de curva; y traer al repo `Validate_Training_Dataset_v0.ipynb`/`Check_Bronze_Freshness.ipynb`, que la
+Decisión 017 daba como pendientes de exportar desde el Workspace. Al revisar el repo, ese último
+punto ya estaba resuelto (probablemente en el commit `864cb85` u otro anterior, sin decisión que lo
+registrara): ambos notebooks ya estaban versionados y, verificado con `databricks workspace export
+--format SOURCE`, son idénticos al Workspace real.
+
+### Decisión
+
+* `docs/gold_quality_report.md` (nuevo) documenta las 83 columnas de
+  `weather.gold.training_dataset_v0` con unidad, origen, regla de cálculo y rango observado real; los
+  faltantes por columna y por año; la cobertura por `caudal_metodo` y por veredicto de curva; y la
+  verificación de fuga de target sobre las 9.732 filas completas (0 mismatches en t+1/t+7/t+14).
+* **Sin huecos de calendario**: `DATEDIFF(MAX(fecha),MIN(fecha))+1 = COUNT(*) = COUNT(DISTINCT
+  fecha) = 9.732`. Sí hay huecos de valor dentro de filas existentes: 27 días con nivel y caudal
+  ambos `NULL` (2014-12-31 + 2026-04-07→05-04), 93 días (2025-11-01→2026-03-27) con nivel `NULL`
+  pero caudal con dato, y 9 días de cola reciente con nivel pero sin caudal — detalle completo en
+  `gold_quality_report.md` §3.
+* **Tres hallazgos de calidad no documentados antes de esta sesión:**
+  1. Los 93 días de nivel `NULL`/caudal con dato son un caso real de divergencia entre
+     `weather.silver.river_levels_daily` y `weather.silver.river_discharge_daily` (dos pipelines
+     Silver independientes sobre el mismo Bronze), sin investigar la causa raíz todavía.
+  2. `caudal_agregado_alta_frontera_m3s` no filtra por `caudal_confiable` (deliberado desde la
+     Decisión 028): el 99,2% de las filas incluyen al menos una estación no confiable, y el pico
+     medido (823.897,75 m³/s el 2023-05-06, 25× el máximo real del target) lo explica sólo la
+     estación `73340000` (`extrapolado_superior`), que domina el agregado durante meses de 2023.
+  3. `lluvia_acumulada_mm` es una **suma** sobre estaciones (no una lectura puntual); su máximo real
+     (12.241,28 mm, 2024-12-07, 152 estaciones) puede leerse como error de unidades sin esta nota.
+* Se confirma que `notebooks/06_Quality/Validate_Training_Dataset_v0.ipynb` y
+  `Check_Bronze_Freshness.ipynb` ya están en el repo, idénticos al Workspace — el pendiente de la
+  Decisión 017 queda saldado sin acción nueva.
+* Queda marcado explícitamente lo que falta cuando cierre la Fase 4: columna `forecast_source`
+  (no existe todavía en el esquema), features de pronóstico calibrado y su cobertura por horizonte —
+  documentado como sección final de `gold_quality_report.md`, sin bloquear el resto.
+
+### Justificación
+
+Medir contra Databricks real en vez de inferir de los notebooks (mismo principio que rige las
+Decisiones 023-028 y 033) encontró tres cosas que la documentación anterior no capturaba: dos son
+limitaciones reales de diseño (agregado sin filtro de confiabilidad, columna de suma con nombre
+ambiguo) y una es una divergencia entre pipelines que merece investigación en una sesión futura.
+Ninguna bloquea el cierre de la Fase 6 porque son propiedades de la fuente/diseño ya cerrado, no
+errores en el reporte de calidad en sí.
+
+### Consecuencias
+
+* La Fase 6 del roadmap pasa de `Pendiente` a `Cerrada (2026-08-26, parcial)` para las tareas que no
+  dependen de la Fase 4; el criterio de cierre completo ("el capítulo de datos de la tesis se puede
+  escribir sin volver a consultar Databricks") se cumple para todo excepto pronóstico.
+  `docs/gold_quality_report.md` es el entregable versionado. Registrada la Decisión anterior (033)
+  como pendiente #9 ("Sumar las 12 columnas MERGE/SAMeT al diccionario de la Fase 6") — cumplida en
+  este reporte, §7.6.
+* Quien use `caudal_agregado_alta_frontera_m3s`, `caudal_agregado_intermedia_paso_libres_m3s` o
+  `caudal_agregado_baja_salto_grande_m3s` en modelado debe filtrar o investigar la estación `73340000`
+  antes de usarla como feature cruda — el hallazgo #2 arriba.
+* Al cerrar la Fase 4, `docs/gold_quality_report.md` §9 debe actualizarse: sumar `forecast_source` al
+  diccionario, sus faltantes por año y cobertura por horizonte t+1..t+14.
+
+---
+
+## Decisión 037: Cierre del eslabón Bronze de `fc` — `ETL_Bronze_ECMWF_FC.ipynb`, tabla `weather.bronze.ecmwf_forecast_fc`
+
+### Estado
+
+`Aceptada` (2026-08-26), implementada y verificada contra Databricks real.
+
+### Contexto
+
+La Decisión 034 recuperó `landing_fc_opendata.py` y extendió `notebooks_local/ecmwf/sync_to_databricks.py`
+para subir el JSON recortado de `fc` a `dbfs:/Volumes/weather/raw/ecmwf_volume/fc_opendata/json`, pero
+dejó explícitamente pendiente que no existía ningún notebook de Bronze que lo leyera — el archivo se
+acumulaba en el Volume sin consumidor. Esta decisión cierra ese eslabón, mismo patrón ya usado dos veces
+en el repo (TIGGE `cf`/`pf` y, más recientemente, GEFS — Decisión 029).
+
+### Diseño e implementación
+
+* `notebooks/02_Bronze/ETL_Bronze_ECMWF_FC.ipynb`: mismo patrón que `ETL_Bronze_ECMWF_CF.ipynb` (lee el
+  Volume completo con `spark.read.schema(...).json(RAW_PATH)`, dedup por `row_number` sobre
+  `extracted_at` descendente, `MERGE ... WHEN NOT MATCHED INSERT ALL`), pero **sin la columna `number`**:
+  `fc` es determinístico (HRES), un único miembro por corrida, a diferencia de `cf`/`pf` (ensemble TIGGE)
+  o GEFS (`member` string). Confirmado contra `common_ecmwf.flatten_forecast()`: `landing_fc_opendata.py`
+  la llama sin el argumento `number`, así que el JSON de `fc` nunca tiene esa clave — el schema Spark y la
+  clave de `MERGE` (`run_date`+`run_time`+`step_hours`+`latitude`+`longitude`, sin `number`) reflejan eso.
+* DDL: `CREATE TABLE IF NOT EXISTS weather.bronze.ecmwf_forecast_fc` agregado a
+  `notebooks/04_Silver/DDL_Silver_Gold.ipynb` (mismo lugar que GEFS/INMET, no en
+  `notebooks/01_DDL/DDL_ECMWF_Forecast.ipynb`, que sólo corre en el job de `cf`/`pf`). No hizo falta
+  `CREATE VOLUME`: `weather.raw.ecmwf_volume` ya estaba declarado de forma genérica (no por subcarpeta) en
+  `DDL_ECMWF_Forecast.ipynb`, y la carpeta `fc_opendata/json/` ya existía en el Volume desde la Decisión 034.
+* `databricks.yml`: `ETL_Bronze_ECMWF_FC` agregado a `silver_gold_initial_load_v0` (depende de
+  `DDL_Silver_Gold`) y `silver_gold_daily_incremental` (depende de `Check_Bronze_Freshness`) — exactamente
+  el mismo wiring que `ETL_Bronze_GEFS`: corre en paralelo a la cadena principal de Silver, no la bloquea
+  ni depende de ella (`fc` todavía no tiene consumidor en Silver/Gold, eso es Fase 5).
+
+### Verificación contra Databricks real
+
+`SHOW TABLES IN weather.bronze` confirmó, antes de crear nada, que no existía colisión de nombre. La tarea
+programada `ECMWF_FC_Daily_Download` todavía no había disparado ninguna corrida real
+(`Último tiempo de ejecución: 30/11/1999`), así que los 2 JSON ya aterrizados en local
+(`ECMWF_FC_2026_07_27_t06.json`, `ECMWF_FC_2026_08_26_t06.json`, de la verificación manual de la Decisión
+034) se subieron con `databricks fs cp` al Volume. `DDL_Silver_Gold` y `ETL_Bronze_ECMWF_FC` corridos como
+`databricks jobs submit` ad hoc (no se corrió el job completo, mismo criterio que GEFS) — **SUCCESS**.
+Consulta SQL directa contra el warehouse serverless confirmó `weather.bronze.ecmwf_forecast_fc`:
+**34.560 filas**, 2 `run_date` (2026-07-27 y 2026-08-26), `step_hours` de 0 a 360 (paso 24h, coincide con
+`STEPS_HOURS` de `landing_fc_opendata.py`), `tp_mm` en `[0,0 , 313,29]` mm (rango sano, mismo orden de
+magnitud que GEFS `[0, 347]`). `DESCRIBE` confirmó el schema sin columna `number`. Notebooks sincronizados
+al Workspace Repo con `databricks workspace import --format JUPYTER --overwrite`; `databricks.yml`
+desplegado con `databricks bundle deploy` y confirmado vía `jobs get` sobre los dos job_id reales que la
+tarea `ETL_Bronze_ECMWF_FC` quedó wireada con el `depends_on` correcto en ambos jobs.
+
+### Consecuencias
+
+* `docs/data_sources.md` §7 se actualiza: `fc` deja de estar "descartado" (§7.1) y su tabla Bronze,
+  rutas y estado se documentan igual que `cf`/`pf` (§7.4-7.6, 7.9).
+* `docs/roadmap.md` Fase 8: la tarea "Encadenarlo en la cadena diaria de la Fase 5" queda **parcialmente
+  resuelta** (existe consumidor en Bronze, corriendo en Databricks) — lo que falta es específicamente el
+  encadenamiento en el schedule de las 06:00 (Fase 5, fuera de alcance de esta decisión) y el consumidor de
+  Silver/Gold.
+* Sin verificar todavía: una corrida real disparada por la tarea de Windows (`ECMWF_FC_Daily_Download`,
+  próxima 17:35) seguida de una corrida real de `ETL_Bronze_ECMWF_FC` end-to-end sin intervención manual —
+  la corrida ad hoc de esta decisión usó archivos subidos a mano porque la tarea programada no había
+  disparado todavía.

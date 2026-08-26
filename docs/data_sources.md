@@ -18,6 +18,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 | ANA — Lluvias estaciones pluvio | Hidrológica   | Compartida con ANA | `weather.bronze.ana_rio_uruguai`| Subdiaria          | Features lluvia     |
 | Salto Grande — Lluvia estaciones| Hidrológica   | Pipeline nuevo     | `weather.bronze.sg_rainfall`    | Diaria             | Features lluvia     |
 | ECMWF — Pronóstico precipitación (cf + pf) | Pronóstico | Bronze + Silver + diaria | `weather.bronze.ecmwf_forecast_cf` / `_pf` | Diaria (grilla 0,25°) | Features futuras |
+| ECMWF — Pronóstico determinístico (fc) | Pronóstico | Landing local + Bronze diaria | `weather.bronze.ecmwf_forecast_fc` | 4 corridas/día | Features futuras (sin Silver/Gold aún) |
 | ANA — Curvas de aforo (rating curve) | Hidrológica | Bronze + Silver + Gold, grupo A completo | `weather.bronze.ana_rating_curve_segments` / `ana_discharge_measurements` | Estática (revisión trimestral) | Conversión nivel→caudal |
 | Evaporación                     | Meteorológica | No ingestada       | —                               | Diaria             | Features            |
 | CPTEC — MERGE (lluvia observada en grilla) | Observación en grilla | Bronze + Silver + Gold + diaria (Fase 9) | `weather.bronze.merge_precip_grid` | Diaria (0,1°, ventana 12Z-12Z) | Features lluvia (media areal `alta_frontera`) |
@@ -304,7 +305,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 * `cf` (control forecast del ensemble) y `pf` (perturbed forecast, 50 miembros): dataset `tigge-forecasts` en el portal nuevo ECMWF Data Stores (`https://ecds.ecmwf.int`), vía paquete estándar `cdsapi`. Request MARS clásico (`origin=ecmf`, `levtype=sfc`, `param=228228`, `type=cf`/`pf`).
 * Autenticación: credenciales `cdsapi_url` / `cdsapi_key` (del `~/.cdsapirc` del usuario) guardadas en el Databricks secret scope `ecmwf`, leídas vía `dbutils.secrets.get`.
 * Nota histórica: el ECMWF Web API legacy (`api.ecmwf.int`, paquete `ecmwfapi`) quedó deshabilitado (token) y fue reemplazado por este portal nuevo — ver `decisions.md`.
-* `fc` (determinístico, HRES vía ECMWF Open Data, `ecmwf.opendata.Client`) se evaluó e implementó, pero se **descartó**: requiere `cfgrib`/`eccodes`, que desde la versión ≥2.39 depende de la librería nativa `eckit` y esta aborta el proceso (`SIGABRT`) en el compute serverless de este workspace — el workspace no permite compute clásico como alternativa. Ver Decisión 013 en `decisions.md` para el diagnóstico completo.
+* `fc` (determinístico, HRES vía ECMWF Open Data, `ecmwf.opendata.Client`): **ya no está descartado**. La causa raíz sigue siendo válida (`cfgrib`/`eccodes` ≥2.39 depende de la librería nativa `eckit`, que aborta el proceso con `SIGABRT` en el compute serverless de este workspace — sin compute clásico disponible como alternativa, ver Decisión 013), pero desde la Decisión 022/034 el proceso se movió a **ejecución local** (`notebooks_local/ecmwf/landing_fc_opendata.py`), donde el Spark Connect que provoca la colisión no existe. Corre sin autenticación, sin recorte `area` server-side (se recorta al bbox de la cuenca del lado del cliente, igual que GEFS), como tarea de Windows cada 4h (`ECMWF_FC_Daily_Download`, urgente porque Open Data retiene sólo ~12 corridas). El JSON recortado se sube a `dbfs:/Volumes/weather/raw/ecmwf_volume/fc_opendata/json` y un notebook de Bronze (`notebooks/02_Bronze/ETL_Bronze_ECMWF_FC.ipynb`) lo mergea a `weather.bronze.ecmwf_forecast_fc` — ver Decisión 037. Sin consumidor en Silver/Gold todavía (Fase 5).
 
 ### 7.2. Cobertura espacial
 
@@ -320,22 +321,23 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ### 7.4. Notebooks asociados
 
-* DDL: `notebooks/01_DDL/DDL_ECMWF_Forecast.ipynb` (crea el volumen, carpetas, tablas Bronze y Silver).
-* Landing diaria: `notebooks/00_Landing/ECMWF/Daily_ECMWF_CF.ipynb` y `Daily_ECMWF_PF.ipynb`.
-* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_ECMWF_CF.ipynb` y `ETL_Bronze_ECMWF_PF.ipynb`.
-* Silver diaria (recorte al polígono real): `notebooks/04_Silver/ETL_Silver_ECMWF_CF.ipynb` y `ETL_Silver_ECMWF_PF.ipynb`.
+* DDL: `notebooks/01_DDL/DDL_ECMWF_Forecast.ipynb` (crea el volumen, carpetas, tablas Bronze y Silver de `cf`/`pf`); la tabla Bronze de `fc` se declara en `notebooks/04_Silver/DDL_Silver_Gold.ipynb` (mismo patrón que GEFS/INMET, ver Decisión 037).
+* Landing diaria: `notebooks/00_Landing/ECMWF/Daily_ECMWF_CF.ipynb` y `Daily_ECMWF_PF.ipynb` (Databricks); `fc` corre **en local**, `notebooks_local/ecmwf/landing_fc_opendata.py`, sin equivalente en Databricks (Decisión 013/022).
+* Bronze diaria: `notebooks/02_Bronze/ETL_Bronze_ECMWF_CF.ipynb`, `ETL_Bronze_ECMWF_PF.ipynb` y `ETL_Bronze_ECMWF_FC.ipynb` (los tres corren en Databricks, leyendo el JSON ya aterrizado — `fc` desde el Volume que llena el landing local).
+* Silver diaria (recorte al polígono real): `notebooks/04_Silver/ETL_Silver_ECMWF_CF.ipynb` y `ETL_Silver_ECMWF_PF.ipynb`. `fc` todavía no tiene consumidor en Silver (Fase 5 del roadmap).
 
 ### 7.5. Rutas de almacenamiento
 
-* Volumen: `weather.raw.ecmwf_volume`.
+* Volumen: `weather.raw.ecmwf_volume` (compartido por `cf`, `pf` y `fc`).
 * `cf`: `/Volumes/weather/raw/ecmwf_volume/cf_tigge/{raw,json}/` (archivos `ECMWF_CF_YYYY_MM_DD_t{HH}.{nc,json}`).
 * `pf`: `/Volumes/weather/raw/ecmwf_volume/pf_tigge/{raw,json}/` (archivos `ECMWF_PF_YYYY_MM_DD_t{HH}.{nc,json}`).
+* `fc`: `/Volumes/weather/raw/ecmwf_volume/fc_opendata/json/` (archivos `ECMWF_FC_YYYY_MM_DD_t{HH}.json`, subidos desde `notebooks_local/ecmwf/local_data/ecmwf_volume/fc_opendata/json/` por `notebooks_local/ecmwf/sync_to_databricks.py`; no hay carpeta `raw/` en el Volume porque el `.grib2` crudo se descarta en local apenas se aplana).
 * Idempotencia: si ya existe el JSON de la corrida (`run_date`+`run_time`), se saltea salvo `force_reload=true`.
 
 ### 7.6. Tablas
 
-* Bronze: `weather.bronze.ecmwf_forecast_cf`, `weather.bronze.ecmwf_forecast_pf` (ambas con columna `number` de ensemble). Contienen todo el bounding box descargado, sin recortar al polígono.
-* Silver: `weather.silver.ecmwf_forecast_cf_basin`, `weather.silver.ecmwf_forecast_pf_basin`. Solo puntos de grilla dentro del buffer del polígono de las 3 sub-cuencas, tageados con `subcuenca_id`/`subcuenca_nombre`.
+* Bronze: `weather.bronze.ecmwf_forecast_cf`, `weather.bronze.ecmwf_forecast_pf` (ambas con columna `number` de ensemble) y `weather.bronze.ecmwf_forecast_fc` (sin `number`: `fc` es determinístico, un único miembro por corrida). Las tres contienen todo el bounding box descargado, sin recortar al polígono.
+* Silver: `weather.silver.ecmwf_forecast_cf_basin`, `weather.silver.ecmwf_forecast_pf_basin`. Solo puntos de grilla dentro del buffer del polígono de las 3 sub-cuencas, tageados con `subcuenca_id`/`subcuenca_nombre`. `fc` no tiene tabla Silver todavía.
 
 ### 7.7. Job Databricks
 
@@ -355,7 +357,7 @@ Las decisiones metodológicas asociadas se documentan por separado en `decisions
 
 ### 7.9. Estado
 
-`Bronze + Silver operativos, job diario activo (validado manualmente el 2026-07-27). fc descartado (ver 7.1 y Decision 013).`
+`cf`/`pf`: Bronze + Silver operativos, job diario activo en Databricks (validado manualmente el 2026-07-27); backfill histórico local en curso (Decisión 030). `fc`: landing local operativo cada 4h (Decisión 034) y Bronze operativo en Databricks (`weather.bronze.ecmwf_forecast_fc`, Decisión 037) — sin Silver/Gold todavía (Fase 5 del roadmap).
 
 ### 7.10. Limitaciones conocidas
 

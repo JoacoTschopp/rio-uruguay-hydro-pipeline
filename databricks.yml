@@ -31,6 +31,13 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
             source: WORKSPACE
 
+        - task_key: ETL_Bronze_ECMWF_FC
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: DDL_Silver_Gold
@@ -144,6 +151,13 @@ resources:
             - task_key: Check_Bronze_Freshness
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
+            source: WORKSPACE
+
+        - task_key: ETL_Bronze_ECMWF_FC
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
             source: WORKSPACE
 
         - task_key: ETL_Silver_Level_Daily
