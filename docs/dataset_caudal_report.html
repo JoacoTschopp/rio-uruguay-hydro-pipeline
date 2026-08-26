@@ -200,15 +200,16 @@ footer .mono{font-size:12px}
   <div class="wrap">
     <p class="eyebrow">Informe de datos · Tesis · Río Uruguay</p>
     <h1>Dataset para predecir el <em>caudal</em> del Río Uruguay en la cuenca alta</h1>
-    <p class="lede">Estado de las capas Silver y Gold, el recorte de alcance de la tesis, el contrato de
-      consolidación del dataset Gold y el plan de continuación ordenado por entregable más rápido.</p>
+    <p class="lede">Estado de las capas Silver y Gold, el contrato de consolidación ya cerrado, las
+      fuentes de lluvia y temperatura — por estación y ahora también en grilla (CPTEC/INPE) — y lo que
+      queda abierto del plan: pronóstico en Gold, cadena diaria y diccionario de columnas.</p>
     <div class="metaline">
       <span class="chip">Alcance Gold <b>cuenca alta · alta_frontera</b></span>
       <span class="chip">Objetivo <b>caudal m³/s</b></span>
       <span class="chip">Horizontes <b>t+1…t+7 · t+14</b></span>
       <span class="chip">Estación target <b class="mono">74100000 · Irai</b></span>
       <span class="chip">Entorno <b>Databricks · Unity Catalog</b></span>
-      <span class="chip">Corte <b>2026-08-21</b></span>
+      <span class="chip">Corte <b>2026-08-26</b></span>
     </div>
   </div>
   <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true">
@@ -264,29 +265,32 @@ footer .mono{font-size:12px}
 
 <!-- 02 · ESTADO GENERAL -->
 <section>
-  <div class="sec-head"><span class="sec-num">02</span><h2>Estado general al 2026-08-21</h2></div>
-  <p class="sec-sub">Las dos descargas largas que estaban corriendo en la sesión anterior
-    <strong>terminaron</strong>: el backfill histórico de ANA agotó las 361 estaciones activas y el barrido de
-    curvas de aforo cubrió las 392 estaciones con nivel. Ya no hay procesos de descarga bloqueando nada.</p>
+  <div class="sec-head"><span class="sec-num">02</span><h2>Estado general al 2026-08-26</h2></div>
+  <p class="sec-sub">El contrato de consolidación (§06) está cerrado: sus nueve reglas están implementadas y
+    verificadas contra Databricks real. Lluvia y temperatura dejaron de ser un pendiente — por estación
+    (ANA + INMET) y, desde esta semana, también como observación en grilla de cobertura completa
+    (CPTEC/INPE, §08). Lo que sigue abierto es el pronóstico dentro de Gold, la cadena diaria y el
+    diccionario de columnas (§09).</p>
   <div class="kpis">
-    <div class="kpi"><div class="n">31.094</div><div class="l">filas en <span class="mono">gold.training_dataset_v0</span></div><div class="s">1941 → 2026 · 1 punto</div></div>
-    <div class="kpi"><div class="n">9.694</div><div class="l">filas con caudal poblado</div><div class="s">desde 2000-01-01</div></div>
-    <div class="kpi"><div class="n rio">210.106</div><div class="l">filas de caudal diario en Silver</div><div class="s">22 estaciones · cuenca alta</div></div>
+    <div class="kpi"><div class="n">9.732</div><div class="l">filas en <span class="mono">gold.training_dataset_v0</span></div><div class="s">2000-01-01 → 2026-08-23 · 1 punto</div></div>
+    <div class="kpi"><div class="n">9.696</div><div class="l">filas con caudal poblado</div><div class="s">99,6% · el resto conserva sólo nivel</div></div>
+    <div class="kpi"><div class="n rio">324.063</div><div class="l">filas de caudal diario en Silver</div><div class="s">62 estaciones con curva · toda la cuenca</div></div>
     <div class="kpi"><div class="n">392</div><div class="l">estaciones barridas por curva de aforo</div><div class="s">barrido cerrado · 0 errores</div></div>
     <div class="kpi"><div class="n">62</div><div class="l">estaciones con curva publicada por ANA</div><div class="s">330 sin curva</div></div>
-    <div class="kpi"><div class="n">19<span style="font-size:1.1rem;color:var(--ink-3)">/22</span></div><div class="l">curvas confiables en la cuenca alta</div><div class="s">3 sospechosas · MAPE &gt; 20%</div></div>
+    <div class="kpi"><div class="n">20<span style="font-size:1.1rem;color:var(--ink-3)">/22</span></div><div class="l">curvas confiables en la cuenca alta</div><div class="s">R7 · MAPE ≤ 30% en rango calibrado</div></div>
   </div>
   <div class="grid g2" style="margin-top:20px">
-    <div class="callout"><strong>Lo que ya está resuelto.</strong> Conversión física nivel→caudal por curva
-      vigente en cada fecha, targets de caudal, features hidrológicas de nivel y caudal, agregado de caudal de
-      la cuenca alta, y trazabilidad de qué curva se usó en cada registro. Clave lógica sin duplicados y sin
-      fugas de target verificadas. Las dos fuentes que faltaban descargar están completas, y las reglas de
-      exclusión que quedaban abiertas ya tienen decisión tomada (§06).</div>
-    <div class="callout warn"><strong>Lo que limita el dataset hoy.</strong> Las nuevas reglas están decididas
-      pero no implementadas, y los horizontes pasan de 4 a 8 — Gold hay que regenerarlo; el barrido local de
-      curvas quedó por delante de lo cargado en Databricks; lluvia y temperatura siguen publicándose como
-      <code>NULL</code> por un portón de calidad mal medido (§08); el pronóstico ECMWF vive en Silver pero no
-      llega a Gold; y no existe todavía una forma de bajar el dataset a la máquina local (§10).</div>
+    <div class="callout"><strong>Lo que ya está resuelto.</strong> Las nueve reglas del contrato (§06), 8
+      horizontes de caudal y de nivel en paralelo, lluvia y temperatura pobladas con cobertura como columna
+      en vez de un portón todo-o-nada (R8, INMET + METAR), el agregado de <code>alta_frontera</code>
+      densificado con 36 estaciones, el exportador local del dataset, y — nuevo esta semana — dos
+      observaciones en grilla de CPTEC/INPE (MERGE lluvia, SAMeT temperatura) con <strong>100% de cobertura
+      diaria desde 2000-01-01</strong>, incluido un job que las mantiene al día automáticamente.</div>
+    <div class="callout warn"><strong>Lo que limita el dataset hoy.</strong> El pronóstico (TIGGE + GEFS)
+      vive en Silver pero todavía no entra a Gold — falta la serie homogénea con <code>forecast_source</code>
+      y el recorte a <code>alta_frontera</code> (§09 · Fase 4); la cadena diaria de las 06:00 no está
+      formalmente cerrada (el pronóstico ECMWF corre después de Gold, §11); y el reporte de calidad con el
+      diccionario de columnas sigue pendiente (§09 · Fase 6).</div>
   </div>
 </section>
 <hr class="rule">
@@ -300,10 +304,10 @@ footer .mono{font-size:12px}
     Bronze y Silver siguen cubriendo toda la cuenca.</p>
   <div class="flow">
     <div class="stage"><span class="tag">Landing</span><h4>Fuentes crudas</h4>
-      <ul><li>ANA HidroWebService</li><li>METAR / NOAA</li><li>Salto Grande</li><li>ECMWF Data Stores</li></ul>
+      <ul><li>ANA HidroWebService</li><li>METAR / NOAA · INMET</li><li>Salto Grande</li><li>ECMWF · GEFS · CPTEC</li></ul>
       <span class="arrow">→</span></div>
     <div class="stage"><span class="tag">Bronze</span><h4>Espejo tipado</h4>
-      <ul><li>nivel_ana · ana_rio_uruguai</li><li>metar · sg_rainfall</li><li>rating_curve_segments</li><li>ecmwf_forecast_cf/pf</li></ul>
+      <ul><li>nivel_ana · ana_rio_uruguai</li><li>metar · inmet · sg_rainfall</li><li>rating_curve_segments</li><li>ecmwf_cf/pf · gefs · merge/samet_grid</li></ul>
       <span class="arrow">→</span></div>
     <div class="stage"><span class="tag">Silver</span><h4>Limpio + diario · toda la cuenca</h4>
       <ul><li>river_levels_daily</li><li><b>river_discharge_daily</b></li><li>temperature · rainfall</li><li>ecmwf_*_basin</li></ul>
@@ -375,8 +379,8 @@ footer .mono{font-size:12px}
     <table>
       <thead><tr><th>Veredicto</th><th class="num">Estaciones</th><th>Qué significa</th><th>Efecto sobre Gold</th></tr></thead>
       <tbody>
-        <tr><td class="mono">usable</td><td class="num">19</td>
-          <td>Curva completa, validada contra aforos con MAPE ≤ 20%</td>
+        <tr><td class="mono">usable</td><td class="num">20</td>
+          <td>Curva completa, validada contra aforos con MAPE ≤ 30% en el rango calibrado (criterio cerrado por R7)</td>
           <td><span class="pill p-ok">nivel + caudal</span></td></tr>
         <tr><td class="mono">usable_sin_validacion</td><td class="num">35</td>
           <td>Curva completa pero sin aforos descargados para validar (barrido del grupo B con <code>--skip-aforos</code>)</td>
@@ -384,8 +388,8 @@ footer .mono{font-size:12px}
         <tr><td class="mono">usable_con_huecos</td><td class="num">5</td>
           <td>Curva con un hueco de vigencia posterior a 2000</td>
           <td><span class="pill p-out">fuera de la cuenca alta</span></td></tr>
-        <tr><td class="mono">sospechosa</td><td class="num">3</td>
-          <td>MAPE contra aforos por encima del umbral: <code>70300000</code> 111%, <code>70100000</code> 86%, <code>72715000</code> 22%</td>
+        <tr><td class="mono">sospechosa</td><td class="num">2</td>
+          <td>MAPE por encima del umbral, medido sólo contra aforos dentro del rango calibrado (R7): <code>70300000</code> 138%, <code>70100000</code> 123%</td>
           <td><span class="pill p-warn">nivel sí, caudal fuera del agregado</span></td></tr>
         <tr><td class="mono">sin_curva</td><td class="num">330</td>
           <td>ANA no publica curva-chave para esa estación — <code>[]</code> confirmado en todas las ventanas</td>
@@ -408,12 +412,13 @@ footer .mono{font-size:12px}
       por definitivo.</div>
   </div>
 
-  <div class="callout warn" style="margin-top:16px"><strong>El MAPE no coincide entre las dos mediciones.</strong>
-    El reporte local calcula <code>70100000</code> = 86% y <code>70300000</code> = 111%; la validación en
-    Silver registró 123% y 138% para las mismas estaciones. La diferencia está en qué aforos entran en la
-    comparación (todos vs. sólo los que caen dentro del rango calibrado). Hay que elegir una sola definición
-    y dejarla escrita, porque es la que decide qué estación entra al agregado de la cuenca alta. Es el único
-    punto del contrato que sigue abierto.</div>
+  <div class="callout" style="margin-top:16px"><strong>Cerrado (R7): el MAPE se mide sólo contra aforos
+    dentro del rango calibrado de la curva.</strong> Con dos mediciones posibles — todos los aforos vs. sólo
+    los del rango — se adoptó la segunda: mide lo que la curva efectivamente promete cubrir. El umbral pasó de
+    20% a <strong>30%</strong> porque el agregado de la cuenca alta es chico (22 estaciones) y perder una por
+    dos puntos porcentuales cuesta más que el rigor extra. Resultado final: <strong>20 de 22 usables</strong>;
+    <code>70100000</code> (123%) y <code>70300000</code> (138%) quedan fuera del agregado pero conservan su
+    nivel.</div>
 </section>
 <hr class="rule">
 
@@ -438,19 +443,19 @@ footer .mono{font-size:12px}
           <td><strong>Sub-cuenca</strong></td>
           <td>Sólo estaciones de <code>alta_frontera</code> en <code>silver.estacion_subcuenca</code></td>
           <td>Las otras dos sub-cuencas: columnas de agregado en <code>NULL</code></td>
-          <td><span class="pill p-warn">a formalizar</span></td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
         <tr>
           <td><strong>Estación sin curva</strong></td>
           <td>Sin curva-chave publicada ⇒ sin caudal derivable, <strong>pero el nivel se conserva</strong> y sigue disponible como feature</td>
           <td>Sólo el caudal de esas estaciones. 330 del barrido; 0 de la cuenca alta</td>
-          <td><span class="pill p-warn">nueva regla</span></td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
         <tr>
           <td><strong>Vigencia vencida</strong></td>
           <td>Se extiende la última curva publicada hasta hoy, marcada con <code>curva_vigencia_extendida</code></td>
           <td>Nada. Recupera el tramo 2024–2026 de <code>70100000</code> y <code>72715000</code></td>
-          <td><span class="pill p-warn">nueva regla</span></td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
         <tr>
           <td><strong>Cota fuera de rango</strong></td>
@@ -462,25 +467,28 @@ footer .mono{font-size:12px}
           <td><strong>Estación íntegramente fuera de tabla</strong></td>
           <td>Si <strong>toda</strong> la serie de una estación cae fuera del rango calibrado, se descarta su caudal y queda sólo el nivel</td>
           <td>Ninguna estación califica hoy; es una salvaguarda, no una exclusión activa</td>
-          <td><span class="pill p-crit">nueva regla</span></td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
         <tr>
           <td><strong>Curva no confiable</strong></td>
           <td><code>is_usable = false</code> ⇒ el caudal se excluye de <code>caudal_confiable</code> y del agregado; el nivel se conserva</td>
-          <td>2 o 3 estaciones de la cuenca alta según qué definición de MAPE se adopte</td>
-          <td><span class="pill p-crit">umbral abierto</span></td>
+          <td>2 estaciones de la cuenca alta (<code>70100000</code>, <code>70300000</code>) — MAPE ≤ 30% en rango, criterio cerrado por R7</td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
         <tr>
-          <td><strong>Fuente con faltantes</strong></td>
-          <td><code>missing_pct &gt; 0,90</code> ⇒ la columna se publica en <code>NULL</code></td>
-          <td>Temperatura y lluvia — pero el criterio está mal medido, ver §08</td>
-          <td><span class="pill p-warn">a rediseñar</span></td>
+          <td><strong>Fuente con faltantes (R8)</strong></td>
+          <td>Sin umbral de exclusión: se publica toda estación con dato real; la cobertura viaja como
+            columna (<code>*_cobertura_pct</code>) en vez de un portón todo-o-nada</td>
+          <td>Nada se borra. Lluvia (332 estaciones), temperatura (INMET + METAR) y, desde esta semana,
+            MERGE/SAMeT en grilla (100% de cobertura, §08)</td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
         <tr>
-          <td><strong>Cola sin target</strong></td>
-          <td>Cada horizonte pierde sus últimos <em>h</em> días; con 8 horizontes la cola útil depende del horizonte</td>
-          <td>De 1 día (t+1) a 14 días (t+14) al final de la serie</td>
-          <td><span class="pill p-crit">sin implementar</span></td>
+          <td><strong>Cola sin target (R9)</strong></td>
+          <td>Gold conserva la foto completa, targets en <code>NULL</code> donde no hay observación; el
+            recorte por horizonte lo aplica el exportador (<code>--horizonte</code>), no Gold</td>
+          <td>Nada en Gold. El exportador recorta de 1 día (t+1) a 14 días (t+14) al bajar el dataset</td>
+          <td><span class="pill p-ok">implementada</span></td>
         </tr>
       </tbody>
     </table>
@@ -494,9 +502,11 @@ footer .mono{font-size:12px}
       la curva se quedó corta frente a una crecida — que es exactamente lo que interesa modelar.</div>
     <div class="callout neutral"><strong>Sobre el caso de las 22 estaciones.</strong>
       El escenario planteado — «una estación sin curva no se lleva a Gold» — existe en el pipeline, pero en la
-      cuenca alta no se da: las 22 estaciones tienen curva publicada. Y con las reglas nuevas ninguna queda
-      totalmente afuera: las sospechosas conservan el nivel, y las vencidas recuperan su caudal por extensión
-      de curva. El caso de «sin curva» aplica masivamente fuera de la cuenca alta: 330 de 392 estaciones.</div>
+      cuenca alta no se da: las 22 estaciones tienen curva publicada. Y con las reglas cerradas ninguna queda
+      totalmente afuera: las 2 no confiables conservan el nivel, y las vencidas recuperan su caudal por
+      extensión de curva. El caso de «sin curva» aplica masivamente fuera de la cuenca alta: 330 de 392
+      estaciones. Desde la Decisión 028, 14 estaciones más del «grupo B» también caen dentro de
+      <code>alta_frontera</code> por unión espacial real y densifican el agregado desde 2015.</div>
   </div>
 </section>
 <hr class="rule">
@@ -504,10 +514,11 @@ footer .mono{font-size:12px}
 <!-- 07 · GOLD SCHEMA -->
 <section>
   <div class="sec-head"><span class="sec-num">07</span><h2>Dataset Gold — <span class="mono" style="font-family:'IBM Plex Mono';font-size:.7em">training_dataset_v0</span></h2></div>
-  <p class="sec-sub">Grano <code>fecha + punto_prediccion</code>. 31.094 filas, sin duplicados por clave, sin
-    mismatches en los targets. <span class="col tg" style="padding:1px 6px">target</span> marca las variables
-    objetivo, <span class="col nw" style="padding:1px 6px">nuevo</span> lo que agrega esta revisión, y las
-    tachadas se publican vacías en v0.</p>
+  <p class="sec-sub">Grano <code>fecha + punto_prediccion</code>. 9.732 filas desde 2000-01-01 (R1: el
+    dataset se recorta a ese piso; la serie completa de nivel sigue integra en Silver desde 1941), sin
+    duplicados por clave, sin mismatches en los targets. <span class="col tg" style="padding:1px 6px">target</span>
+    marca las variables objetivo y <span class="col nw" style="padding:1px 6px">nuevo</span> lo que se agregó
+    después del corte anterior (8 horizontes, R8 y CPTEC).</p>
   <div class="schema">
     <div class="sgroup">
       <div class="hd"><h4>Claves</h4><span class="pill p-ok">poblado</span></div>
@@ -572,11 +583,30 @@ footer .mono{font-size:12px}
       </div><p class="note">Reservadas en el esquema por la Decisión 018, en <code>NULL</code>. Ya no cuentan como pendiente del dataset.</p></div>
     </div>
     <div class="sgroup">
-      <div class="hd"><h4>Meteorología</h4><span class="pill p-crit">NULL en v0</span></div>
+      <div class="hd"><h4>Meteorología por estación (R8)</h4><span class="pill p-ok">poblado</span></div>
       <div class="bd"><div class="cols">
-        <span class="col na">temp_media_c</span><span class="col na">temp_min_c</span><span class="col na">temp_max_c</span>
-        <span class="col na">temp_station_count</span><span class="col na">lluvia_acumulada_mm</span><span class="col na">lluvia_is_usable</span>
-      </div><p class="note">Es la prioridad número uno del plan: el esquema ya las reserva, falta poblarlas (§09 · 3).</p></div>
+        <span class="col">temp_media_c</span><span class="col">temp_min_c</span><span class="col">temp_max_c</span>
+        <span class="col na">temp_station_count</span><span class="col">lluvia_acumulada_mm</span><span class="col na">lluvia_is_usable</span>
+        <span class="col nw">temp_agregado_alta_frontera_cobertura_pct</span>
+        <span class="col nw">lluvia_agregado_alta_frontera_acum_3d_mm</span><span class="col nw">…_acum_7d_mm</span>
+        <span class="col nw">lluvia_agregado_alta_frontera_cobertura_pct</span>
+      </div><p class="note">Sin umbral de exclusión (R8): se publica toda estación con dato real —
+        <code>temp_station_count</code> y <code>lluvia_is_usable</code> quedan deprecadas, la cobertura real
+        viaja en las columnas <code>*_cobertura_pct</code>. Temperatura: INMET (dentro de la cuenca) + METAR
+        (aeropuertos). Lluvia: 332 estaciones ANA de <code>alta_frontera</code>.</p></div>
+    </div>
+    <div class="sgroup">
+      <div class="hd"><h4>Meteorología en grilla — CPTEC/INPE</h4><span class="pill p-ok nw">poblado · nuevo</span></div>
+      <div class="bd"><div class="cols">
+        <span class="col nw">lluvia_merge_alta_frontera_mm</span><span class="col nw">…_max_mm</span>
+        <span class="col nw">…_acum_3d_mm</span><span class="col nw">…_acum_7d_mm</span>
+        <span class="col nw">…_pluviometros</span><span class="col nw">…_cobertura_pct</span><span class="col nw">…_es_preliminar</span>
+        <span class="col nw">temp_samet_alta_frontera_media_c</span><span class="col nw">…_max_c</span><span class="col nw">…_min_c</span>
+        <span class="col nw">…_cobertura_pct</span><span class="col nw">…_es_preliminar</span>
+      </div><p class="note">Segunda medición de lluvia y temperatura, esta vez con cobertura espacial del
+        100% de <code>alta_frontera</code> todos los días (satélite GPM-IMERG + pluviómetros, y
+        observaciones + ERA5 respectivamente) — conviven con las columnas por estación, no las reemplazan.
+        Detalle en §08.</p></div>
     </div>
   </div>
 
@@ -585,161 +615,159 @@ footer .mono{font-size:12px}
     <div class="kpi"><div class="n rio">1941</div><div class="l">fecha mínima (nivel)</div><div class="s">caudal desde 2000</div></div>
     <div class="kpi"><div class="n">0</div><div class="l">duplicados por <span class="mono">fecha+punto</span></div><div class="s">clave lógica íntegra</div></div>
     <div class="kpi"><div class="n">0</div><div class="l">mismatches en targets</div><div class="s">sin fuga verificada</div></div>
-    <div class="kpi"><div class="n">99,2%</div><div class="l">caudal interpolado en rango</div><div class="s">0,8% sin curva · 0% extrapolado</div></div>
+    <div class="kpi"><div class="n">99,6%</div><div class="l">caudal interpolado en rango</div><div class="s">0,4% sin curva · 0% extrapolado</div></div>
     <div class="kpi"><div class="n">3,9%</div><div class="l">MAPE de la curva del target vs. aforos</div><div class="s">126 aforos · estación 74100000</div></div>
   </div>
 </section>
 <hr class="rule">
 
-<!-- 08 · FALTANTES -->
+<!-- 08 · CPTEC -->
 <section>
-  <div class="sec-head"><span class="sec-num">08</span><h2>Faltantes reales para cerrar Gold</h2></div>
-  <p class="sec-sub">Lista re-escrita después de la Decisión 018, del cierre de las dos descargas y de las
-    decisiones nuevas del contrato. Antes de listarlos, dos hallazgos que cambian por completo el pendiente
-    más importante.</p>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Observación en grilla — MERGE y SAMeT (CPTEC/INPE)</h2></div>
+  <p class="sec-sub">Nace de investigar si Brasil tiene pronóstico numérico propio (no lo adopta el dataset:
+    ningún modelo cubre 2000–2019, Decisión 032) — pero de paso aparecieron dos <strong>observaciones</strong>
+    de CPTEC/INPE, gratuitas, con historia larga y cobertura espacial completa: <strong>MERGE</strong>
+    (precipitación diaria, satélite GPM-IMERG + pluviómetros, 0,1°, desde 1998) y <strong>SAMeT</strong>
+    (temperatura diaria, observaciones + ERA5 corregido por altura, 0,05°, desde 2000). El requisito que
+    ordenó el diseño: no alcanza con entrenar y testear, el dato de ayer tiene que estar listo todos los días
+    para inferir — por eso el histórico se bajó en local pero el camino diario corre en Databricks
+    (Bronze → Silver → Gold), igual que el resto de las fuentes.</p>
 
-  <div class="grid g2">
-    <div class="callout warn"><strong>La lluvia probablemente ya está en Bronze, y el portón de calidad la
-      está borrando.</strong> <code>ETL_Silver_Rainfall_Daily</code> ya lee <em>todas</em> las estaciones de
-      <code>bronze.ana_rio_uruguai</code> — no está limitado al target. Su tabla quedó en 0 filas porque el
-      notebook mide <code>missing_pct</code> sobre una ventana de 30 días <strong>promediando todas las
-      estaciones juntas</strong>, y si supera 0,90 borra todas las filas de la fuente. Con ~330 estaciones que
-      reportan nivel y nunca lluvia, ese promedio global está condenado a fallar aunque haya estaciones con
-      serie de lluvia excelente. Y se midió en mayo, antes de que el backfill histórico trajera
-      <code>Chuva_Adotada</code> junto con <code>Cota_Adotada</code> para 361 estaciones. El arreglo es medir
-      la calidad <strong>por estación</strong> y quedarse con las que pasan, en vez de un portón todo-o-nada.</div>
-    <div class="callout warn"><strong>ANA no sirve temperatura.</strong> El endpoint telemétrico que usa el
-      pipeline (<code>HidroinfoanaSerieTelemetricaAdotada/v2</code>) devuelve
-      <code>Cota_Adotada</code>, <code>Chuva_Adotada</code> y <code>Vazao_Adotada</code> — no hay campo de
-      temperatura: ANA es la agencia de aguas, no la meteorológica. Para temperatura las fuentes reales son
-      dos: <strong>METAR</strong> de aeropuertos (ya ingestada, poblada sólo en el tramo reciente) e
-      <strong>INMET</strong>, el instituto meteorológico brasileño, ya identificado en
-      <code>data_sources.md</code> §9.3 y nunca ingestado. El plan de §09 · 3 va por METAR + INMET.</div>
+  <div class="kpis">
+    <div class="kpi"><div class="n">58,6M</div><div class="l">filas Bronze — MERGE</div><div class="s">1998-01-02 → hoy · 0 días faltantes</div></div>
+    <div class="kpi"><div class="n">197,4M</div><div class="l">filas Bronze — SAMeT</div><div class="s">2000-01-01 → hoy · 0 días faltantes</div></div>
+    <div class="kpi"><div class="n">100%</div><div class="l">cobertura en Gold</div><div class="s">9.732/9.732 filas, 2000 → hoy</div></div>
+    <div class="kpi"><div class="n">0,895</div><div class="l">correlación diaria MERGE vs. estaciones ANA</div><div class="s">0,898 a escala mensual</div></div>
+    <div class="kpi"><div class="n">−0,05°C</div><div class="l">sesgo SAMeT vs. INMET (media)</div><div class="s">correlación 0,991</div></div>
+    <div class="kpi"><div class="n">~03:10</div><div class="l">hora UTC en que llega el dato de ayer</div><div class="s">antes de Gold (04:30 Montevideo)</div></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:20px">
+    <div class="callout"><strong>Verificado antes de escribir código.</strong> MERGE acumula 12Z(D-1)→12Z(D)
+      (no el día calendario); SAMeT usa el día calendario UTC. Ambos productos se <strong>regeneran</strong>
+      después de publicarse — MERGE en los primeros días del mes siguiente, SAMeT a los 7 días con ERA5 — por
+      eso cada fila lleva <code>es_preliminar</code>. MERGE es GRIB2 con empaquetado complejo: se decodifica
+      con <code>pygrib</code> en Databricks serverless (probado contra el workspace real antes de diseñar,
+      para no repetir el crash de <code>cfgrib</code>/<code>eccodes</code>).</div>
+    <div class="callout warn"><strong>Hallazgo abierto, no bloqueante.</strong> El cociente lluvia anual
+      MERGE/estaciones ANA cae de ~0,9 (2000–2022) a 0,71 / 0,48 / 0,58 en 2023–2025, sin que baje la
+      cobertura de estaciones (sube de 0,13 a 0,20). Sugiere una estación ANA nueva con posible error de
+      unidades — a investigar en la Fase 3, no bloquea esta fase. Reporte completo en
+      <code>docs/cptec_obs_evaluation.md</code>.</div>
   </div>
 
   <div class="tblwrap" style="margin-top:20px">
     <table>
-      <thead><tr><th>Pendiente</th><th>Por qué importa</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Tramo</th><th>Dónde corre</th><th>Qué hace</th></tr></thead>
       <tbody>
-        <tr><td><strong>Lluvia y temperatura en Gold</strong></td>
-          <td>Las únicas features de forzante meteorológico del dataset; sin ellas el modelo sólo ve el propio río</td>
-          <td><span class="pill p-crit">prioridad 1</span></td></tr>
-        <tr><td><strong>Contrato de consolidación escrito e implementado</strong></td>
-          <td>Reglas nuevas decididas pero no en código; sin ellas no se puede explicar por qué faltan filas</td>
-          <td><span class="pill p-crit">bloqueante</span></td></tr>
-        <tr><td><strong>8 horizontes en vez de 4</strong></td>
-          <td>Requiere regenerar Gold con 8 columnas nuevas de target</td>
-          <td><span class="pill p-warn">definido</span></td></tr>
-        <tr><td><strong>Recarga de curvas a Databricks</strong></td>
-          <td>El caudal actual se calculó con un snapshot anterior al cierre del barrido</td>
-          <td><span class="pill p-warn">rápido</span></td></tr>
-        <tr><td><strong>Definición única de MAPE / <code>is_usable</code></strong></td>
-          <td>Decide qué estaciones entran al agregado; hoy hay dos números distintos para las mismas estaciones</td>
-          <td><span class="pill p-warn">rápido</span></td></tr>
+        <tr><td><strong>Histórico</strong></td><td><code>notebooks_local/cptec_obs/</code></td>
+          <td>Descarga todo el archivo, recorta al bbox de la cuenca, un Parquet por día, sube al Volume</td></tr>
+        <tr><td><strong>Diario</strong></td><td>Job <code>CPTEC_Obs_Daily_Incremental</code> · 03:40 Montevideo</td>
+          <td>Mismo Parquet que el histórico para D-1 y una ventana hacia atrás; detecta «sin cambios» por <code>Last-Modified</code></td></tr>
+        <tr><td><strong>Gold</strong></td><td><code>Silver_Gold_*</code></td>
+          <td>12 columnas <code>lluvia_merge_alta_frontera_*</code> / <code>temp_samet_alta_frontera_*</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+<hr class="rule">
+
+<!-- 08B · FALTANTES -->
+<section>
+  <div class="sec-head"><span class="sec-num">08b</span><h2>Qué se cerró y qué sigue abierto</h2></div>
+  <p class="sec-sub">El contrato de consolidación, los 8 horizontes, lluvia y temperatura por estación y en
+    grilla, y el exportador local ya no son pendientes — quedan como referencia de lo hecho. Lo que sigue
+    abierto es exclusivamente el pronóstico dentro de Gold, la cadena diaria y el diccionario de columnas.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Bloque</th><th>Por qué importa</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Contrato de consolidación (R1–R9) y 8 horizontes</strong></td>
+          <td>Explica fila por fila por qué falta o no falta un dato</td>
+          <td><span class="pill p-ok">cerrado</span></td></tr>
+        <tr><td><strong>Lluvia y temperatura, por estación (R8)</strong></td>
+          <td>Forzante meteorológico del dataset, sin portón todo-o-nada</td>
+          <td><span class="pill p-ok">cerrado</span></td></tr>
+        <tr><td><strong>Lluvia y temperatura, en grilla (CPTEC, §08)</strong></td>
+          <td>Segunda medición con cobertura espacial completa, actualizada a diario</td>
+          <td><span class="pill p-ok">cerrado</span></td></tr>
         <tr><td><strong>Exportador local del dataset</strong></td>
-          <td>Hoy no hay forma de mirar el dataset sin abrir Databricks; es el instrumento para auditar todo lo demás</td>
-          <td><span class="pill p-crit">no existe</span></td></tr>
-        <tr><td><strong>Pronóstico ECMWF en Gold</strong></td>
-          <td>Única fuente con información del futuro; backfill <code>cf</code> 2006–2018 pendiente, <code>pf</code> sin arrancar</td>
-          <td><span class="pill p-warn">en Silver</span></td></tr>
+          <td>Auditar el dataset sin abrir Databricks</td>
+          <td><span class="pill p-ok">cerrado</span></td></tr>
+        <tr><td><strong>Agregado de <code>alta_frontera</code> con 36 estaciones</strong></td>
+          <td>Densifica el caudal agregado desde 2015</td>
+          <td><span class="pill p-ok">cerrado</span></td></tr>
+        <tr><td><strong>Pronóstico (TIGGE + GEFS) dentro de Gold</strong></td>
+          <td>Única familia de features con información del futuro — sin ella t+7/t+14 sólo se extrapolan</td>
+          <td><span class="pill p-warn">en curso</span></td></tr>
         <tr><td><strong>Cadena diaria cerrada a las 06:00</strong></td>
-          <td>Requisito operativo: cada mañana el dataset debe tener el día anterior completo</td>
+          <td>Requisito operativo: cada mañana el día anterior tiene que estar completo</td>
           <td><span class="pill p-warn">parcial</span></td></tr>
-        <tr><td><strong>Reporte de calidad y diccionario (Fase 6)</strong></td>
-          <td>Faltantes por columna, discontinuidades, unidades y origen de cada columna — capítulo de datos de la tesis</td>
-          <td><span class="pill p-warn">parcial</span></td></tr>
+        <tr><td><strong>Reporte de calidad y diccionario de columnas (Fase 6)</strong></td>
+          <td>Faltantes por columna, unidades y origen — capítulo de datos de la tesis</td>
+          <td><span class="pill p-warn">pendiente</span></td></tr>
+        <tr><td><strong><code>fc</code> determinístico por vía local (Fase 8)</strong></td>
+          <td>Hoy roto en serverless (Decisión 013); se resuelve moviéndolo a local</td>
+          <td><span class="pill p-warn">pendiente</span></td></tr>
       </tbody>
     </table>
   </div>
 
-  <div class="callout" style="margin-top:18px"><strong>Lo que salió de la lista.</strong> El segundo punto de
-    predicción aguas abajo, el mapeo estación→sub-cuenca de las sub-cuencas intermedia y baja y sus agregados,
-    por la Decisión 018. La descarga del grupo B de curvas y el backfill histórico de ANA, por estar
-    terminados. Las vigencias vencidas y el tratamiento de los extrapolados, por tener decisión tomada. Y el
-    baseline de modelado, que pasa a ser una fase posterior del proyecto y no un pendiente del dataset.</div>
+  <div class="callout neutral" style="margin-top:18px"><strong>Lo que se evaluó y no se adoptó.</strong> Los
+    modelos de pronóstico numérico de Brasil (WRF, Eta, BAM, MONAN) son gratuitos y abiertos, pero ninguno
+    tiene archivo antes de 2020-07 — no reemplazan a TIGGE/GEFS en el hueco 2000–2019 que necesita el dataset
+    (Decisión 032). Quedan documentados como candidatos a una comparación de habilidad en la etapa de
+    modelado, no como fuente del dataset.</div>
 </section>
 <hr class="rule">
 
 <!-- 09 · PLAN -->
 <section>
   <div class="sec-head"><span class="sec-num">09</span><h2>Plan de continuación</h2></div>
-  <p class="sec-sub">Ordenado por relación entregable/tiempo. Los dos primeros ítems son cortos y dejan el
-    dataset coherente y mirable en local; el tercero es el trabajo grande y el más importante en contenido. La
-    barra azul <span style="display:inline-block;width:22px;height:3px;background:var(--rio);vertical-align:middle;border-radius:2px"></span>
-    marca lo que desbloquea al resto.</p>
+  <p class="sec-sub">De las siete fases que tenía este plan en el corte anterior, cinco ya cerraron: exportador
+    local, contrato de consolidación con 8 horizontes, lluvia y temperatura (por estación y en grilla), y la
+    ampliación del agregado con 36 estaciones. Quedan cuatro, en el orden del roadmap.</p>
   <div class="fw">
 
-    <div class="fwitem blocker"><div class="pr">1</div><div>
-      <h4>Exportador local del dataset Gold</h4>
-      <p>Un comando que deja <code>training_dataset_v0</code> en disco como Parquet, con manifiesto de
-        reproducibilidad. Va primero por rápido y porque es el instrumento para auditar todo lo demás: sin
-        poder abrir la tabla en pandas, las reglas del punto 2 y la calidad de lluvia del punto 3 se deciden a
-        ciegas. Diseño completo en §10.</p>
-      <span class="out"><b>Entregable:</b> <code>data/gold/training_dataset_v0.parquet</code> + manifest, y la capacidad de inspeccionar el dataset sin abrir Databricks.</span>
-      <div class="tags"><span class="pill p-info">≈ 0,5 día</span><span class="pill p-info">desbloquea la auditoría</span></div>
+    <div class="fwitem blocker"><div class="pr">4</div><div>
+      <h4>Pronóstico (TIGGE + GEFS) dentro de Gold</h4>
+      <p>TIGGE <code>cf</code> cubre 2018-08 → hoy; <code>pf</code> recién empezó a completar su backfill
+        histórico. GEFS Reforecast (NOAA) ya tiene Bronze poblado parcialmente para 2000–2018. Falta calibrar
+        el empalme entre las dos fuentes, publicar una serie homogénea con <code>forecast_source</code>, y
+        recortarla a <code>alta_frontera</code> antes de que llegue a Gold.</p>
+      <span class="out"><b>Entregable:</b> la única familia de features con información del futuro — es lo que separa un modelo autorregresivo de un modelo de pronóstico.</span>
+      <div class="tags"><span class="pill p-warn">en curso</span><span class="pill p-info">Fase 4</span></div>
     </div></div>
 
-    <div class="fwitem blocker"><div class="pr">2</div><div>
-      <h4>Aplicar las decisiones nuevas y regenerar Gold</h4>
-      <p>Escribir las nueve reglas de §06 como documento y como código: nivel conservado donde no hay curva,
-        extensión de vigencias vencidas con su flag, salvaguarda de estación íntegramente fuera de tabla,
-        descarte de cola por horizonte. Ampliar a 8 horizontes. Cerrar la definición única de MAPE. Subir los
-        JSON nuevos de curvas y correr
-        <code>Rating_Curve_Discharge_Initial_Load</code> → Silver → Gold en ese orden.</p>
-      <span class="out"><b>Entregable:</b> <code>docs/gold_consolidation_contract.md</code>, Decisiones 018 y 019 escritas, y una tabla Gold cuya cantidad de filas se explica regla por regla.</span>
-      <div class="tags"><span class="pill p-info">≈ 2 días</span><span class="pill p-warn">1 decisión abierta</span></div>
-    </div></div>
-
-    <div class="fwitem blocker"><div class="pr">3</div><div>
-      <h4>Lluvia y temperatura: descarga, histórico y consolidación</h4>
-      <p>El trabajo más importante del plan. Tres frentes: <strong>(a)</strong> rediseñar el portón de calidad
-        para medir por estación en vez de promediar toda la cuenca, y re-materializar
-        <code>rainfall_daily</code> con lo que el backfill ya trajo a Bronze; <strong>(b)</strong> ingestar
-        INMET para temperatura histórica brasileña, complementando METAR, que sólo cubre el tramo reciente;
-        <strong>(c)</strong> conectar la lluvia de Salto Grande, que está en Silver y nunca llegó a Gold.
-        Descarga e histórico para <strong>toda la cuenca</strong>; a Gold entra sólo el agregado de
-        <code>alta_frontera</code>, igual que el caudal.</p>
-      <span class="out"><b>Entregable:</b> las columnas de lluvia y temperatura pobladas con cobertura medida y documentada — el forzante meteorológico que hoy le falta al dataset.</span>
-      <div class="tags"><span class="pill p-crit">prioridad de contenido</span><span class="pill p-info">≈ 4-6 días</span><span class="pill p-warn">INMET sin ingestar</span></div>
-    </div></div>
-
-    <div class="fwitem"><div class="pr">4</div><div>
-      <h4>Pronóstico ECMWF: consolidar el histórico y filtrar a la cuenca alta</h4>
-      <p>Completar el backfill de <code>cf</code> (2006–2018 pendiente), arrancar <code>pf</code>, y agregar
-        features de precipitación pronosticada por horizonte, recortadas a <code>alta_frontera</code>. La
-        Decisión 018 reduce el trabajo de tres sub-cuencas a una. Los horizontes del pronóstico se alinean con
-        los ocho targets: es la fuente que hace que t+7 y t+14 sean predecibles y no sólo extrapolables.</p>
-      <span class="out"><b>Entregable:</b> la única familia de features con información del futuro; es lo que separa un modelo autorregresivo de un modelo de pronóstico.</span>
-      <div class="tags"><span class="pill p-info">≈ 3-5 días</span><span class="pill p-warn">backfill parcial</span></div>
-    </div></div>
-
-    <div class="fwitem"><div class="pr">5</div><div>
-      <h4>Cadena diaria cerrada a las 06:00 (Fase 8)</h4>
-      <p>Encadenar el refresco de curvas y caudal al incremental diario, reordenar los jobs para que el
-        pronóstico entre antes de Gold y no después, y dejar el snapshot local listo antes de las 06:00.
-        Detalle del horario actual y del conflicto de orden en §11.</p>
+    <div class="fwitem blocker"><div class="pr">5</div><div>
+      <h4>Cadena diaria cerrada a las 06:00</h4>
+      <p>El grueso de la cadena ya corre a horario y en orden — incluida la nueva observación en grilla de
+        CPTEC, que ya entra antes de Gold. Lo que falta: adelantar <code>ECMWF_Forecast_Daily_Incremental</code>
+        (hoy corre a las 05:00 Montevideo, después de Gold) y encadenar la exportación del snapshot al final.
+        Detalle del horario real en §11.</p>
       <span class="out"><b>Entregable:</b> cada mañana a las 06:00, el dataset con el día anterior cerrado — utilizable tanto para predecir como para reentrenar.</span>
-      <div class="tags"><span class="pill p-info">≈ 1-2 días</span><span class="pill p-warn">conflicto de orden</span></div>
+      <div class="tags"><span class="pill p-warn">parcial</span><span class="pill p-info">Fase 5</span></div>
     </div></div>
 
     <div class="fwitem"><div class="pr">6</div><div>
-      <h4>Reporte de calidad y diccionario de columnas (Fase 6)</h4>
+      <h4>Reporte de calidad y diccionario de columnas</h4>
       <p>Faltantes por columna, discontinuidades temporales, verificación de fuga, y el diccionario de todas
-        las columnas con unidad y origen. Va después de las fuentes nuevas para no tener que rehacerlo. Incluye
-        exportar al repo <code>Validate_Training_Dataset_v0</code> y <code>Check_Bronze_Freshness</code>, que
-        hoy sólo existen en el Workspace de Databricks.</p>
+        las columnas con unidad y origen — ahora con más de setenta columnas para documentar, incluidas las
+        doce de CPTEC. Incluye exportar al repo <code>Validate_Training_Dataset_v0</code> y
+        <code>Check_Bronze_Freshness</code>, que hoy sólo existen en el Workspace de Databricks.</p>
       <span class="out"><b>Entregable:</b> el capítulo de datos de la tesis, casi textual, y el cierre formal del dataset.</span>
-      <div class="tags"><span class="pill p-info">≈ 1 día</span><span class="pill p-info">Fase 6</span></div>
+      <div class="tags"><span class="pill p-warn">pendiente</span><span class="pill p-info">Fase 6</span></div>
     </div></div>
 
-    <div class="fwitem"><div class="pr">7</div><div>
-      <h4>Ampliar el agregado de la cuenca alta con las 40 estaciones nuevas</h4>
-      <p>Unir las coordenadas de las 40 estaciones con curva del grupo B contra el polígono
-        <code>subcuenca_1_frontera</code> y sumar al agregado las que caigan adentro. Va último porque su
-        ganancia es acotada: la mayoría no tiene nivel antes de ~2014, así que engrosa la cola reciente de la
-        serie, no los 26 años.</p>
-      <span class="out"><b>Entregable:</b> agregado de cuenca alta más denso desde ~2015 en adelante.</span>
-      <div class="tags"><span class="pill p-info">≈ 1 día</span><span class="pill p-out">ganancia acotada</span></div>
+    <div class="fwitem"><div class="pr">8</div><div>
+      <h4><code>fc</code> determinístico por vía local</h4>
+      <p>El pronóstico determinístico de ECMWF (<code>fc</code>) corre roto en serverless desde el primer
+        deploy — colisión de <code>cfgrib</code>/<code>eckit</code> con Spark Connect (Decisión 013), sin
+        cluster clásico disponible en este workspace. La salida es moverlo a local, igual que ya se hizo con
+        CPTEC y con el backfill de GEFS/TIGGE.</p>
+      <span class="out"><b>Entregable:</b> pronóstico determinístico diario sin depender de una vía rota; si no hay archivo histórico viable, GEFS operativo lo reemplaza.</span>
+      <div class="tags"><span class="pill p-info">≈ 1-2 días</span><span class="pill p-info">Fase 8</span></div>
     </div></div>
 
   </div>
@@ -798,7 +826,7 @@ footer .mono{font-size:12px}
   <i>→ filas, rango de fechas, faltantes por columna, cobertura por caudal_metodo</i></pre>
 
   <div class="callout neutral" style="margin-top:18px"><strong>Cómo se agiliza el ciclo.</strong> El costo real
-    hoy no es el tamaño del dataset — 31.094 filas por unas 50 columnas son pocos MB — sino el ida y vuelta
+    hoy no es el tamaño del dataset — 9.732 filas por más de setenta columnas son pocos MB — sino el ida y vuelta
     manual por la interfaz de Databricks cada vez que se quiere mirar algo. Con el exportador, el ciclo pasa a
     ser: correr Gold cuando cambia el contrato, bajar una vez, y trabajar contra un archivo local. Se engancha
     además al Task Scheduler que ya corre las tareas de ANA, con el mismo patrón de <code>lock.py</code>, para
@@ -810,16 +838,19 @@ footer .mono{font-size:12px}
 <section>
   <div class="sec-head"><span class="sec-num">11</span><h2>La cadena diaria de las 06:00</h2></div>
   <p class="sec-sub">Requisito operativo: todos los días a las 06:00 el dataset debe tener el día anterior
-    cerrado, tanto para predecir como para reentrenar y testear. La buena noticia es que la cadena actual ya
-    termina antes de esa hora. La mala es que el pronóstico corre tarde.</p>
+    cerrado, tanto para predecir como para reentrenar y testear. La cadena de lluvia/nivel/temperatura —
+    incluida la observación en grilla de CPTEC — ya termina antes de esa hora. Lo que sigue tarde es el
+    pronóstico.</p>
 
   <div class="tl">
+    <div class="slot"><span class="t">23:43</span><span class="w"><strong>Temperature_Airport_Brasil</strong><span>METAR de aeropuertos (D-1, hora UTC)</span></span></div>
     <div class="slot"><span class="t">02:00</span><span class="w"><strong>Nivel_ANA_Target</strong><span>Nivel de la estación objetivo · Montevideo</span></span></div>
     <div class="slot"><span class="t">03:00</span><span class="w"><strong>All_Estacoes_ANA_Daily</strong><span>Nivel y lluvia de todas las estaciones de la cuenca</span></span></div>
     <div class="slot"><span class="t">03:30</span><span class="w"><strong>SG_Rainfall_Daily_Incremental</strong><span>Lluvia de Salto Grande</span></span></div>
-    <div class="slot"><span class="t">04:30</span><span class="w"><strong>Silver_Gold_Daily_Incremental</strong><span>Silver → Gold. Hoy es el último eslabón de la cadena</span></span></div>
-    <div class="slot conflict"><span class="t">05:00</span><span class="w"><strong>ECMWF_Forecast_Daily_Incremental · conflicto de orden</strong><span>Corre 08:00 UTC = 05:00 Montevideo, es decir <em>después</em> de Gold. Cuando el pronóstico entre al dataset (§09 · 4), Gold estaría consumiendo el pronóstico de ayer. Hay que adelantarlo o mover Gold detrás suyo</span></span></div>
-    <div class="slot"><span class="t">05:30</span><span class="w"><strong>Exportación del snapshot local</strong><span>A agregar: Gold → Volume → disco, con manifiesto (§10)</span></span></div>
+    <div class="slot"><span class="t">03:40</span><span class="w"><strong>CPTEC_Obs_Daily_Incremental</strong><span>MERGE (~02:40 UTC) y SAMeT (~03:10 UTC) del día anterior — nuevo, §08</span></span></div>
+    <div class="slot"><span class="t">04:30</span><span class="w"><strong>Silver_Gold_Daily_Incremental</strong><span>Silver → Gold. Hoy es el último eslabón que corre a horario</span></span></div>
+    <div class="slot conflict"><span class="t">05:00</span><span class="w"><strong>ECMWF_Forecast_Daily_Incremental · conflicto de orden</strong><span>Corre 08:00 UTC = 05:00 Montevideo, es decir <em>después</em> de Gold. Cuando el pronóstico entre a Gold (§09 · Fase 4), estaría consumiendo el de ayer. Hay que adelantarlo o mover Gold detrás suyo</span></span></div>
+    <div class="slot"><span class="t">manual</span><span class="w"><strong>Exportación del snapshot local</strong><span>Existe (§10) pero todavía no está encadenada al incremental diario</span></span></div>
     <div class="slot goal"><span class="t">06:00</span><span class="w"><strong>Dataset listo con el día anterior cerrado</strong><span>La fila más fresca es la de ayer; su target t+1 es hoy</span></span></div>
   </div>
 
@@ -842,8 +873,7 @@ footer .mono{font-size:12px}
   <div class="wrap">
     <p><strong style="color:var(--ink)">Río Uruguay · Hydro Pipeline</strong> — informe generado a partir de
       <span class="mono">docs/</span>, el DDL de Silver/Gold, <span class="mono">databricks.yml</span>, las
-      Decisiones 001–017 del repositorio y el estado local de <span class="mono">notebooks_local/</span> al
-      2026-08-21.</p>
+      Decisiones 001–033 del repositorio y el estado real verificado contra Databricks al 2026-08-26.</p>
     <p class="mono">rama feature/ana-backfill-automation · alcance de tesis: sub-cuenca alta_frontera · horizontes t+1…t+7 y t+14 · fuente de verdad: weather.gold.training_dataset_v0</p>
   </div>
 </footer>

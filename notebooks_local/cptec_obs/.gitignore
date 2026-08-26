@@ -1,0 +1,9 @@
+# Datos y estado regenerables (re-descargando de CPTEC o re-bajando desde el Volume de
+# Databricks): no tiene sentido versionarlos. Mismo criterio que gefs_reforecast/.gitignore.
+output_parquet/
+evaluation/*.csv
+evaluation/*.parquet
+cptec_obs_backfill_state.json
+backfill.lock
+*.log
+__pycache__/

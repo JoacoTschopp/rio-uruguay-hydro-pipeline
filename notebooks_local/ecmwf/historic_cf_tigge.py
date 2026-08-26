@@ -64,6 +64,25 @@ UNIT_TO_MM_FACTOR = 1.0  # tigge-forecasts entrega tp en kg/m2 == mm, igual que 
 DEFAULT_MAX_BATCHES_PER_RUN = 3
 PAUSE_BETWEEN_REQUESTS_SECONDS = 2
 
+# ECMWF confirmo (2026-08-26) una cinta danada en su archivo MARS (J0018900) que cubre el lote
+# anual que en ese momento pedia 2017-08-25..2018-08-24 (AccessError, no un fallo transitorio --
+# reintentar no sirve). El rango exacto de cada lote corre ~1 dia por dia respecto de hoy (ver
+# EARLIEST_TIGGE_DATE/BATCH_MONTHS), asi que se compara por solapamiento contra una ventana
+# generosa, no por igualdad exacta. Se saltea explicitamente en vez de dejar que el orquestador
+# corte "cf" para siempre en este lote (Decision 031, aceptado como hueco de cobertura: este
+# tramo es solo para calibrar el empalme GEFS/TIGGE, quedan otros ~12 anios de solapamiento).
+# Ambito: solo `cf` -- no se confirmo que `pf` pegue contra la misma cinta.
+KNOWN_UNAVAILABLE_RANGES: list[tuple[date, date, str]] = [
+    (date(2017, 6, 1), date(2018, 11, 30), "Cinta ECMWF danada J0018900 (Decision 031)"),
+]
+
+
+def _known_unavailable_reason(start: date, end: date) -> str | None:
+    for bad_start, bad_end, reason in KNOWN_UNAVAILABLE_RANGES:
+        if start <= bad_end and end >= bad_start:
+            return reason
+    return None
+
 
 def _batch_raw_path(start: date, end: date) -> Path:
     return RAW_DIR / f"ECMWF_CF_{start.isoformat()}_{end.isoformat()}.nc"
@@ -80,7 +99,7 @@ def _retrieve_batch(client, start: date, end: date, area: dict, target: Path) ->
         "time": "00:00:00",
         "area": area_to_cds_list(area),
         "grid": [0.25, 0.25],
-        "format": "netcdf",
+        "data_format": "netcdf",
     }
     try:
         client.retrieve(DATASET, request, str(target))
@@ -90,7 +109,12 @@ def _retrieve_batch(client, start: date, end: date, area: dict, target: Path) ->
         return False
 
 
-def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = False, force_reload: bool = False) -> None:
+def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = False, force_reload: bool = False) -> dict:
+    """Devuelve {"processed": N, "failed": bool}. `failed=True` es la senal para que el
+    caller (run_tigge_backfill.py) NO vuelva a llamar run() de inmediato -- sin esto, un
+    lote que falla (ej. la cola de ECDS rechaza el request) queda pendiente para siempre y
+    el orquestador lo reintenta en un loop apretado, exactamente el anti-patron "reintentos
+    en bucle" que este modulo dice evitar (ver Decision 030, incidente de rate-limit)."""
     latest = date.today() - timedelta(days=TIGGE_LAG_DAYS)
     batches = iter_batches_backward(EARLIEST_TIGGE_DATE, latest, BATCH_MONTHS)
 
@@ -100,7 +124,7 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
         for start, end in batches:
             pending = not batch_fully_landed("cf", start, end, RUN_TIME, JSON_DIR)
             print(f"  {start.isoformat()} .. {end.isoformat()}  {'PENDIENTE' if pending else 'completo'}")
-        return
+        return {"processed": 0, "failed": False}
 
     area = compute_download_area(GEOJSON_PATH)
     print(f"Area de descarga calculada: {area}")
@@ -112,6 +136,7 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
     client = cdsapi.Client()
 
     processed = 0
+    failed = False
     for start, end in batches:
         if processed >= max_batches_per_run:
             print(f"Limite de {max_batches_per_run} lotes por corrida alcanzado, se corta aca. Volver a correr para continuar.")
@@ -121,10 +146,16 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
             print(f"Lote {start.isoformat()}..{end.isoformat()} ya completo, skip")
             continue
 
+        unavailable_reason = _known_unavailable_reason(start, end)
+        if unavailable_reason:
+            print(f"Lote {start.isoformat()}..{end.isoformat()} saltado (dato no disponible en origen): {unavailable_reason}")
+            continue
+
         print(f"Pidiendo lote {start.isoformat()}..{end.isoformat()} ({(end - start).days + 1} dias)...")
         raw_path = _batch_raw_path(start, end)
         if not _retrieve_batch(client, start, end, area, raw_path):
             print("Se corta la ejecucion por el fallo anterior (no se reintenta en bucle).")
+            failed = True
             break
 
         ds = xr.open_dataset(raw_path, engine="netcdf4", decode_timedelta=False)
@@ -137,8 +168,10 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
         processed += 1
         time.sleep(PAUSE_BETWEEN_REQUESTS_SECONDS)
 
-    if processed == 0:
+    if processed == 0 and not failed:
         print("Nada pendiente para procesar en este lote de trabajo (o limite en 0).")
+
+    return {"processed": processed, "failed": failed}
 
 
 if __name__ == "__main__":

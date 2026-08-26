@@ -24,6 +24,13 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/DDL_Silver_Gold
             source: WORKSPACE
 
+        - task_key: ETL_Bronze_GEFS
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: DDL_Silver_Gold
@@ -34,9 +41,16 @@ resources:
               load_mode: full
               incremental_lookback_days: "14"
 
-        - task_key: ETL_Silver_Temperature_Daily
+        - task_key: ETL_Bronze_INMET
           depends_on:
             - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_INMET
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Bronze_INMET
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
             source: WORKSPACE
@@ -54,9 +68,37 @@ resources:
               load_mode: full
               incremental_lookback_days: "14"
 
+        - task_key: DDL_CPTEC_Obs
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_CPTEC_Obs
+            source: WORKSPACE
+
+        - task_key: ETL_Bronze_CPTEC_Obs
+          depends_on:
+            - task_key: DDL_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_CPTEC_Obs
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              lookback_days: "60"
+
+        - task_key: ETL_Silver_CPTEC_Grid_Daily
+          depends_on:
+            - task_key: ETL_Bronze_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_CPTEC_Grid_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "60"
+
         - task_key: ETL_Gold_Training_Dataset_v0
           depends_on:
             - task_key: ETL_Silver_Rainfall_Daily
+            - task_key: ETL_Silver_CPTEC_Grid_Daily
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
             source: WORKSPACE
@@ -97,6 +139,13 @@ resources:
             base_parameters:
               max_lag_days: "3"
 
+        - task_key: ETL_Bronze_GEFS
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: Check_Bronze_Freshness
@@ -107,9 +156,16 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "14"
 
-        - task_key: ETL_Silver_Temperature_Daily
+        - task_key: ETL_Bronze_INMET
           depends_on:
             - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_INMET
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Bronze_INMET
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
             source: WORKSPACE
@@ -127,9 +183,20 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "14"
 
+        - task_key: ETL_Silver_CPTEC_Grid_Daily
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_CPTEC_Grid_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "60"
+
         - task_key: ETL_Gold_Training_Dataset_v0
           depends_on:
             - task_key: ETL_Silver_Rainfall_Daily
+            - task_key: ETL_Silver_CPTEC_Grid_Daily
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
             source: WORKSPACE
@@ -196,6 +263,59 @@ resources:
             base_parameters:
               load_mode: incremental
               incremental_lookback_days: "30"
+
+    cptec_obs_daily_incremental:
+      name: CPTEC_Obs_Daily_Incremental
+      max_concurrent_runs: 1
+      # 03:40 Montevideo = 06:40 UTC: MERGE del dia anterior se publica ~02:40 UTC y SAMeT
+      # ~03:10 UTC (medido 2026-08-26, Decision 033); Gold corre a las 04:30 y ya los encuentra
+      # en Silver. Landing re-baja una ventana hacia atras (45 dias MERGE / 14 dias SAMeT) para
+      # capturar las regeneraciones de CPTEC; Bronze/Silver mergean con la misma ventana.
+      schedule:
+        quartz_cron_expression: "0 40 3 * * ?"
+        timezone_id: America/Montevideo
+        pause_status: UNPAUSED
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: raw-bronze-silver
+        source: cptec-merge-samet
+        load_type: incremental
+      tasks:
+        - task_key: DDL_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_CPTEC_Obs
+            source: WORKSPACE
+
+        - task_key: Daily_CPTEC_Obs
+          depends_on:
+            - task_key: DDL_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/CPTEC/Daily_CPTEC_Obs
+            source: WORKSPACE
+            base_parameters:
+              merge_lookback_days: "45"
+              samet_lookback_days: "14"
+              force_reload: "false"
+
+        - task_key: ETL_Bronze_CPTEC_Obs
+          depends_on:
+            - task_key: Daily_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_CPTEC_Obs
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              lookback_days: "60"
+
+        - task_key: ETL_Silver_CPTEC_Grid_Daily
+          depends_on:
+            - task_key: ETL_Bronze_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_CPTEC_Grid_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "60"
 
     all_estacoes_ana_daily:
       name: All_Estacoes_ANA_Daily

@@ -1,0 +1,98 @@
+[
+  {
+    "Area_Molhada (m2)": "1831.0",
+    "Cota (cm)": "221.0",
+    "Data_Hora_Dado": "2010-04-20 15:30:00.0",
+    "Data_Ultima_Alteracao": "2010-11-03 00:00:00.0",
+    "Largura (m)": "580.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "3.16",
+    "Vazao (m3/s)": "1268.0",
+    "Vel_Media (m/s)": "0.692",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "2829.0",
+    "Cota (cm)": "388.0",
+    "Data_Hora_Dado": "2010-08-04 08:00:00.0",
+    "Data_Ultima_Alteracao": "2010-11-16 00:00:00.0",
+    "Largura (m)": "582.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "4.86",
+    "Vazao (m3/s)": "3727.0",
+    "Vel_Media (m/s)": "1.32",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1928.0",
+    "Cota (cm)": "240.5",
+    "Data_Hora_Dado": "2010-11-05 07:30:00.0",
+    "Data_Ultima_Alteracao": "2011-03-10 00:00:00.0",
+    "Largura (m)": "580.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "3.32",
+    "Vazao (m3/s)": "1545.0",
+    "Vel_Media (m/s)": "0.801",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "2408.0",
+    "Cota (cm)": "311.0",
+    "Data_Hora_Dado": "2011-02-09 08:00:00.0",
+    "Data_Ultima_Alteracao": "2011-05-06 00:00:00.0",
+    "Largura (m)": "582.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "4.14",
+    "Vazao (m3/s)": "2459.0",
+    "Vel_Media (m/s)": "1.02",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "2408.0",
+    "Cota (cm)": "311.0",
+    "Data_Hora_Dado": "2011-02-09 08:00:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "582.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "4.14",
+    "Vazao (m3/s)": "2459.0",
+    "Vel_Media (m/s)": "1.02",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1928.0",
+    "Cota (cm)": "240.5",
+    "Data_Hora_Dado": "2010-11-05 07:30:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "580.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "3.32",
+    "Vazao (m3/s)": "1545.0",
+    "Vel_Media (m/s)": "0.801",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1831.0",
+    "Cota (cm)": "221.0",
+    "Data_Hora_Dado": "2010-04-20 15:30:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "580.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "3.16",
+    "Vazao (m3/s)": "1268.0",
+    "Vel_Media (m/s)": "0.692",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "2829.0",
+    "Cota (cm)": "388.0",
+    "Data_Hora_Dado": "2010-08-04 08:00:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "582.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "4.86",
+    "Vazao (m3/s)": "3727.0",
+    "Vel_Media (m/s)": "1.32",
+    "codigoestacao": "74100000"
+  }
+]
