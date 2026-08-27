@@ -15,12 +15,17 @@ from rio_search.application.experiments.get_run_detail import GetRunDetail
 from rio_search.application.experiments.list_runs import ListRuns
 from rio_search.application.experiments.list_searches import ListSearches
 from rio_search.application.ports.champion_store import ChampionStorePort
+from rio_search.application.ports.document_store import DocumentStorePort
 from rio_search.application.ports.forecast_repository import ForecastRepositoryPort
 from rio_search.application.ports.job_runner import JobRunner
 from rio_search.application.ports.snapshot_sync import SnapshotSyncPort
 from rio_search.application.ports.tracking_read import TrackingReadPort
 from rio_search.application.predictions.backtest_recent import BacktestRecent
 from rio_search.application.predictions.promote_champion import PromoteChampion
+from rio_search.application.research.add_document import AddDocument
+from rio_search.application.research.export_bibtex import ExportBibtex
+from rio_search.application.research.tag_document import TagDocument
+from rio_search.application.research.update_note import UpdateNote
 from rio_search.domain.datasets.feature_catalog import FeatureCatalog
 
 
@@ -42,3 +47,11 @@ class ApiDependencies:
     champion_store: ChampionStorePort
     forecast_repository: ForecastRepositoryPort
     backtest_recent: BacktestRecent
+    # Fase 7 (Research, §3.9): `GET/POST /api/research/documents`, `PUT .../notes`, `PUT
+    # .../tags`, `POST /api/research/export-bib`. Sin Databricks/MLflow (Decision #3).
+    document_store: DocumentStorePort
+    add_document: AddDocument
+    update_note: UpdateNote
+    tag_document: TagDocument
+    export_bibtex: ExportBibtex
+    references_bib_path: Path

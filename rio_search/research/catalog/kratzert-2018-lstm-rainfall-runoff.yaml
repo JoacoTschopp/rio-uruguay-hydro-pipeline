@@ -1,0 +1,18 @@
+slug: kratzert-2018-lstm-rainfall-runoff
+title: Rainfall-runoff modelling using Long Short-Term Memory (LSTM) networks
+authors:
+- Kratzert, F.
+- Klotz, D.
+- Brenner, C.
+- Schulz, K.
+- Herrnegger, M.
+year: 2018
+type: paper
+venue: Hydrology and Earth System Sciences
+doi_url: https://doi.org/10.5194/hess-22-6005-2018
+tags:
+- lstm
+- rainfall-runoff
+- hidrologia
+file: documents/kratzert-2018-lstm-rainfall-runoff.pdf
+added_at: '2026-08-27T21:22:25.796570+00:00'

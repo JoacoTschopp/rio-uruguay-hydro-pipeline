@@ -55,6 +55,9 @@ app.add_typer(champions_app, name="champions")
 predict_app = typer.Typer(help="Inferencia diaria del campeon (Fase 6, §3.8, §4.2).")
 app.add_typer(predict_app, name="predict")
 
+research_app = typer.Typer(help="Biblioteca de investigacion (Fase 7, §3.10, §4.2). Sin LLM (Decision #3).")
+app.add_typer(research_app, name="research")
+
 
 @databricks_app.command("init-schema")
 def init_schema(
@@ -292,6 +295,55 @@ def predict_run(
         typer.echo(f"  t+{point.horizon:02d} ({point.target_date}): {point.value:.2f}")
     if forecast.published_path:
         typer.echo(f"  publicado en {forecast.published_path}")
+
+
+@research_app.command("add")
+def research_add(
+    pdf: Path = typer.Argument(..., help="Ruta a un PDF (u otro material liviano) a catalogar."),
+    title: str = typer.Option(..., "--title"),
+    authors: str = typer.Option(..., "--authors", help="Separados por ';' (§3.10)."),
+    year: int = typer.Option(..., "--year"),
+    type: str = typer.Option("paper", "--type", help="paper | tesis | informe | plantilla."),
+    venue: str = typer.Option(None, "--venue"),
+    doi_url: str = typer.Option(None, "--doi-url"),
+    tags: str = typer.Option("", "--tags", help="Separados por ',' (§3.10)."),
+    slug: str = typer.Option(None, "--slug", help="Default: derivado de --title/--year (README)."),
+) -> None:
+    """`AddDocument` (Fase 7, §3.10, §4.2): agrega `pdf` al catalogo
+    (`rio_search/research/catalog/<slug>.yaml` + `research/documents/<slug>.<ext>`)."""
+    from rio_search.domain.research.document_type import DocumentType
+    from rio_search.domain.research.tag import Tag
+    from rio_search.interfaces.container import build_add_document
+
+    if not pdf.is_file():
+        raise typer.BadParameter(f"{pdf} no existe")
+
+    author_tuple = tuple(a.strip() for a in authors.split(";") if a.strip())
+    add_document = build_add_document()
+    document = add_document.execute(
+        title=title,
+        authors=author_tuple,
+        year=year,
+        type=DocumentType(type),
+        venue=venue,
+        doi_url=doi_url,
+        tags=Tag.parse_many(tags),
+        slug=slug,
+        file_content=pdf.read_bytes(),
+        file_name=pdf.name,
+    )
+    typer.echo(f"slug={document.slug} title={document.title!r} file={document.file}")
+
+
+@research_app.command("export-bib")
+def research_export_bib() -> None:
+    """`ExportBibtex` (Fase 7, §3.10, §4.2): escribe `rio_search/thesis/common/references.bib`
+    (una entrada BibTeX por documento del catalogo, clave = slug)."""
+    from rio_search.interfaces.container import DEFAULT_REFERENCES_BIB_PATH, build_export_bibtex
+
+    export_bibtex = build_export_bibtex()
+    result = export_bibtex.execute(DEFAULT_REFERENCES_BIB_PATH)
+    typer.echo(f"{result.output_path} ({result.entry_count} entradas): {', '.join(result.keys)}")
 
 
 @api_app.command("serve")

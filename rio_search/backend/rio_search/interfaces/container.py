@@ -37,6 +37,16 @@ DEFAULT_FORECASTS_DB_PATH = BACKEND_DIR / "data" / "forecasts.sqlite3"
 DEFAULT_FORECASTS_PARQUET_DIR = BACKEND_DIR / "data" / "forecasts"
 DEFAULT_CHAMPION_ARTIFACTS_DIR = BACKEND_DIR / "data" / "champion_artifacts"
 
+# Fase 7 (Research, §3.10): la biblioteca vive fuera de `backend/`, en `rio_search/research/` y
+# `rio_search/thesis/common/` (§3.1) -- no en `backend/data/` como el resto del estado local,
+# porque es un entregable versionado del repo (catalog/notes en git; solo los PDF de
+# `documents/` estan gitignored), no cache/estado descartable.
+RIO_SEARCH_DIR = BACKEND_DIR.parent
+DEFAULT_RESEARCH_CATALOG_DIR = RIO_SEARCH_DIR / "research" / "catalog"
+DEFAULT_RESEARCH_NOTES_DIR = RIO_SEARCH_DIR / "research" / "notes"
+DEFAULT_RESEARCH_DOCUMENTS_DIR = RIO_SEARCH_DIR / "research" / "documents"
+DEFAULT_REFERENCES_BIB_PATH = RIO_SEARCH_DIR / "thesis" / "common" / "references.bib"
+
 
 @dataclass
 class DatabricksCollaborators:
@@ -362,6 +372,57 @@ def build_job_runner(
     )
 
 
+# ----------------------------------------------------------------------
+# Fase 7 -- Research (§3.10, §5): biblioteca de documentos, notas y exportacion a BibTeX. Sin
+# Databricks/MLflow (Decision #3: sin LLM, biblioteca local); solo filesystem.
+# ----------------------------------------------------------------------
+
+
+def build_document_store(
+    catalog_dir: Path = DEFAULT_RESEARCH_CATALOG_DIR,
+    notes_dir: Path = DEFAULT_RESEARCH_NOTES_DIR,
+    documents_dir: Path = DEFAULT_RESEARCH_DOCUMENTS_DIR,
+):
+    """`DocumentStorePort` real (§3.10: catalog/*.yaml + notes/*.md + documents/*, sin base de
+    datos -- el repo es la base)."""
+    from rio_search.infrastructure.research.filesystem_document_store import FileSystemDocumentStore
+
+    return FileSystemDocumentStore(catalog_dir=catalog_dir, notes_dir=notes_dir, documents_dir=documents_dir)
+
+
+def build_bibliography_exporter():
+    """`BibliographyExportPort` real (§3.10: formatea + escribe `references.bib`)."""
+    from rio_search.infrastructure.research.bibtex_exporter import FileBibtexExporter
+
+    return FileBibtexExporter()
+
+
+def build_add_document(store=None):
+    from rio_search.application.research.add_document import AddDocument
+
+    return AddDocument(store=store or build_document_store())
+
+
+def build_update_note(store=None):
+    from rio_search.application.research.update_note import UpdateNote
+
+    return UpdateNote(store=store or build_document_store())
+
+
+def build_tag_document(store=None):
+    from rio_search.application.research.tag_document import TagDocument
+
+    return TagDocument(store=store or build_document_store())
+
+
+def build_export_bibtex(store=None, exporter=None):
+    from rio_search.application.research.export_bibtex import ExportBibtex
+
+    return ExportBibtex(
+        store=store or build_document_store(), exporter=exporter or build_bibliography_exporter()
+    )
+
+
 def build_api_dependencies(
     profile: str = DEFAULT_PROFILE,
     warehouse_id: str = DEFAULT_WAREHOUSE_ID,
@@ -374,6 +435,9 @@ def build_api_dependencies(
     champions_db_path: Path = DEFAULT_CHAMPIONS_DB_PATH,
     forecasts_db_path: Path = DEFAULT_FORECASTS_DB_PATH,
     forecasts_parquet_dir: Path = DEFAULT_FORECASTS_PARQUET_DIR,
+    research_catalog_dir: Path = DEFAULT_RESEARCH_CATALOG_DIR,
+    research_notes_dir: Path = DEFAULT_RESEARCH_NOTES_DIR,
+    research_documents_dir: Path = DEFAULT_RESEARCH_DOCUMENTS_DIR,
 ):
     """Composition root de la API (Fase 4, §5): construye el `ApiDependencies` real que
     `interfaces/api/main.py::create_app()` usa cuando no recibe uno inyectado (los tests de la
@@ -386,7 +450,11 @@ def build_api_dependencies(
     queda en el CLI/Task Scheduler, Decision 044: nunca dos procesos pegandole a Databricks/
     MLflow a la vez con el mismo perfil, y la API ya tiene su propio `JobRunner` serializado
     para eso -- exponer un endpoint que dispare inferencia agregaria una segunda cola paralela
-    sin necesidad real para el criterio de cierre de esta fase)."""
+    sin necesidad real para el criterio de cierre de esta fase).
+
+    Fase 7 (§3.10, "Research"): agrega `document_store`/`add_document`/`update_note`/
+    `tag_document`/`export_bibtex` -- sin Databricks/MLflow (Decision #3: biblioteca local, sin
+    LLM), solo filesystem sobre `rio_search/research/` y `rio_search/thesis/common/`."""
     from rio_search.application.experiments.compare_runs import CompareRuns
     from rio_search.application.experiments.get_run_detail import GetRunDetail
     from rio_search.application.experiments.list_runs import ListRuns
@@ -395,6 +463,9 @@ def build_api_dependencies(
 
     reader = build_tracking_reader(profile=profile, cache_path=read_cache_path)
     list_runs = ListRuns(reader=reader, base_path=rio_search_experiment_base_path(profile))
+    document_store = build_document_store(
+        catalog_dir=research_catalog_dir, notes_dir=research_notes_dir, documents_dir=research_documents_dir
+    )
     return ApiDependencies(
         reader=reader,
         list_runs=list_runs,
@@ -419,4 +490,10 @@ def build_api_dependencies(
             forecasts_db_path=forecasts_db_path,
             forecasts_parquet_dir=forecasts_parquet_dir,
         ),
+        document_store=document_store,
+        add_document=build_add_document(document_store),
+        update_note=build_update_note(document_store),
+        tag_document=build_tag_document(document_store),
+        export_bibtex=build_export_bibtex(document_store),
+        references_bib_path=DEFAULT_REFERENCES_BIB_PATH,
     )

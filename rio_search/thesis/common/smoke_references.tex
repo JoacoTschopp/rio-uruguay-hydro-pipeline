@@ -1,0 +1,28 @@
+% Smoke test del criterio de cierre de la Fase 7 (docs/rio_search_plan.md §5, "Fase 7 -- Research"):
+% "un .tex minimo que los cita compila con latexmk". Cita los 3 documentos reales cargados desde
+% la UI de Research contra `references.bib` (generado por ExportBibtex, misma carpeta). No es
+% parte de la tesis (Fase 8, `thesis/proyecto/`/`thesis/tesis/`) -- solo verifica que el BibTeX que
+% produce Rio_Search es consumible por el toolchain LaTeX real del usuario (MiKTeX + latexmk).
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+
+\title{Smoke test -- Fase 7 (Research)}
+\author{Rio\_Search}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+Este documento existe solo para verificar que \texttt{references.bib} (generado por
+\texttt{ExportBibtex} a partir del catálogo de \texttt{rio\_search/research/}) es citable y
+compila con \texttt{latexmk}.
+
+Cita el trabajo fundacional de LSTM~\cite{hochreiter-1997-lstm}, su aplicación a
+lluvia-escorrentía~\cite{kratzert-2018-lstm-rainfall-runoff} y la métrica KGE que Rio\_Search usa
+para seleccionar el campeón~\cite{gupta-2009-kge}.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

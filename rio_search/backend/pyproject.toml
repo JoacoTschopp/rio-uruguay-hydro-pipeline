@@ -18,6 +18,10 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "typer>=0.12",
+    # Fase 7 (Research, §3.10): `python-multipart` es requerido por FastAPI para `Form`/
+    # `UploadFile` (subida de PDF en `POST /api/research/documents`) -- sin esto FastAPI tira
+    # un error en tiempo de arranque al declarar el endpoint.
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

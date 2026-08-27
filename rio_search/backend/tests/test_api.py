@@ -22,6 +22,10 @@ from rio_search.application.ports.job_runner import JobRecord, JobStatus
 from rio_search.application.ports.tracking_read import MetricPoint, RunRecord
 from rio_search.application.predictions.backtest_recent import BacktestRecent
 from rio_search.application.predictions.promote_champion import PromoteChampion
+from rio_search.application.research.add_document import AddDocument
+from rio_search.application.research.export_bibtex import ExportBibtex
+from rio_search.application.research.tag_document import TagDocument
+from rio_search.application.research.update_note import UpdateNote
 from rio_search.domain.datasets.dataset_version import DatasetVersion
 from rio_search.domain.datasets.feature_catalog import FeatureCatalog
 from rio_search.domain.datasets.feature_group import FeatureGroup
@@ -177,6 +181,48 @@ class FakeDatasetRepository:
         return version, df
 
 
+class FakeDocumentStore:
+    """`DocumentStorePort` falso en memoria (Fase 7, mismo criterio que `FakeChampionStore`)."""
+
+    def __init__(self) -> None:
+        self._documents: dict[str, object] = {}
+        self._notes: dict[str, object] = {}
+        self._files: dict[str, tuple[bytes, str]] = {}
+
+    def save_document(self, document) -> None:
+        self._documents[document.slug] = document
+
+    def get_document(self, slug: str):
+        return self._documents.get(slug)
+
+    def list_documents(self):
+        return tuple(sorted(self._documents.values(), key=lambda d: d.slug))
+
+    def save_note(self, note, title: str) -> None:
+        self._notes[note.slug] = note
+
+    def get_note(self, slug: str):
+        return self._notes.get(slug)
+
+    def save_file(self, slug: str, filename: str, content: bytes) -> str:
+        self._files[slug] = (content, filename)
+        return f"documents/{slug}{Path(filename).suffix}"
+
+    def read_file(self, slug: str):
+        return self._files.get(slug)
+
+
+class FakeBibliographyExporter:
+    def __init__(self) -> None:
+        self.written = None
+
+    def write(self, entries, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("\n\n".join(e.to_bibtex() for e in entries), encoding="utf-8")
+        self.written = entries
+        return output_path
+
+
 def _champion_candidate_run() -> RunRecord:
     """Trial `bilstm` real de la Fase 3 (tags/metricas minimas que `PromoteChampion` necesita):
     `rio_search.model`, `rio_search.target`, `registered_model_name`/`_version`,
@@ -222,6 +268,8 @@ def client(experiments_dir: Path) -> TestClient:
     )
     champion_store = FakeChampionStore()
     forecast_repository = FakeForecastRepository()
+    document_store = FakeDocumentStore()
+    references_bib_path = experiments_dir.parent.parent / "thesis" / "common" / "references.bib"
     deps = ApiDependencies(
         reader=reader,
         list_runs=list_runs,
@@ -238,14 +286,21 @@ def client(experiments_dir: Path) -> TestClient:
         backtest_recent=BacktestRecent(
             forecast_repository=forecast_repository, dataset_repository=FakeDatasetRepository()
         ),
+        document_store=document_store,
+        add_document=AddDocument(store=document_store),
+        update_note=UpdateNote(store=document_store),
+        tag_document=TagDocument(store=document_store),
+        export_bibtex=ExportBibtex(store=document_store, exporter=FakeBibliographyExporter()),
+        references_bib_path=references_bib_path,
     )
     test_client = TestClient(create_app(deps=deps))
-    # Atributos extra (no parte de `TestClient`) para que los tests de Fase 6 puedan sembrar el
+    # Atributos extra (no parte de `TestClient`) para que los tests de Fase 6/7 puedan sembrar el
     # repo falso directamente -- las rutas HTTP no exponen "crear un pronostico", eso lo hace
     # `IssueDailyForecast` (CLI/Task Scheduler), no la API (ver docstring de
     # `interfaces.container.build_api_dependencies`).
     test_client.forecast_repository = forecast_repository  # type: ignore[attr-defined]
     test_client.champion_store = champion_store  # type: ignore[attr-defined]
+    test_client.document_store = document_store  # type: ignore[attr-defined]
     return test_client
 
 

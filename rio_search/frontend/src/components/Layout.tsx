@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/launch', label: 'Lanzar' },
   { to: '/datasets', label: 'Datasets' },
   { to: '/forecast', label: 'Pronóstico de hoy' },
+  { to: '/research', label: 'Research' },
 ]
 
 export function Layout() {

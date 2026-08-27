@@ -1,0 +1,14 @@
+slug: hochreiter-1997-lstm
+title: Long Short-Term Memory
+authors:
+- Hochreiter, S.
+- Schmidhuber, J.
+year: 1997
+type: paper
+venue: Neural Computation
+doi_url: https://doi.org/10.1162/neco.1997.9.8.1735
+tags:
+- lstm
+- deep-learning
+file: documents/hochreiter-1997-lstm.pdf
+added_at: '2026-08-27T21:21:57.893428+00:00'

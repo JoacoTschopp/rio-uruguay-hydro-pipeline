@@ -188,3 +188,61 @@ class BacktestPointOut(BaseModel):
 class BacktestOut(BaseModel):
     target: str
     points: list[BacktestPointOut]
+
+
+# ----------------------------------------------------------------------
+# Fase 7 -- Research (§3.10, §3.9): biblioteca de documentos, notas por seccion y BibTeX.
+# ----------------------------------------------------------------------
+
+
+class DocumentOut(BaseModel):
+    slug: str
+    title: str
+    authors: list[str]
+    year: int
+    type: str
+    venue: str | None
+    doi_url: str | None
+    tags: list[str]
+    file: str | None
+    added_at: str
+
+
+class DocumentListOut(BaseModel):
+    documents: list[DocumentOut]
+
+
+class LinkIn(BaseModel):
+    kind: str  # "decision" | "run"
+    ref: str
+
+
+class LinkOut(BaseModel):
+    kind: str
+    ref: str
+
+
+class NoteOut(BaseModel):
+    slug: str
+    sections: dict[str, str]
+    links: list[LinkOut]
+
+
+class NoteUpdateIn(BaseModel):
+    sections: dict[str, str] = {}
+    links: list[LinkIn] = []
+
+
+class TagsUpdateIn(BaseModel):
+    tags: str  # separados por coma (Tag.parse_many, §3.10)
+
+
+class DocumentDetailOut(BaseModel):
+    document: DocumentOut
+    note: NoteOut
+
+
+class ExportBibtexOut(BaseModel):
+    output_path: str
+    entry_count: int
+    keys: list[str]

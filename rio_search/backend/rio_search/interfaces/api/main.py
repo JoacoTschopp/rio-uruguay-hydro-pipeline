@@ -12,9 +12,10 @@ api serve`) llama a la factory sin argumentos.
 from __future__ import annotations
 
 import asyncio
+import io
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from rio_search.application.ports.job_runner import JobRecord
@@ -22,6 +23,11 @@ from rio_search.application.ports.snapshot_sync import RefreshMode
 from rio_search.application.ports.tracking_read import RunRecord
 from rio_search.domain.predictions.champion import Champion
 from rio_search.domain.predictions.forecast import Forecast
+from rio_search.domain.research.document import Document
+from rio_search.domain.research.document_type import DocumentType
+from rio_search.domain.research.link import Link, LinkKind
+from rio_search.domain.research.note import Note
+from rio_search.domain.research.tag import Tag
 from rio_search.domain.shared.target_variable import TargetVariable
 from rio_search.interfaces.api.dependencies import ApiDependencies
 from rio_search.interfaces.api.schemas import (
@@ -30,6 +36,10 @@ from rio_search.interfaces.api.schemas import (
     ChampionOut,
     DatasetOut,
     DatasetVersionOut,
+    DocumentDetailOut,
+    DocumentListOut,
+    DocumentOut,
+    ExportBibtexOut,
     FeatureCatalogOut,
     FeatureGroupOut,
     ForecastHistoryOut,
@@ -38,7 +48,10 @@ from rio_search.interfaces.api.schemas import (
     JobListOut,
     JobOut,
     JobSubmitIn,
+    LinkOut,
     MetricSeriesOut,
+    NoteOut,
+    NoteUpdateIn,
     PromoteChampionIn,
     RunComparisonOut,
     RunDetailOut,
@@ -46,6 +59,7 @@ from rio_search.interfaces.api.schemas import (
     RunOut,
     SearchListOut,
     SearchOut,
+    TagsUpdateIn,
 )
 
 APP_VERSION = "0.2.0"
@@ -286,6 +300,109 @@ def create_app(deps: ApiDependencies | None = None) -> FastAPI:
         )
 
     # ------------------------------------------------------------------
+    # Research (§3.9, §3.10, Fase 7): biblioteca de documentos, notas por seccion, tags y
+    # exportacion a BibTeX. Sin Databricks/MLflow (Decision #3: sin LLM).
+    # ------------------------------------------------------------------
+    @app.get("/api/research/documents", response_model=DocumentListOut)
+    def list_documents() -> DocumentListOut:
+        documents = deps.document_store.list_documents()
+        return DocumentListOut(documents=[_document_out(d) for d in documents])
+
+    @app.post("/api/research/documents", response_model=DocumentDetailOut, status_code=201)
+    async def create_document(
+        title: str = Form(...),
+        authors: str = Form(..., description="Autores separados por ';'"),
+        year: int = Form(...),
+        type: str = Form(..., description="paper | tesis | informe | plantilla"),
+        venue: str | None = Form(None),
+        doi_url: str | None = Form(None),
+        tags: str = Form("", description="Tags separados por ','"),
+        slug: str | None = Form(None),
+        file: UploadFile | None = File(None),
+    ) -> DocumentDetailOut:
+        try:
+            document_type = DocumentType(type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"type invalido: {type!r}") from exc
+
+        author_tuple = tuple(a.strip() for a in authors.split(";") if a.strip())
+        if not author_tuple:
+            raise HTTPException(status_code=400, detail="authors vacio (separar con ';')")
+
+        file_content: bytes | None = None
+        file_name: str | None = None
+        if file is not None and file.filename:
+            file_content = await file.read()
+            file_name = file.filename
+
+        try:
+            document = deps.add_document.execute(
+                title=title,
+                authors=author_tuple,
+                year=year,
+                type=document_type,
+                venue=venue or None,
+                doi_url=doi_url or None,
+                tags=Tag.parse_many(tags),
+                slug=slug or None,
+                file_content=file_content,
+                file_name=file_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        note = deps.document_store.get_note(document.slug) or Note.empty(document.slug)
+        return DocumentDetailOut(document=_document_out(document), note=_note_out(note))
+
+    @app.get("/api/research/documents/{slug}", response_model=DocumentDetailOut)
+    def get_document(slug: str) -> DocumentDetailOut:
+        document = deps.document_store.get_document(slug)
+        if document is None:
+            raise HTTPException(status_code=404, detail=f"documento {slug!r} no encontrado")
+        note = deps.document_store.get_note(slug) or Note.empty(slug)
+        return DocumentDetailOut(document=_document_out(document), note=_note_out(note))
+
+    @app.put("/api/research/documents/{slug}/tags", response_model=DocumentOut)
+    def update_tags(slug: str, body: TagsUpdateIn) -> DocumentOut:
+        try:
+            document = deps.tag_document.execute(slug, Tag.parse_many(body.tags))
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _document_out(document)
+
+    @app.put("/api/research/documents/{slug}/notes", response_model=NoteOut)
+    def update_note(slug: str, body: NoteUpdateIn) -> NoteOut:
+        try:
+            links = tuple(Link(kind=LinkKind(link.kind), ref=link.ref) for link in body.links)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            note = deps.update_note.execute(slug, sections=body.sections, links=links)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _note_out(note)
+
+    @app.get("/api/research/documents/{slug}/file")
+    def get_document_file(slug: str) -> StreamingResponse:
+        found = deps.document_store.read_file(slug)
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"sin archivo subido para {slug!r}")
+        content, filename = found
+        media_type = "application/pdf" if filename.lower().endswith(".pdf") else "text/plain"
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type=media_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+
+    @app.post("/api/research/export-bib", response_model=ExportBibtexOut)
+    def export_bibtex() -> ExportBibtexOut:
+        result = deps.export_bibtex.execute(deps.references_bib_path)
+        return ExportBibtexOut(
+            output_path=str(result.output_path), entry_count=result.entry_count, keys=list(result.keys)
+        )
+
+    # ------------------------------------------------------------------
     # Frontend estatico (Fase 5, §3.9: "Build estatico servido por FastAPI en `/`"): montado
     # *despues* de todas las rutas `/api/*` de arriba, a proposito -- Starlette resuelve rutas en
     # el orden en que se registraron y devuelve el primer match, asi que un catch-all acá abajo
@@ -342,6 +459,29 @@ def _forecast_out(forecast: Forecast) -> ForecastOut:
             ForecastPointOut(horizon=p.horizon, target_date=p.target_date.isoformat(), value=p.value)
             for p in forecast.points
         ],
+    )
+
+
+def _document_out(document: Document) -> DocumentOut:
+    return DocumentOut(
+        slug=document.slug,
+        title=document.title,
+        authors=list(document.authors),
+        year=document.year,
+        type=document.type.value,
+        venue=document.venue,
+        doi_url=document.doi_url,
+        tags=[t.value for t in document.tags],
+        file=document.file,
+        added_at=document.added_at,
+    )
+
+
+def _note_out(note: Note) -> NoteOut:
+    return NoteOut(
+        slug=note.slug,
+        sections=dict(note.sections),
+        links=[LinkOut(kind=link.kind.value, ref=link.ref) for link in note.links],
     )
 
 

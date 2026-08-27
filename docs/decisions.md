@@ -2987,3 +2987,97 @@ de hoy" en la UI.
   pero el campeón provisorio de la Decisión 046 es `multi_output`.
 * La revisión de `weather.ml` (§8 del plan, nombre/alias/política de versiones) sigue pendiente del
   usuario — la Decisión 046 es explícitamente provisoria hasta esa revisión.
+
+## Decisión 049: Cierre de la Fase 7 (Research) — biblioteca de documentos sin LLM, notas por
+sección en Markdown, BibTeX real verificado con `latexmk`, y un hallazgo de `bibtex` clásico con
+bytes no-ASCII antes de la primera entrada
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada de punta a punta con el mecanismo real, no simulada: 3
+documentos reales (referencias bibliográficas temáticamente pertinentes a la tesis — LSTM,
+LSTM aplicado a lluvia-escorrentía y la métrica KGE que Rio_Search usa para seleccionar campeón)
+cargados **desde la UI real** (`browser-automation`, Playwright, sin pegarle a la API a mano) con
+subida de PDF, tags y notas por sección incluida una vinculación real a `Decisión 043`;
+`rio_search/thesis/common/references.bib` generado con las 3 entradas desde el botón "Exportar
+BibTeX"; un `.tex` mínimo (`rio_search/thesis/common/smoke_references.tex`) que los cita **compiló
+con `latexmk` real** (MiKTeX 24.1), con las 3 entradas resueltas en el `.bbl` y
+`Output written on ... smoke_references.pdf (1 page, 87018 bytes)` sin citas indefinidas. 362 tests
+offline en verde (302 de las Fases 0-6 + 60 nuevas de esta fase), 2 `integration` deseleccionados
+sin cambios; `ruff check` limpio; `npm run build` (`tsc -b` estricto) limpio, `oxlint` sin errores
+(solo el mismo tipo de warning `set-state-in-effect` ya preexistente en `LaunchPage.tsx`, ahora
+también en `ResearchPage.tsx`, no bloqueante).
+
+### Contexto
+
+El plan (§3.10, Decisión #3 de las decisiones cerradas antes de escribir el plan) pide una
+biblioteca de investigación **sin LLM**: catálogo de documentos, notas de lectura por sección y
+exportación a BibTeX, con persistencia legible y versionable (YAML + Markdown) para que el propio
+repo sea la base — sin base de datos. Es la fase que cierra el bloque de la aplicación antes de
+entrar a la Fase 8 (Tesis LaTeX), que arranca pidiéndole al usuario el trabajo con formato ya
+validado.
+
+### Decisión
+
+1. **Dominio nuevo** `domain/research/` (`Tag`, `DocumentType`, `Link`/`LinkKind`, `BibEntry`,
+   `Document`, `Note`) y **aplicación nueva** `application/research/` (`AddDocument`, `UpdateNote`,
+   `TagDocument`, `ExportBibtex`), con sus puertos (`DocumentStorePort`, `BibliographyExportPort`)
+   e infraestructura (`YamlCatalog`, `FileSystemDocumentStore`, `FileBibtexExporter`) — mismo
+   patrón Onion+DDD que el resto del backend, sin tocar `domain`/`application` de fases anteriores.
+   `Note` vive con `to_markdown`/`from_markdown` en el propio dominio (texto puro, sin I/O, mismo
+   criterio que `Forecast.as_tags()`): 6 secciones fijas (`methodology`, `models`,
+   `windows_splits`, `metrics`, `results`, `takeaways` — etiquetas visibles en español) más una
+   sección `## Enlaces` con líneas estructuradas `- Decisión: Decisión NNN` / `` - Run: `run_id` ``
+   que hacen round-trip exacto de vuelta a `Link` al releer el archivo.
+2. **Endpoints** `GET/POST /api/research/documents`, `GET /api/research/documents/{slug}`, `PUT
+   .../{slug}/tags`, `PUT .../{slug}/notes`, `GET .../{slug}/file`, `POST /api/research/export-bib`
+   — el subconjunto de la tabla del plan (§3.9) se amplió con las lecturas (`GET .../{slug}`,
+   `.../file`) y la escritura de tags separada de la de notas porque el plan ya modela `TagDocument`
+   como su propio caso de uso; ninguno toca Databricks/MLflow (Decisión #3). `POST
+   /api/research/documents` es `multipart/form-data` (requiere `python-multipart`, agregado a
+   `pyproject.toml`) para poder subir el PDF en la misma request que los metadatos.
+3. **CLI** `rio-search research add <pdf> --title ... --authors "A;B" --year ... [--type ...]
+   [--venue ...] [--tags a,b] [--slug ...]` y `rio-search research export-bib`, tal como especifica
+   §4.2 del plan.
+4. **UI**: página `ResearchPage.tsx` (`/research`, agregada a `NAV_ITEMS` de `Layout.tsx`) —
+   formulario de alta con subida de PDF, tabla de documentos con tags y link al archivo, panel de
+   edición (tags, notas por sección con textarea por sección, alta/baja de enlaces estructurados a
+   Decisión/run) y panel de exportar BibTeX con el resumen real (`output_path`, `entry_count`,
+   `keys`) devuelto por el propio endpoint.
+5. **Hallazgo real, no trivial**: el `bibtex` clásico que trae MiKTeX (no `bibtex8`/`biber`) **no es
+   Unicode-aware** — un carácter no-ASCII en el archivo `.bib` *antes* de la primera entrada
+   (probado con `§`, bytes UTF-8 `0xC2 0xA7`, en el comentario de cabecera que generaba
+   `FileBibtexExporter`) descoloca su lexer y hace que reporte silenciosamente **0 entradas**, sin
+   ningún error visible, aunque el archivo tenga las entradas bien formadas — `bibtex` seguía
+   diciendo "Warning--I didn't find a database entry" para los 3 `\cite{}` aunque
+   `references.bib` los tuviera. Corregido: `FileBibtexExporter._HEADER` es ASCII puro y el archivo
+   se escribe con `newline="\n"` explícito (antes usaba el `\r\n` por defecto de `Path.write_text`
+   en Windows) — ambos cambios documentados como salvaguardas, aunque el bloqueo real de esta
+   verificación resultó ser un problema **separado y ambiental**: correr `latexmk` a través de Git
+   Bash (MSYS) reescribe `BIBINPUTS`/`BSTINPUTS` a rutas estilo `/c/Users/...` que el `bibtex.exe`
+   nativo de MiKTeX no interpreta, y sólo se resolvió corriendo `latexmk` desde PowerShell nativo
+   (mismo intérprete, mismo `.tex`, mismo `.bib`: 0 citas indefinidas, `.bbl` con las 3 entradas
+   completas). **Queda anotado para la Fase 8**: compilar la tesis con `latexmk` desde PowerShell,
+   no desde Git Bash, en esta máquina.
+6. **Limitación conocida, no resuelta a propósito**: `BibEntry.to_bibtex()` no escapa caracteres
+   no-ASCII en campos de entrada (títulos/autores con acentos que sí puede tener un documento real,
+   a diferencia de los 3 de prueba). Si aparece en una fase futura, hace falta o bien `bibtex8`/
+   `biber` en vez de `bibtex` clásico, o escapar a secuencias LaTeX (`\'{e}`, etc.) en el propio
+   `to_bibtex()` — fuera de alcance de esta fase.
+7. **PDFs de prueba**: no se descargaron PDFs reales de internet (fuera del alcance pedido, "no
+   hace falta... investigación bibliográfica real exhaustiva"); se generó un PDF mínimo válido por
+   documento (estructura PDF 1.4 escrita a mano, sin librerías — `reportlab`/`fpdf` no están en el
+   entorno) con el título como placeholder de texto, documentado acá en vez de en el repo.
+8. **Referencias usadas** (temáticamente reales, no aleatorias): Hochreiter & Schmidhuber (1997,
+   *Long Short-Term Memory*, slug `hochreiter-1997-lstm`) — el trabajo fundacional del LSTM que usa
+   el baseline de la Fase 3; Kratzert et al. (2018, *Rainfall-runoff modelling using LSTM
+   networks*, HESS, slug `kratzert-2018-lstm-rainfall-runoff`) — aplicación directa de LSTM a
+   caudales; Gupta et al. (2009, *Decomposition of the mean squared error and NSE performance
+   criteria*, J. Hydrology, slug `gupta-2009-kge`) — el paper que introduce KGE, métrica que
+   Rio_Search usa para seleccionar campeón (§3.7 del plan, `val/kge/mean`).
+
+### Pendiente para el agente principal
+
+Al cierre de esta fase corresponde pedirle al usuario **el trabajo con formato LaTeX ya validado**
+para `rio_search/research/templates/` (insumo de la Fase 8, §8 del plan) — este sub-agente no
+puede pedírselo directamente.

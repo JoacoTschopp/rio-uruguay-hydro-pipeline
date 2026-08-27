@@ -7,6 +7,7 @@ import { ComparePage } from './pages/ComparePage'
 import { LaunchPage } from './pages/LaunchPage'
 import { DatasetsPage } from './pages/DatasetsPage'
 import { ForecastPage } from './pages/ForecastPage'
+import { ResearchPage } from './pages/ResearchPage'
 import { HealthPage } from './pages/HealthPage'
 
 const queryClient = new QueryClient({
@@ -25,6 +26,7 @@ function App() {
             <Route path="/launch" element={<LaunchPage />} />
             <Route path="/datasets" element={<DatasetsPage />} />
             <Route path="/forecast" element={<ForecastPage />} />
+            <Route path="/research" element={<ResearchPage />} />
             <Route path="/health" element={<HealthPage />} />
           </Route>
         </Routes>

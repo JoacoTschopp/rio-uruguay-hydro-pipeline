@@ -261,6 +261,145 @@ export function fetchForecastBacktest(target: TargetVariable, maxForecasts = 30)
   return getJson(`/api/forecasts/backtest?target=${target}&max_forecasts=${maxForecasts}`)
 }
 
+// ----------------------------------------------------------------------
+// Fase 7 -- Research (§3.9, §3.10): biblioteca de documentos, notas por seccion, tags, BibTeX.
+// ----------------------------------------------------------------------
+
+export type DocumentType = 'paper' | 'tesis' | 'informe' | 'plantilla'
+
+export interface DocumentOut {
+  slug: string
+  title: string
+  authors: string[]
+  year: number
+  type: DocumentType
+  venue: string | null
+  doi_url: string | null
+  tags: string[]
+  file: string | null
+  added_at: string
+}
+
+export interface DocumentListOut {
+  documents: DocumentOut[]
+}
+
+export type LinkKind = 'decision' | 'run'
+
+export interface LinkOut {
+  kind: LinkKind
+  ref: string
+}
+
+export const NOTE_SECTIONS: { key: string; label: string }[] = [
+  { key: 'methodology', label: 'Metodología' },
+  { key: 'models', label: 'Modelos' },
+  { key: 'windows_splits', label: 'Ventanas / splits' },
+  { key: 'metrics', label: 'Métricas' },
+  { key: 'results', label: 'Resultados' },
+  { key: 'takeaways', label: 'Qué me llevo' },
+]
+
+export interface NoteOut {
+  slug: string
+  sections: Record<string, string>
+  links: LinkOut[]
+}
+
+export interface DocumentDetailOut {
+  document: DocumentOut
+  note: NoteOut
+}
+
+export interface ExportBibtexOut {
+  output_path: string
+  entry_count: number
+  keys: string[]
+}
+
+export function fetchDocuments(): Promise<DocumentListOut> {
+  return getJson('/api/research/documents')
+}
+
+export function fetchDocumentDetail(slug: string): Promise<DocumentDetailOut> {
+  return getJson(`/api/research/documents/${encodeURIComponent(slug)}`)
+}
+
+export interface CreateDocumentInput {
+  title: string
+  authors: string // separados por ';'
+  year: number
+  type: DocumentType
+  venue?: string
+  doi_url?: string
+  tags?: string // separados por ','
+  slug?: string
+  file?: File | null
+}
+
+export async function createDocument(input: CreateDocumentInput): Promise<DocumentDetailOut> {
+  const form = new FormData()
+  form.set('title', input.title)
+  form.set('authors', input.authors)
+  form.set('year', String(input.year))
+  form.set('type', input.type)
+  if (input.venue) form.set('venue', input.venue)
+  if (input.doi_url) form.set('doi_url', input.doi_url)
+  form.set('tags', input.tags ?? '')
+  if (input.slug) form.set('slug', input.slug)
+  if (input.file) form.set('file', input.file)
+
+  const res = await fetch('/api/research/documents', { method: 'POST', body: form })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`POST /api/research/documents -> ${res.status} ${res.statusText}${body ? `: ${body}` : ''}`)
+  }
+  return (await res.json()) as DocumentDetailOut
+}
+
+export async function updateDocumentTags(slug: string, tags: string): Promise<DocumentOut> {
+  const res = await fetch(`/api/research/documents/${encodeURIComponent(slug)}/tags`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`PUT .../tags -> ${res.status} ${res.statusText}${body ? `: ${body}` : ''}`)
+  }
+  return (await res.json()) as DocumentOut
+}
+
+export async function updateDocumentNote(
+  slug: string,
+  sections: Record<string, string>,
+  links: LinkOut[],
+): Promise<NoteOut> {
+  const res = await fetch(`/api/research/documents/${encodeURIComponent(slug)}/notes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sections, links }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`PUT .../notes -> ${res.status} ${res.statusText}${body ? `: ${body}` : ''}`)
+  }
+  return (await res.json()) as NoteOut
+}
+
+export function documentFileUrl(slug: string): string {
+  return `/api/research/documents/${encodeURIComponent(slug)}/file`
+}
+
+export async function exportBibtex(): Promise<ExportBibtexOut> {
+  const res = await fetch('/api/research/export-bib', { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`POST /api/research/export-bib -> ${res.status} ${res.statusText}${body ? `: ${body}` : ''}`)
+  }
+  return (await res.json()) as ExportBibtexOut
+}
+
 export async function promoteChampion(input: {
   run_id: string
   target: TargetVariable
