@@ -1,0 +1,66 @@
+[project]
+name = "rio-search"
+version = "0.1.0"
+description = "Rio_Search: banco de pruebas reproducible para la metodologia que mejor proyecta el caudal del Rio Uruguay en ana_74100000 (docs/rio_search_plan.md)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch>=2.4",
+    "polars>=1.9",
+    "mlflow-skinny>=2.16",
+    "databricks-sdk>=0.30",
+    "pyarrow>=17.0",
+    "numpy>=1.26,<2.0",
+    "pydantic>=2.9",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.5",
+    "optuna>=3.6",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "typer>=0.12",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+rio-search = "rio_search.interfaces.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rio_search"]
+
+# Decision #9 (docs/rio_search_plan.md): Polars, nunca pandas. pandas no es una dependencia
+# de este proyecto y ruff lo bloquea como import aunque otra libreria lo arrastre transitivamente.
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pandas".msg = "Prohibido (Decision #9, docs/rio_search_plan.md): usar Polars. Si una dependencia lo necesita, aislarla, nunca importarlo desde rio_search."
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: toca Databricks/MLflow real (docs/rio_search_plan.md, offline por defecto salvo estos).",
+]
+
+# Windows: indice CUDA explicito para torch (RTX 3060, driver CUDA 12.6 -> wheels cu124).
+# macOS/Linux sin este override usan el indice default de PyPI (macOS trae soporte MPS de fabrica).
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

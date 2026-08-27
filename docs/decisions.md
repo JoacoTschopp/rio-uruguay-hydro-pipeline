@@ -1959,3 +1959,72 @@ corra en Databricks, no en local.
   cociente lluvia anual MERGE/estaciones cae de ~0,9 a 0,71/0,48/0,58 en 2023-2025 sin que la cobertura
   de estaciones baje (sube de 0,13 a 0,20) — sugiere una estación ANA nueva con posible error de
   unidades, a investigar en la Fase 3, no en esta decisión.
+
+---
+
+## Decisión 034: `mlflow.pytorch.log_model` no se puede usar sin pandas — Rio_Search loguea modelos PyTorch como artefacto plano (state_dict), no con el flavor de alto nivel
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow real en la **Fase 0** de
+`rio_search_plan.md` (run `smoke`, `/Users/joaquintschopp@gmail.com/rio_search/smoke`).
+
+### Contexto
+
+Decisión #9 de `rio_search_plan.md` prohíbe pandas como dependencia del backend de Rio_Search
+(Polars en su lugar) y elige `mlflow-skinny` en vez de `mlflow` completo por lo mismo. El riesgo ya
+estaba anticipado en la tabla de riesgos del plan (§6): *"`mlflow-skinny` no cubre algún camino (p. ej.
+`log_model` o `MetaDataset`) sin pandas"*, con la mitigación *"el run `smoke` de la Fase 0 ejercita
+exactamente esos caminos; si alguno falla, se aísla en un adaptador y se registra la Decisión"*. Este
+es ese hallazgo.
+
+### Qué se verificó
+
+Con `mlflow-skinny==3.15.2` instalado (sin `pandas` en el entorno, `torch==2.6.0+cu124`,
+`databricks-sdk==0.133.0`, todo vía `uv sync` en `rio_search/backend`):
+
+* `import mlflow` y `mlflow.set_tracking_uri("databricks://joaquintschopp@gmail.com")` funcionan sin
+  pandas.
+* `from mlflow.data.meta_dataset import MetaDataset` y `from mlflow.data.uc_volume_dataset_source
+  import UCVolumeDatasetSource` funcionan sin pandas — `MetaDataset` es exactamente lo que pedía la
+  Decisión #11/§3.5 (nombre, digest y origen del dataset sin materializarlo).
+* `import mlflow.pytorch` **falla** con `ModuleNotFoundError: No module named 'pandas'`: el archivo
+  `mlflow/pytorch/__init__.py` hace `import pandas as pd` sin condicionar en el top-level del módulo
+  (usado por el wrapper `pyfunc` que ese flavor genera). No es un camino interno opcional: cualquier uso
+  de `mlflow.pytorch.log_model(...)` obliga a importar el submódulo completo.
+
+### Decisión
+
+**Rio_Search no usa `mlflow.pytorch.log_model` en ningún adaptador.** En su lugar, todo modelo PyTorch
+se serializa con `torch.save(model.state_dict(), ...)` y se sube como artefacto plano vía
+`mlflow.log_artifacts(tmp_dir, artifact_path="model")`, junto con metadatos propios en JSON
+(arquitectura, hiperparámetros) que reemplazan al `MLmodel`/signature que generaría el flavor. Esto se
+verificó en el run `smoke` de la Fase 0 (`infrastructure/tracking/smoke.py`): modelo de juguete
+logueado en `model/model_state_dict.pth` + `model/architecture.json` + `model/README.md`, sin pandas en
+el entorno (`test_no_pandas_in_env` en verde).
+
+Consecuencia directa para la **Fase 3** (`rio_search_plan.md`, checklist de la fase): el ítem
+*"`mlflow.pytorch.log_model` con *signature* y `code_paths`"* se reinterpreta como *"artefacto plano con
+`torch.save` + metadatos propios (arquitectura, hiperparámetros) + `code/` para procedencia (§3.13),
+sin el flavor `mlflow.pytorch`"*. `ModelAdapterPort.save`/`load` (§3.3) implementan esa serialización
+directamente; el checkpoint sigue guardándose en CPU (`state_dict` con `map_location`) como ya preveía
+§3.4. Si una versión futura de `mlflow`/`mlflow-skinny` corrige el import incondicional de pandas, se
+puede reevaluar sin cambiar el dominio ni la aplicación (el adaptador es el único punto de contacto).
+
+### Justificación
+
+Instalar `pandas` sólo para destrabar `mlflow.pytorch.log_model` violaría la Decisión #9 en su propio
+propósito (el punto del run `smoke` es probar que no hace falta) y además el propio
+`test_no_pandas_in_env` de la Fase 0 lo bloquearía. El costo de no usar el flavor de alto nivel es
+perder la generación automática de `signature`/`MLmodel`/entorno conda del modelo — funcionalidad que
+Rio_Search puede reconstruir a mano (ya versiona `features/spec.json`, `preprocess/pipeline.pkl` y
+`env/uv.lock` como artefactos propios, §3.5) sin depender de esa capa de MLflow.
+
+### Consecuencias
+
+* `rio_search/backend/rio_search/infrastructure/tracking/smoke.py` documenta el hallazgo en su
+  docstring y sirve de referencia de implementación para el `ModelAdapterPort` real de la Fase 3.
+* No cambia nada de `mlflow.sklearn` (Fase 9, modelos no-DL): a evaluar en su momento si el mismo
+  problema aplica a ese flavor antes de usarlo.
+* `MetaDataset` + `UCVolumeDatasetSource` sí funcionan sin pandas y se usan tal como estaban diseñados
+  en §3.5, sin cambios.
