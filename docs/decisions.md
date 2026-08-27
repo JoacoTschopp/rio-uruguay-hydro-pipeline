@@ -1962,7 +1962,7 @@ corra en Databricks, no en local.
 
 ---
 
-## Decisión 034: `mlflow.pytorch.log_model` no se puede usar sin pandas — Rio_Search loguea modelos PyTorch como artefacto plano (state_dict), no con el flavor de alto nivel
+## Decisión 039: `mlflow.pytorch.log_model` no se puede usar sin pandas — Rio_Search loguea modelos PyTorch como artefacto plano (state_dict), no con el flavor de alto nivel
 
 ### Estado
 
