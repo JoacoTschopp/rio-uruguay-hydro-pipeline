@@ -1,0 +1,167 @@
+# Catalogo de features de weather.gold.training_dataset_v0 (Fase 1, docs/rio_search_plan.md
+# §3.6). Generado a partir del diccionario de gold_quality_report.md §7 y del manifest.json
+# real (83 columnas, delta_version 268, verificado 2026-08-27) -- cada columna del dataset
+# aparece en exactamente un grupo, sin duplicados ni huecos (ver
+# rio_search/backend/tests/test_feature_catalog.py::test_catalog_covers_every_real_column).
+#
+# `default_on` es el default de `features.groups` en un YAML de experimento cuando no se
+# especifica: los grupos "off" quedan disponibles pero hay que pedirlos explicitamente.
+#
+# Nota de diseño (Fase 1): las columnas de calidad/procedencia del estado hidrologico
+# (`caudal_metodo`, `caudal_extrapolado`, `distancia_fuera_rango_cm`, `curva_vigencia_
+# extendida`, `caudal_confiable`, `supera_aforo_maximo`) y las banderas `*_es_preliminar` de
+# CPTEC quedan todas en el grupo `calidad` (no en `caudal_estado`/`cptec_grid`) para que un
+# experimento pueda excluirlas de un tiron sin tocar las columnas de estado/grilla que si
+# quiere usar como features numericas.
+
+groups:
+  meta:
+    default_on: false # nunca se usan como feature; BuildFeatureMatrix no las toca
+    description: >
+      Identificadores, timestamps de proceso y columnas deprecadas (Fase 1: se listan para que
+      el catalogo cubra el 100% de las columnas reales, no para usarlas como features).
+    columns:
+      - fecha
+      - punto_prediccion
+      - codigoestacao
+      - feature_generated_at
+      - updated_at
+      - temp_station_count # deprecada: reemplazada por temp_agregado_alta_frontera_station_count
+      - lluvia_is_usable # deprecada: reemplazada por lluvia_agregado_alta_frontera_cobertura_pct
+
+  caudal_estado:
+    default_on: true
+    description: Estado hidrologico de caudal en ana_74100000 (§3.6).
+    columns:
+      - caudal_actual_m3s
+      - caudal_registros_validos
+      - caudal_lag_1d
+      - caudal_lag_3d
+      - caudal_lag_7d
+      - caudal_media_3d
+      - caudal_media_7d
+      - caudal_delta_1d
+
+  nivel_estado:
+    default_on: true
+    description: Estado hidrologico de nivel en ana_74100000 (§3.6).
+    columns:
+      - nivel_rio_actual_cm
+      - nivel_rio_actual_m
+      - nivel_registros_validos
+      - nivel_rio_lag_1d
+      - nivel_rio_lag_3d
+      - nivel_rio_lag_7d
+      - nivel_rio_media_3d
+      - nivel_rio_media_7d
+      - nivel_rio_delta_1d
+
+  caudal_agregado_alta_frontera:
+    default_on: true
+    description: Caudal agregado de la subcuenca alta frontera (§3.6).
+    columns:
+      - caudal_agregado_alta_frontera_m3s
+      - caudal_agregado_alta_frontera_lag_1d
+      - caudal_agregado_alta_frontera_lag_2d
+      - caudal_agregado_alta_frontera_lag_3d
+      - caudal_agregado_alta_frontera_confiable_pct
+
+  caudal_agregado_otras:
+    default_on: false # Decision 018: subcuencas no priorizadas para el primer baseline
+    description: Caudal agregado de las subcuencas intermedia y baja (§3.6, Decision 018).
+    columns:
+      - caudal_agregado_intermedia_paso_libres_m3s
+      - caudal_agregado_intermedia_paso_libres_lag_1d
+      - caudal_agregado_intermedia_paso_libres_lag_2d
+      - caudal_agregado_intermedia_paso_libres_lag_3d
+      - caudal_agregado_intermedia_paso_libres_confiable_pct
+      - caudal_agregado_baja_salto_grande_m3s
+      - caudal_agregado_baja_salto_grande_lag_1d
+      - caudal_agregado_baja_salto_grande_lag_2d
+      - caudal_agregado_baja_salto_grande_lag_3d
+      - caudal_agregado_baja_salto_grande_confiable_pct
+
+  temp_estacion:
+    default_on: false # 0% de cobertura 2000-2005 (§2.1); usar train_start >= 2007 o preferir cptec_grid
+    description: Temperatura por estaciones puntuales, subcuenca alta frontera (§2.1, §3.6).
+    columns:
+      - temp_media_c
+      - temp_min_c
+      - temp_max_c
+      - temp_agregado_alta_frontera_station_count
+      - temp_agregado_alta_frontera_cobertura_pct
+
+  lluvia_estacion:
+    default_on: false # suma no estacionaria sobre N estaciones variables (§2.1); preferir cptec_grid
+    description: Lluvia por estaciones puntuales, subcuenca alta frontera (§2.1, §3.6).
+    columns:
+      - lluvia_acumulada_mm
+      - lluvia_agregado_alta_frontera_acum_3d_mm
+      - lluvia_agregado_alta_frontera_acum_7d_mm
+      - lluvia_agregado_alta_frontera_station_count
+      - lluvia_agregado_alta_frontera_cobertura_pct
+
+  cptec_grid:
+    default_on: true
+    description: >
+      Lluvia (MERGE) y temperatura (SAMeT) en grilla, CPTEC/INPE, 100% de cobertura en todo
+      el periodo (§2.1, Decision 033). Grupo de features mas limpio, candidato al baseline.
+    columns:
+      - lluvia_merge_alta_frontera_mm
+      - lluvia_merge_alta_frontera_max_mm
+      - lluvia_merge_alta_frontera_acum_3d_mm
+      - lluvia_merge_alta_frontera_acum_7d_mm
+      - lluvia_merge_alta_frontera_pluviometros
+      - lluvia_merge_alta_frontera_cobertura_pct
+      - temp_samet_alta_frontera_media_c
+      - temp_samet_alta_frontera_max_c
+      - temp_samet_alta_frontera_min_c
+      - temp_samet_alta_frontera_cobertura_pct
+
+  calidad:
+    default_on: false
+    description: >
+      Banderas de calidad/procedencia (§3.6): no son variables hidrologicas/meteorologicas en
+      si, informan confiabilidad del dato. `caudal_metodo` es categorica (curva|sin_curva); un
+      experimento que la incluya debe codificarla antes de escalar (fuera de alcance Fase 1).
+      Las `*_es_preliminar` de CPTEC estan aca, no en `cptec_grid` (regeneracion aun no final).
+    columns:
+      - caudal_confiable
+      - supera_aforo_maximo
+      - caudal_metodo
+      - caudal_extrapolado
+      - distancia_fuera_rango_cm
+      - curva_vigencia_extendida
+      - lluvia_merge_alta_frontera_es_preliminar
+      - temp_samet_alta_frontera_es_preliminar
+
+  forecast:
+    default_on: false # reservado: roadmap Fase 4 (TIGGE/GEFS), todavia no esta en Gold (§2.1)
+    description: Pronostico numerico (TIGGE/GEFS). Vacio hasta que el roadmap Fase 4 lo agregue a Gold.
+    columns: []
+
+  targets_caudal:
+    default_on: false # se selecciona via `dataset.target: caudal`, no via `features.groups`
+    description: Targets de caudal, horizontes t+1..t+7 y t+14 (§2.1).
+    columns:
+      - caudal_t_mas_1d
+      - caudal_t_mas_2d
+      - caudal_t_mas_3d
+      - caudal_t_mas_4d
+      - caudal_t_mas_5d
+      - caudal_t_mas_6d
+      - caudal_t_mas_7d
+      - caudal_t_mas_14d
+
+  targets_nivel:
+    default_on: false # se selecciona via `dataset.target: nivel`, no via `features.groups`
+    description: Targets de nivel, horizontes t+1..t+7 y t+14 (§2.1).
+    columns:
+      - nivel_rio_t_mas_1d
+      - nivel_rio_t_mas_2d
+      - nivel_rio_t_mas_3d
+      - nivel_rio_t_mas_4d
+      - nivel_rio_t_mas_5d
+      - nivel_rio_t_mas_6d
+      - nivel_rio_t_mas_7d
+      - nivel_rio_t_mas_14d

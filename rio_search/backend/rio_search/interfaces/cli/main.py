@@ -1,12 +1,13 @@
-"""CLI `rio-search` (§4.2, docs/rio_search_plan.md). Fase 0 solo cablea los comandos que
-esa fase necesita (`databricks init-schema`, `datasets refresh`, `api serve`, y `mlflow smoke`
-como utilidad para verificar conectividad); el resto del contrato de §4.2 (`datasets describe`
-con filtros, `search run`, `champions set`, `predict run`, `research …`, `thesis export`)
-llega con sus fases."""
+"""CLI `rio-search` (§4.2, docs/rio_search_plan.md). Fase 0 cableo los comandos base
+(`databricks init-schema`, `datasets refresh`, `api serve`, `mlflow smoke`); la Fase 1 conecta
+`datasets describe` a `DescribeDataset` real (cobertura por columna/año/split, §5). El resto
+del contrato de §4.2 (`search run`, `champions set`, `predict run`, `research …`,
+`thesis export`) llega con sus fases."""
 
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import typer
 
@@ -92,20 +93,78 @@ def datasets_refresh(
 
 @datasets_app.command("describe")
 def datasets_describe(
+    experiment: Path = typer.Option(
+        None,
+        "--experiment",
+        help=(
+            "YAML de configs/experiments/ del que se toman target/horizontes/split/grupos "
+            "de features (default: bilstm_baseline_v1.yaml, §4.1). Sin este archivo cae al "
+            "resumen simple de la Fase 0 (version, filas, rango, columnas)."
+        ),
+    ),
+    mode: str = typer.Option(
+        "offline", help="ensure_latest | volume_as_is | offline (§3.6); default offline: usa el cache."
+    ),
     profile: str = typer.Option(DEFAULT_PROFILE, help="Perfil de la CLI de Databricks."),
     warehouse_id: str = typer.Option(DEFAULT_WAREHOUSE_ID, help="Warehouse SQL serverless."),
 ) -> None:
-    """Resumen del snapshot en cache (version, filas, rango de fechas, columnas). La
-    cobertura por columna/anio/split (Fase 1) todavia no esta implementada."""
-    from rio_search.interfaces.container import build_gold_snapshot_sync
+    """Cobertura por columna/año/split (Fase 1, §5) para la config de experimento pedida;
+    sin `--experiment` (o si no existe ningun YAML en configs/experiments/) imprime el
+    resumen simple del snapshot que ya daba la Fase 0."""
+    from rio_search.infrastructure.datasets.experiment_yaml import load_dataset_describe_config
+    from rio_search.interfaces.container import (
+        DEFAULT_EXPERIMENTS_DIR,
+        build_feature_catalog,
+        build_gold_parquet_repository,
+    )
 
-    sync = build_gold_snapshot_sync(profile=profile, warehouse_id=warehouse_id)
-    dataset_version, path = sync.refresh(mode="offline")
-    typer.echo(f"delta_version: {dataset_version.delta_version}")
-    typer.echo(f"rows: {dataset_version.rows}")
-    typer.echo(f"fecha: {dataset_version.fecha_min} -> {dataset_version.fecha_max}")
-    typer.echo(f"columns ({len(dataset_version.columns)}): {', '.join(dataset_version.columns)}")
-    typer.echo(f"parquet: {path}")
+    experiment_path = experiment or (DEFAULT_EXPERIMENTS_DIR / "bilstm_baseline_v1.yaml")
+    repository = build_gold_parquet_repository(profile=profile, warehouse_id=warehouse_id)
+    dataset_version, df = repository.load(mode=mode)  # type: ignore[arg-type]
+
+    if not experiment_path.exists():
+        typer.echo(f"(sin config de experimento en {experiment_path}; resumen simple)")
+        typer.echo(f"delta_version: {dataset_version.delta_version}")
+        typer.echo(f"rows: {dataset_version.rows}")
+        typer.echo(f"fecha: {dataset_version.fecha_min} -> {dataset_version.fecha_max}")
+        typer.echo(f"columns ({len(dataset_version.columns)}): {', '.join(dataset_version.columns)}")
+        return
+
+    from rio_search.application.datasets.describe_dataset import DescribeDataset
+
+    config = load_dataset_describe_config(experiment_path)
+    catalog = build_feature_catalog()
+    target_columns = list(config.target.target_columns(config.horizons))
+    feature_columns = list(catalog.columns_for(config.feature_groups))
+    columns = tuple(dict.fromkeys(feature_columns + target_columns))
+
+    coverage = DescribeDataset().execute(
+        dataset_version=dataset_version,
+        df=df,
+        split_policy=config.split_policy,
+        horizons=config.horizons,
+        columns=columns,
+    )
+
+    typer.echo(f"experimento: {config.name} ({experiment_path})")
+    typer.echo(f"dataset: delta_version={dataset_version.delta_version} rows={dataset_version.rows}")
+    typer.echo(f"target: {config.target.value} horizontes: {list(config.horizons)}")
+    typer.echo(f"grupos de features: {list(config.feature_groups)} ({len(feature_columns)} columnas)")
+    typer.echo(f"split: {config.split_policy.policy} anchor={coverage.split.anchor}")
+    typer.echo("")
+
+    for split_coverage in coverage.splits:
+        typer.echo(
+            f"[{split_coverage.name}] {split_coverage.date_range} "
+            f"({split_coverage.date_range.days} dias, {split_coverage.rows} filas)"
+        )
+        for column_coverage in split_coverage.columns:
+            typer.echo(
+                f"    {column_coverage.column:<55} "
+                f"{column_coverage.non_null_pct:6.2f}% "
+                f"({column_coverage.non_null_rows}/{column_coverage.rows})"
+            )
+        typer.echo("")
 
 
 @api_app.command("serve")

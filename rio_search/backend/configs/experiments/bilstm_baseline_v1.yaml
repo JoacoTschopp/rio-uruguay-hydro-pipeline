@@ -1,0 +1,63 @@
+# configs/experiments/bilstm_baseline_v1.yaml
+name: bilstm_baseline_v1
+description: Baseline BiLSTM, caudal, multi-output, ventana 2008->, CPTEC + estado hidrologico.
+
+dataset:
+  source: gold_training_dataset_v0
+  refresh: ensure_latest     # ensure_latest | volume_as_is | offline (Decision #10, §3.6)
+  version: latest            # o "delta-263": falla si lo descargado no coincide (reproduccion exacta)
+  target: caudal             # caudal | nivel
+  horizons: [1, 2, 3, 4, 5, 6, 7, 14]
+
+search:                      # opcional: sin este bloque la busqueda tiene un unico trial
+  strategy: random           # grid | random | tpe (Optuna)
+  n_trials: 40                # sin limite de tiempo (Decision #13)
+  objective: val/kge/mean
+  space:
+    sequence.lookback_days: [30, 60, 90, 120]
+    model.params.hidden_size: [32, 64, 128, 256]
+    model.params.num_layers: [1, 2, 3]
+    training.optimizer.lr: {log_uniform: [0.0001, 0.01]}
+    split.train_window.start: ["2000-01-01", "2008-01-01"]
+
+provenance:
+  require_clean_git: false   # true para corridas que van a la tesis (Decision #11, §3.13)
+
+split:
+  policy: rolling_365        # rolling_365 | calendar_year
+  embargo_days: 14
+  train_window:
+    start: 2008-01-01        # o  years: 10
+
+features:
+  groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
+  exclude: []
+  experimental_transforms:
+    - {name: clip, columns: [caudal_agregado_alta_frontera_m3s], max: 50000, version: 1}
+    - {name: log1p, columns: ["caudal_*", "caudal_agregado_alta_frontera_m3s"], version: 1}
+    - {name: doy_cyclic, version: 1}
+  imputation: {method: ffill_median, max_ffill_days: 3}
+  scaling: standard
+
+sequence:
+  lookback_days: 60
+
+model:
+  name: bilstm
+  horizon_strategy: multi_output   # multi_output | per_horizon
+  params: {hidden_size: 64, num_layers: 2, dropout: 0.2}
+
+training:
+  max_epochs: 1000            # techo de seguridad, no un presupuesto: corta el early stopping (Decision #13)
+  batch_size: 64
+  optimizer: {name: adam, lr: 0.001, weight_decay: 0.0}
+  loss: mse                   # mse | mae | huber
+  early_stopping: {monitor: val/loss, patience: 25}
+  grad_clip: 1.0
+  seed: 42
+  device: auto                # auto | cuda | mps | cpu
+
+tracking:
+  experiment: /Users/joaquintschopp@gmail.com/rio_search/bilstm
+  tags: {thesis_chapter: baseline}
+  register_model: false
