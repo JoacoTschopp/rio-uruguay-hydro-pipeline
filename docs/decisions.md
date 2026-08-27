@@ -2264,3 +2264,109 @@ tarea `ETL_Bronze_ECMWF_FC` quedó wireada con el `depends_on` correcto en ambos
   próxima 17:35) seguida de una corrida real de `ETL_Bronze_ECMWF_FC` end-to-end sin intervención manual —
   la corrida ad hoc de esta decisión usó archivos subidos a mano porque la tarea programada no había
   disparado todavía.
+
+---
+
+## Decisión 038: Rio_Search — banco de pruebas de modelado (Onion + DDD, PyTorch local, MLflow en Databricks, UI React)
+
+### Estado
+
+`Aceptada` (2026-08-27). Plan de implementación en `docs/rio_search_plan.md`; sin código todavía.
+
+### Contexto
+
+`roadmap.md` cierra el dataset (`weather.gold.training_dataset_v0`, 83 columnas, 16 targets verificados sin
+fuga) y declara explícitamente que "el modelado no forma parte de este roadmap". La tesis necesita ahora una
+metodología que permita **cambiar modelos, ventanas de entrenamiento, conjuntos de features y estrategias de
+horizonte** sin reescribir nada, con cada corrida trazable a un `run_id`. Además hacen falta un lugar para la
+investigación bibliográfica (papers/tesis que justifican decisiones) y el espacio de escritura LaTeX del
+proyecto de tesis y la tesis.
+
+Las ocho preguntas de diseño se cerraron con el usuario el 2026-08-27 (tabla en `rio_search_plan.md` §0).
+
+### Decisión
+
+* Nueva aplicación `rio_search/` dentro del mismo repositorio: backend Python con **arquitectura Onion +
+  DDD** (contextos `datasets`, `experiments`, `models`, `predictions`, `research`), UI **React** (Vite + TS +
+  TanStack Query + Recharts) servida por FastAPI, todo local.
+* **Entrenamiento local** (RTX 3060) con **PyTorch**; **detección automática de device** (CUDA → Apple MPS →
+  CPU) al inicio de cada experimento y de cada re-ejecución de predicción; checkpoints en CPU.
+* **MLflow con tracking en Databricks** (`databricks://<perfil del CLI>`), experimentos bajo
+  `/Users/joaquintschopp@gmail.com/rio_search/`, registro opcional en Unity Catalog (`weather.ml`). Cada run
+  loguea `delta_version` + `sha256` del parquet, hash de la config YAML, `git_sha`, device y artefactos de
+  preprocesamiento.
+* **Baseline: BiLSTM**, medido contra persistencia/climatología/estacional. Métricas hidrológicas (NSE, KGE,
+  PBIAS) además de RMSE/MAE/MAPE, por horizonte y por split. Campeón elegido por **VAL**, nunca por TEST.
+* **Split configurable por experimento**: `rolling_365` (365 días de TEST desde el último día con target
+  observable, 365 previos de VAL, resto TRAIN) o `calendar_year`; `embargo_days = max(horizontes)`;
+  `train_window` por fecha de inicio o por cantidad de años.
+* **Horizontes configurables**: `multi_output` (un modelo, 8 salidas) o `per_horizon` (8 modelos, runs
+  anidados); comparar ambas es parte de la tesis.
+* **Features**: Gold es la fuente; la app puede aplicar **transformaciones experimentales** versionadas y
+  logueadas (`clip`, `log1p`, `doy_cyclic`, `ratio`, …). Lo que demuestra valor se **promueve a Gold** con
+  notebook + Decisión (Fase 9 del plan).
+* **Inferencia diaria en la primera entrega**: `rio-search predict run` con Task Scheduler a las 06:30
+  Montevideo, después de `Silver_Gold_Daily_Incremental`; declara `as_of`, `data_lag_days`, dataset, run
+  campeón y device.
+* **Research** = biblioteca de documentos + notas + BibTeX, sin LLM: `research/catalog/*.yaml` y
+  `research/notes/*.md` versionados, PDFs fuera de git, `thesis/common/references.bib` generado.
+* **Tesis LaTeX** (`thesis/proyecto/`, `thesis/tesis/`) como fase inmediatamente posterior a Research; toma
+  como modelo un trabajo ya presentado con formato validado que el usuario aportará en `research/templates/`.
+
+### Justificación
+
+* Local + Databricks como almacén es el patrón que ya sostiene el repo (backfills, calibración, exportador de
+  Gold): no agrega costo de cómputo en la nube y la GPU local alcanza para LSTM sobre 9.7k filas.
+* Onion + DDD con puertos explícitos es lo que hace barato "agregar un modelo": un adaptador + un YAML, sin
+  tocar dominio ni aplicación. La tesis va a sumar modelos con el tiempo.
+* MLflow en Databricks pone el registro de experimentos al lado del dataset, con una UI ya existente, y la UI
+  propia sólo agrega lo que MLflow no muestra (hidrogramas, comparación por horizonte, pronóstico diario,
+  biblioteca).
+* Configurar split y estrategia de horizontes por experimento evita fijar hoy lo que la tesis quiere comparar.
+
+### Consecuencias
+
+* El parquet local (71 columnas, delta 263) está desactualizado respecto de Gold (83): la Fase 0 del plan
+  regenera el snapshot antes de entrenar.
+* Se crea un entorno Python separado (`uv`, `rio_search/backend/pyproject.toml`); el `.venv` actual del
+  pipeline no se toca.
+* Nuevas convenciones: un YAML por experimento (inmutable una vez corrido), tags `rio_search.*` en MLflow,
+  métricas jerárquicas `test/<métrica>/h<NN>`.
+* `docs/README.md` suma `rio_search_plan.md` a la función "qué queremos construir y cómo seguimos".
+* Pendiente del usuario: confirmar creación del schema `weather.ml` (Fase 0) y aportar el modelo LaTeX
+  (cierre de Fase 7 / inicio de Fase 8).
+
+### Enmienda (2026-08-27, misma sesión) — segunda ronda de decisiones del usuario
+
+Seis precisiones que modifican el plan (`docs/rio_search_plan.md` §0, decisiones 9-14) sin cambiar su
+estructura de fases:
+
+* **Polars, nunca pandas.** pandas queda prohibido como dependencia del backend de Rio_Search: se usa
+  `mlflow-skinny` (el paquete `mlflow` completo arrastra pandas), regla `banned-api` de `ruff` y un test
+  que falla si `import pandas` funciona en el entorno. Los módulos de `notebooks_local/` que usan pandas
+  no se tocan ni se importan.
+* **Descarga obligatoria del dataset actual al iniciar cada corrida de búsqueda.** La lógica de
+  sincronización de `notebooks_local/gold_export/export_gold_dataset.py` se porta a la app (sin pandas,
+  vía `databricks-sdk`) con un protocolo de frescura: versión Delta de Gold por Statement API → manifest del
+  Volume → si el manifest está atrás, `jobs submit` ad hoc de `05_Gold/Export_Gold_Snapshot` y espera →
+  descarga del parquet y verificación `sha256` → `DatasetVersion` pineada para todos los trials de la
+  búsqueda. Motivación concreta: hoy el snapshot del Volume (delta 263, 71 columnas) está atrás de Gold
+  (83 columnas).
+* **Procedencia del código en MLflow: sí.** Tags `git_sha` (referencia durable), `git_branch`,
+  `git_remote`, `git_dirty`, `github_url`; artefactos `code/uncommitted.patch` y `code/package.zip`;
+  modelo logueado con `code_paths`. `provenance.require_clean_git: true` para corridas de la tesis.
+* **`weather.ml` se implementa desde la Fase 0** (`CREATE SCHEMA IF NOT EXISTS`) y se revisa con el
+  usuario tras la primera corrida registrada (Fase 3).
+* **La duración del entrenamiento no es una restricción**: sin presupuesto de tiempo ni `max_time`; el
+  entrenamiento y la búsqueda de hiperparámetros duran lo que duren (early stopping por paciencia). Se
+  elimina la dependencia "presupuesto de GPU" del plan.
+* **El registro de tiempos es un resultado de primera clase**: claves fijas `time/*` en segundos en todos
+  los runs (descarga del dataset y sub-pasos, preprocesamiento, entrenamiento total/por epoch/hasta el
+  mejor epoch, búsqueda de HP total/por trial, evaluación, inferencia sobre TEST, inferencia diaria con
+  carga de modelo, registro de modelo), `Stopwatch` con `torch.cuda.synchronize()`, artefacto
+  `timings/timings.json`, y tags de hardware (`device_name`, `cuda_version`, `torch_version`, `cpu`,
+  `ram_gb`, `hostname`) para que los tiempos sean comparables. Un run sin `time/*` es un bug.
+
+Se formaliza además el vocabulario **búsqueda → trial**: la búsqueda es el run padre de MLflow (pinea un
+dataset, registra `time/search_*`), el trial es una configuración entrenada (run hijo); un experimento
+simple es una búsqueda de un solo trial.

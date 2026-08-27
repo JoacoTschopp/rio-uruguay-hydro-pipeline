@@ -1,0 +1,12 @@
+{
+  "run_name": "Adhoc_ETL_Bronze_GEFS_merge_extension",
+  "tasks": [
+    {
+      "task_key": "ETL_Bronze_GEFS",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/joaquintschopp@gmail.com/rio-uruguay-hydro-pipeline/notebooks/02_Bronze/ETL_Bronze_GEFS",
+        "source": "WORKSPACE"
+      }
+    }
+  ]
+}
