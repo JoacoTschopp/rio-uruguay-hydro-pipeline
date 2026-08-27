@@ -23,7 +23,7 @@ commit), el agente principal actualiza esta tabla antes de lanzar la siguiente.
 
 | Fase | Estado | Commit(s) | Notas |
 | --- | --- | --- | --- |
-| 0 — Cimientos | ⬜ No iniciada | — | — |
+| 0 — Cimientos | ✅ Cerrada | `4e9f58d`, `df49d05` | Criterio de cierre cumplido contra Databricks/MLflow real (schema `weather.ml`, snapshot 71→83 cols, run `smoke`). Hallazgo: `mlflow.pytorch.log_model` importa pandas incluso en `mlflow-skinny` → Decisión 039 (renumerada desde 034 por colisión con `feature/ana-backfill-automation`, que ya usa 034-038 y no está mergeada a main): modelos PyTorch se loguean como artefacto plano (`torch.save` + JSON), no con el flavor `mlflow.pytorch`. **La Fase 3 debe leer la Decisión 039 antes de diseñar `ModelAdapterPort.save`/`load`.** Desviación menor de tooling: Vite generó `oxlint` en vez de `eslint`+`prettier`. |
 | 1 — Contexto Datasets | ⬜ No iniciada | — | — |
 | 2 — Evaluación, tracking y baselines naïve | ⬜ No iniciada | — | — |
 | 3 — BiLSTM baseline (PyTorch) | ⬜ No iniciada | — | — |
