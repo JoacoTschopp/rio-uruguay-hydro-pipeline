@@ -313,6 +313,29 @@ def test_bilstm_multi_output_registers_model_in_uc_when_configured(tmp_path: Pat
     assert trial_record.tags["registered_model_version"] == "1"
 
 
+def test_bilstm_per_horizon_registers_one_model_per_horizon_in_uc_when_configured(tmp_path: Path) -> None:
+    """`RunSearch._run_single_horizon` reusa el mismo `register_model` que `multi_output`
+    (Decision 042/043): con `per_horizon` + `register_model: true`, cada uno de los 8 runs
+    nietos registra su propio `weather.ml.rio_search_bilstm_h{NN}` -- sin cobertura offline
+    hasta este test, el camino real (Fase 3, `bilstm_baseline_v1_per_horizon.yaml`) lo deja en
+    `register_model: false` a propósito para no crear 8 versiones en la corrida de demostración."""
+    config_path = _write_config(
+        tmp_path, {"model": {"horizon_strategy": "per_horizon"}, "tracking": {"register_model": True}}
+    )
+    loaded = load_experiment_config(config_path)
+    deps, tracking = _deps()
+
+    RunSearch(deps).execute(loaded)
+
+    grandchildren = [r for r in tracking.runs if r.run_name.startswith("h")]
+    assert len(grandchildren) == len(HORIZONS)
+    for h, r in zip(HORIZONS, grandchildren, strict=True):
+        expected_name = f"weather.ml.rio_search_bilstm_h{h:02d}"
+        assert r.registered == [{"run_id": r.run_id, "artifact_path": "model", "name": expected_name}]
+        assert r.tags["registered_model_name"] == expected_name
+        assert r.tags["registered_model_version"] == "1"
+
+
 def test_bilstm_per_horizon_opens_one_grandchild_run_per_horizon(tmp_path: Path) -> None:
     config_path = _write_config(tmp_path, {"model": {"horizon_strategy": "per_horizon"}})
     loaded = load_experiment_config(config_path)
