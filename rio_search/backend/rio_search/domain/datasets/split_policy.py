@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Literal, Sequence
+from typing import Any, Literal, Sequence
 
 from rio_search.domain.shared.date_range import DateRange
 
@@ -101,6 +101,25 @@ class SplitPolicy:
         if self.policy not in ("rolling_365", "calendar_year"):
             raise ValueError(f"Politica de split desconocida: {self.policy!r}")
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SplitPolicy":
+        """Parsea el bloque `split:` de un YAML de experimento (§4.1). Duplica a proposito el
+        parseo minimo que ya hacia `infrastructure.datasets.experiment_yaml` para
+        `datasets describe` (Fase 1, no se toca ese modulo) -- esta version vive en el dominio
+        para que `ExperimentConfig.from_dict` (Fase 2) no dependa de `infrastructure`."""
+        train_window_raw = data.get("train_window", {}) or {}
+        if "start" in train_window_raw:
+            train_window = TrainWindow(start=_parse_date(train_window_raw["start"]))
+        elif "years" in train_window_raw:
+            train_window = TrainWindow(years=int(train_window_raw["years"]))
+        else:
+            raise ValueError("split.train_window requiere 'start' o 'years' (§3.6, §4.1)")
+        return cls(
+            policy=data["policy"],
+            embargo_days=int(data.get("embargo_days", 14)),
+            train_window=train_window,
+        )
+
     def build(self, fecha_max: date, horizons: Sequence[int]) -> Split:
         anchor = compute_anchor(fecha_max, horizons)
         if self.policy == "rolling_365":
@@ -135,3 +154,9 @@ class SplitPolicy:
         train = DateRange(train_start, train_end)
 
         return Split(policy="calendar_year", anchor=anchor, train=train, val=val, test=test)
+
+
+def _parse_date(value: Any) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))

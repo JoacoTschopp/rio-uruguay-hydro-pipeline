@@ -109,3 +109,53 @@ def build_refresh_dataset(
     )
     catalog = build_feature_catalog(feature_groups_path)
     return RefreshDataset(repository=repository, feature_catalog=catalog, stopwatch=sw)
+
+
+def build_model_registry():
+    """`ModelRegistry` (Fase 2, §3.3) con los adaptadores ya registrados: importar
+    `infrastructure.models` dispara los `@register_model` de `naive/*` (persistence,
+    climatology, seasonal_naive)."""
+    import rio_search.infrastructure.models  # noqa: F401 - efecto secundario: registra adaptadores
+    from rio_search.domain.models.model_registry import ModelRegistry
+
+    return ModelRegistry()
+
+
+def build_tracking(profile: str = DEFAULT_PROFILE):
+    """`MlflowDatabricksTracking` (Fase 2, §3.5)."""
+    from rio_search.infrastructure.tracking.mlflow_databricks import MlflowDatabricksTracking
+
+    return MlflowDatabricksTracking(profile=profile)
+
+
+def build_run_search(
+    profile: str = DEFAULT_PROFILE,
+    warehouse_id: str = DEFAULT_WAREHOUSE_ID,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    feature_groups_path: Path = DEFAULT_FEATURE_GROUPS_PATH,
+):
+    """`RunSearch` (Fase 2, §3.2, §5): compone `RefreshDataset` (Fase 1), el resolutor de
+    device, la procedencia git, el registro de modelos y el tracking de MLflow. El `Stopwatch`
+    compartido con `RefreshDataset` es el mismo objeto que mide `time/dataset_refresh_s`
+    (§3.12): por eso `RunSearch` lo recibe ya cableado, no crea el suyo."""
+    from rio_search.application.experiments.run_search import RunSearch, RunSearchDependencies
+    from rio_search.infrastructure.device.torch_device_resolver import TorchDeviceResolver
+
+    stopwatch = PerfCounterStopwatch()
+    refresh_dataset = build_refresh_dataset(
+        profile=profile,
+        warehouse_id=warehouse_id,
+        cache_dir=cache_dir,
+        feature_groups_path=feature_groups_path,
+        stopwatch=stopwatch,
+    )
+    deps = RunSearchDependencies(
+        refresh_dataset=refresh_dataset,
+        device_resolver=TorchDeviceResolver(),
+        git_provenance=build_git_provenance(),
+        model_registry=build_model_registry(),
+        tracking=build_tracking(profile=profile),
+        stopwatch=stopwatch,
+        stopwatch_factory=PerfCounterStopwatch,
+    )
+    return RunSearch(deps)

@@ -1,0 +1,38 @@
+# configs/experiments/climatology_baseline_v1.yaml (Fase 2, docs/rio_search_plan.md §5)
+name: climatology_baseline_v1
+description: >
+  Baseline naive de climatologia (caudal, multi-output): predice para la fecha objetivo (anchor+h)
+  la media climatologica de esa fecha calendario (mes, dia), ajustada solo con TRAIN.
+
+dataset:
+  source: gold_training_dataset_v0
+  refresh: ensure_latest
+  version: latest
+  target: caudal
+  horizons: [1, 2, 3, 4, 5, 6, 7, 14]
+
+provenance:
+  require_clean_git: false
+
+split:
+  policy: rolling_365
+  embargo_days: 14
+  train_window:
+    start: 2000-01-01        # dataset completo: mas años de TRAIN = mejor estimacion por dia del año.
+
+sequence:
+  lookback_days: 1            # ver infrastructure/models/naive/base.py
+
+model:
+  name: climatology
+  horizon_strategy: multi_output
+  params: {}
+
+training:
+  seed: 42
+  device: auto
+
+tracking:
+  experiment: /Users/joaquintschopp@gmail.com/rio_search/baselines
+  tags: {thesis_chapter: baseline, baseline: climatology}
+  register_model: false

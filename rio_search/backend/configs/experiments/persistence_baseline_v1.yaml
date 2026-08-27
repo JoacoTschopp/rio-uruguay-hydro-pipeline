@@ -1,0 +1,44 @@
+# configs/experiments/persistence_baseline_v1.yaml (Fase 2, docs/rio_search_plan.md §5)
+name: persistence_baseline_v1
+description: >
+  Baseline naive de persistencia (caudal, multi-output): predice para todo horizonte t+1..t+7,t+14
+  el ultimo valor observado (caudal_actual_m3s). La vara contra la que se mide el skill de todo lo
+  demas (§3.3); su propio skill_vs_persistence debe dar 0 por construccion.
+
+dataset:
+  source: gold_training_dataset_v0
+  refresh: ensure_latest     # ensure_latest | volume_as_is | offline (Decision #10, §3.6)
+  version: latest
+  target: caudal             # caudal | nivel
+  horizons: [1, 2, 3, 4, 5, 6, 7, 14]
+
+provenance:
+  require_clean_git: false   # true para corridas que van a la tesis (Decision #11, §3.13)
+
+split:
+  policy: rolling_365        # rolling_365 | calendar_year
+  embargo_days: 14
+  train_window:
+    start: 2000-01-01        # dataset completo: los baselines naive no dependen de cobertura de
+                              # temp/lluvia por estacion (§2.1), no hay razon para recortar TRAIN.
+
+# Sin bloque `features:`: los baselines naive no usan feature groups, solo el propio target
+# rezagado (§3.3, §5) via `dataset.target.actual_column` (caudal_actual_m3s).
+
+sequence:
+  lookback_days: 1            # ver infrastructure/models/naive/base.py: con lookback=1 cada fila
+                               # del split es una ancla evaluable (cobertura completa de VAL/TEST).
+
+model:
+  name: persistence
+  horizon_strategy: multi_output
+  params: {}
+
+training:
+  seed: 42
+  device: auto                # auto | cuda | mps | cpu (Decision #6)
+
+tracking:
+  experiment: /Users/joaquintschopp@gmail.com/rio_search/baselines
+  tags: {thesis_chapter: baseline, baseline: persistence}
+  register_model: false

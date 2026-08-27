@@ -52,6 +52,11 @@ select = ["E", "F", "I", "TID"]
 markers = [
     "integration: toca Databricks/MLflow real (docs/rio_search_plan.md, offline por defecto salvo estos).",
 ]
+# "offline por defecto salvo estos" (arriba) no se cumplia solo por convencion hasta la Fase 2
+# (test_run_search_integration.py es el primer test marcado `integration` del repo): sin este
+# `addopts`, un `pytest` liso ya corria TODO, incluidos los tests que pegan a Databricks/MLflow
+# real. `pytest -m integration` los sigue corriendo explicitamente.
+addopts = "-m 'not integration'"
 
 # Windows: indice CUDA explicito para torch (RTX 3060, driver CUDA 12.6 -> wheels cu124).
 # macOS/Linux sin este override usan el indice default de PyPI (macOS trae soporte MPS de fabrica).

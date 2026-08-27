@@ -46,6 +46,9 @@ app.add_typer(api_app, name="api")
 datasets_app = typer.Typer(help="Snapshot del dataset Gold (Decision #10, §3.6).")
 app.add_typer(datasets_app, name="datasets")
 
+search_app = typer.Typer(help="Corridas de busqueda (Fase 2, §4.2, §5).")
+app.add_typer(search_app, name="search")
+
 
 @databricks_app.command("init-schema")
 def init_schema(
@@ -165,6 +168,38 @@ def datasets_describe(
                 f"({column_coverage.non_null_rows}/{column_coverage.rows})"
             )
         typer.echo("")
+
+
+@search_app.command("run")
+def search_run(
+    config: Path = typer.Argument(..., help="YAML de configs/experiments/ (§4.1)."),
+    profile: str = typer.Option(DEFAULT_PROFILE, help="Perfil de la CLI de Databricks / MLflow."),
+    warehouse_id: str = typer.Option(DEFAULT_WAREHOUSE_ID, help="Warehouse SQL serverless."),
+) -> None:
+    """Corre una busqueda completa (Fase 2, §3.2, §5): `RefreshDataset` + un trial por modelo
+    naive (`persistence`/`climatology`/`seasonal_naive`), logueado en MLflow con la jerarquia
+    busqueda -> trial."""
+    from rio_search.infrastructure.experiments.experiment_config_loader import load_experiment_config
+    from rio_search.interfaces.container import build_run_search
+
+    loaded = load_experiment_config(config)
+    run_search = build_run_search(profile=profile, warehouse_id=warehouse_id)
+    search = run_search.execute(loaded)
+
+    typer.echo(
+        f"search_run_id={search.run_id} experiment={search.experiment_path} trials={len(search.trials)}"
+    )
+    for trial in search.trials:
+        skill_h01 = None
+        if trial.test_metrics is not None:
+            try:
+                skill_h01 = trial.test_metrics.horizon(1).get("skill_vs_persistence")
+            except KeyError:
+                skill_h01 = None
+        typer.echo(
+            f"  trial={trial.name} run_id={trial.run_id} status={trial.status.value} "
+            f"test/skill_vs_persistence/h01={skill_h01}"
+        )
 
 
 @api_app.command("serve")

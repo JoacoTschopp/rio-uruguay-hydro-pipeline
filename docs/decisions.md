@@ -2028,3 +2028,105 @@ Rio_Search puede reconstruir a mano (ya versiona `features/spec.json`, `preproce
   problema aplica a ese flavor antes de usarlo.
 * `MetaDataset` + `UCVolumeDatasetSource` sí funcionan sin pandas y se usan tal como estaban diseñados
   en §3.5, sin cambios.
+
+---
+
+## Decisión 040: Baselines naive con `sequence.lookback_days: 1` + historial completo inyectado — no pasan por `BuildFeatureMatrix`; skill vs. persistencia siempre contra el mismo adaptador registrado
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow real en la **Fase 2** de
+`rio_search_plan.md` (3 búsquedas reales en `/Users/joaquintschopp@gmail.com/rio_search/baselines`:
+`persistence`, `climatology`, `seasonal_naive`).
+
+### Contexto
+
+§3.3 del plan dice que los modelos naive (`persistence`, `climatology`, `seasonal_naive`) "usan la
+misma interfaz" (`ModelAdapterPort`) que el resto de los modelos, construida alrededor de `Sequences`
+(ventana `lookback_days` → tensor `(N, lookback, n_features)`, Fase 1). Pero los tres baselines de esta
+fase no usan features en el sentido de la Fase 1 (§3.6): "los modelos naive no usan features, solo el
+propio target rezagado" (aviso del agente principal al abrir esta fase). Encajarlos en el mismo
+mecanismo de ventaneo que usará un BiLSTM (Fase 3) generó dos problemas reales, encontrados durante la
+implementación:
+
+1. **Colapso de anclas evaluables.** `BuildSplit` (Fase 1) filtra cada split (`train`/`val`/`test`) al
+   `pl.DataFrame` completo cortado por fecha *antes* de ventanear, a propósito, para que ninguna ventana
+   cruce el límite de su split (invariante de no-fuga). Con `rolling_365`, `val` y `test` tienen
+   **siempre exactamente 365 filas** cada uno (se verifica algebraicamente a partir de las fórmulas de
+   §3.6, independiente del `embargo_days`). Si `seasonal_naive` usara una ventana de 365 días
+   (`lookback_days: 365`) para poder "mirar" el valor de hace un año dentro de la propia `Sequences.X`,
+   `SequenceBuilder` produciría **una sola ancla** por split (`n_windows = 365 - 365 + 1 = 1`):
+   inservible para calcular métricas por horizonte.
+2. **Contaminación de fechas fuera de TRAIN.** El mismo truco aplicado a `climatology` (para reconstruir
+   la serie diaria completa de TRAIN a partir de ventanas superpuestas) arrastraría ~364 días *antes* de
+   `split.train_window.start` configurado, violando en la letra (aunque no en el espíritu: son datos
+   pasados, no del futuro) la invariante de "el estadístico se ajusta solo con TRAIN" (§3.2).
+
+### Decisión
+
+Los tres YAML de baseline (`configs/experiments/{persistence,climatology,seasonal_naive}_baseline_v1.yaml`)
+fijan **`sequence.lookback_days: 1`**: cada fila de un split es una ancla evaluable propia (cobertura
+completa de `val`/`test`, sin pérdida de filas por ventaneo) y, para `climatology`, `train.anchor_dates`
++ `train.X[:, -1, 0]` cubren *exactamente* los días de TRAIN configurados, sin contaminación.
+
+`seasonal_naive` (que sí necesita mirar 365 días atrás) no amplía la ventana: `RunSearch`
+(`application/experiments/run_search.py::_full_history`) arma la serie diaria completa del target
+(fecha, valor) a partir del **dataset completo sin recortar por split** — legítimo porque
+`anchor + h − 365` es siempre anterior al propio `anchor` (margen ≥ 351 días para cualquier horizonte
+≤ 14): nunca mira al futuro respecto de la fecha "as of" de la predicción, sea cual sea el split al que
+pertenezca en el calendario (TRAIN/VAL/TEST son cortes arbitrarios sobre una misma serie ya observada;
+la invariante de "solo TRAIN" protege el *ajuste* de estadísticos —climatology sí la respeta—, no que un
+baseline sin estado deje de usar valores ya observados). Esa serie se entrega vía un método extra,
+`set_history(dates, values)`, que **no** forma parte de `ModelAdapterPort` (Protocol, §3.3): Python
+verifica conformidad estructuralmente, así que agregar un método extra no rompe nada, y `RunSearch` lo
+invoca con `hasattr(adapter, "set_history")` para cualquier adaptador que lo declare, no solo este.
+Consecuencia práctica: **los baselines naive no pasan por `BuildFeatureMatrix`** (Fase 1) — construyen
+su `Sequences`/`Targets` directamente desde el split filtrado, con `feature_columns=[target.actual_column]`
+(`caudal_actual_m3s` / `nivel_rio_actual_m`, nueva propiedad `TargetVariable.actual_column`). Por esto,
+**el bug heredado de la Fase 1 en `transforms.build_expressions`** (el glob `"caudal_*"` sin resolver del
+YAML de ejemplo `bilstm_baseline_v1.yaml`) **no se pisó en esta fase**: ningún YAML de baseline naive
+declara `features.experimental_transforms`. Sigue pendiente para la Fase 3, que si reutiliza ese YAML de
+ejemplo tal cual, lo va a encontrar.
+
+Para el *skill score* (§3.7, `1 − RMSE_modelo / RMSE_persistencia`), `RunSearch` no recalcula la fórmula
+de persistencia por separado: en cada trial instancia un `PersistenceAdapter` **del mismo
+`ModelRegistry`** (`REFERENCE_MODEL_NAME = "persistence"`) y lo corre sobre los mismos `Sequences` de
+`val`/`test` que el modelo evaluado. Cuando el modelo evaluado *es* `persistence`, el adaptador de
+referencia y el evaluado producen arrays bit a bit idénticos (misma clase, misma entrada), y
+`skill_score` da `0.0` exacto en punto flotante (`1 − x/x == 0.0` para `x != 0`) — no una aproximación.
+Verificado contra las 3 corridas reales: `test/skill_vs_persistence/h01..h14` y `val/…` = `0.0` exacto
+en los 16 valores del run `persistence` (run_id `e0d84e3e06aa4fa3b0ca0fbd5513abe8`), y valores no-nulos
+y distintos de cero en `climatology` (`h01 = -0.354…`) y `seasonal_naive` (`h01 = -0.633…`), como se
+espera de una serie con autocorrelación diaria alta.
+
+También se fija la convención de `KGE` cuando la predicción es constante (`std(sim) == 0`, p. ej. un
+modelo que predice siempre la media): la correlación de Pearson es matemáticamente indefinida (0/0); se
+toma `r = 0` por convención de la literatura de KGE (Knoben et al. 2019), lo que reproduce el resultado
+de referencia citado en el plan (§5): `KGE = 1 − √2 ≈ −0.41421`, verificado con test exacto
+(`tests/test_metrics.py::test_kge_of_predicting_the_mean_is_minus_0_41`).
+
+### Justificación
+
+Forzar a los baselines a pasar por el mismo `BuildFeatureMatrix`/ventaneo largo que usará el BiLSTM
+(Fase 3) hubiera sido más "uniforme" en apariencia, pero rompía la propiedad que el criterio de cierre
+de esta fase exige verificar (métricas por horizonte reales, no un solo punto por split) y violaba en la
+letra la invariante de TRAIN-only de climatology. `lookback_days: 1` + `set_history()` resuelve ambos
+problemas sin tocar `SequenceBuilder`/`TargetBuilder`/`BuildSplit` (Fase 1, ya cerrada y testeada) ni el
+contrato de `ModelAdapterPort`: los adaptadores futuros (Fase 9: `ridge`, `lightgbm`) que sí necesiten
+`lookback_days` largo y features reales usan el camino completo (`BuildFeatureMatrix`) sin que este
+diseño se los impida.
+
+### Consecuencias
+
+* `RunSearch` (Fase 2) **no** soporta todavía `horizon_strategy: per_horizon` (Fase 3, "en la
+  aplicación", §3.3) ni el bloque `search:` de grid/random/tpe (Fase 3, Optuna): los tres YAML de
+  baseline son búsquedas de un solo trial (`ExperimentConfig.trials()` devuelve `(self,)`).
+* La Fase 3 (BiLSTM), al construir su propio YAML con `features.groups`/`experimental_transforms` reales,
+  **va a pisar el bug de `transforms.build_expressions` con globs** (heredado de la Fase 1) si reutiliza
+  `bilstm_baseline_v1.yaml` tal cual: tiene que resolver el glob `"caudal_*"` contra el catálogo de
+  columnas antes de llamar a `build_expressions`, o reemplazarlo por una lista explícita en el YAML.
+* Corrección de tooling menor: `pyproject.toml` (`[tool.pytest.ini_options]`) no tenía `addopts` para
+  excluir `integration` por default — el comentario del propio marcador ("offline por defecto salvo
+  estos") no se cumplía hasta que apareció el primer test marcado `integration`
+  (`tests/test_run_search_integration.py`, esta fase): un `pytest` liso corría igual los tests contra
+  Databricks real. Se agregó `addopts = "-m 'not integration'"`.
