@@ -2520,3 +2520,124 @@ sus propios huecos, en otras fechas).
   `weather.ml.rio_search_bilstm` (nombre, las 4 versiones 9-12, alias de campeón todavía no
   asignado — eso es Fase 6, `PromoteChampion`) y decidir la política de versiones antes de que
   Fase 9 agregue más modelos al mismo schema.
+
+## Decisión 044: Cierre de la Fase 4 (Backend API) — puerto de lectura de MLflow separado del de
+escritura, cache SQLite con TTL diferenciado por estado del run, y el `JobRunner` expone el mismo
+bug de encoding de consola de Windows que ya se había resuelto para el propio proceso del CLI
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow real en la **Fase 4** de
+`rio_search_plan.md`: servidor `rio-search api serve` levantado, `GET /api/runs`/`GET
+/api/searches`/`GET /api/runs/{id}` devolviendo las búsquedas y trials reales de la Fase 3
+(BiLSTM, con `time/*`), y una búsqueda `persistence` lanzada de punta a punta desde `POST
+/api/jobs` que descargó el dataset, terminó y quedó registrada en MLflow (`search_run_id`
+`6f8b5e19a39e4c1c9fe39aa56343c75e`). 262 tests offline en verde (208 de las Fases 0-3 + 54
+nuevos), 2 tests `integration` deseleccionados por default sin cambios.
+
+### Contexto
+
+La Fase 3 dejó 208 tests y una base de datos real en MLflow (`baselines`, `bilstm`, `smoke`), pero
+`TrackingPort` (Fase 2, §3.5) es un puerto de **escritura pura** (`start_run`/`set_tags`/
+`log_metrics`/`log_artifact_dir`/`log_meta_dataset`/`register_model`): no tiene forma de listar ni
+leer un run ya logueado. La Fase 4 necesita exactamente eso para las páginas Búsquedas/Run/Comparar
+(§3.9) sin que la UI (Fase 5) le pegue a Databricks en cada render (§5), y necesita lanzar
+búsquedas nuevas desde HTTP sin arriesgar el hallazgo operativo de la Fase 3 (Decisión 043, punto
+3: dos procesos refrescando el token OAuth del mismo perfil al mismo tiempo compiten por un
+`rename` atómico en Windows y uno recibe 401).
+
+### Decisión
+
+1. **`TrackingReadPort` nuevo, separado de `TrackingPort`** (`application/ports/tracking_read.py`):
+   `list_runs`, `get_run`, `list_children`, `get_metric_history`. Implementado por
+   `MlflowDatabricksTrackingReader` (`infrastructure/tracking/mlflow_read.py`) sobre
+   `mlflow.tracking.MlflowClient` — **nunca** la función de módulo `mlflow.search_runs()`, que
+   devuelve un `pandas.DataFrame` y violaría la Decisión #9 (Polars, nunca pandas);
+   `MlflowClient.search_runs()` devuelve una `PagedList[Run]` sin pandas, verificado en el
+   `.venv` real (`mlflow-skinny` sin pandas instalado, `test_no_pandas_in_env` sigue en verde).
+   La jerarquía búsqueda → trial → horizonte (§3.5) no vive en un campo de MLflow: se reconstruye
+   del tag `mlflow.parentRunId` que MLflow setea solo en `start_run(nested=True)`, vía
+   `list_children` (filtro `tags.\`mlflow.parentRunId\` = '<id>'`) — verificado end-to-end contra
+   los runs reales de BiLSTM de la Fase 3: `GET /api/runs/{search_run_id}` devolvió correctamente
+   los 4 trials de `7ba3d432e4bb495e837128adf94ad1b2` con sus `test/skill_vs_persistence/h01`, y
+   `GET /api/runs?families=bilstm` devolvió las 47 runs reales (6 búsquedas, 16 trials directos,
+   25 horizontes de `per_horizon`) con `time/train_total_s` por trial y `time/search_total_s` por
+   búsqueda.
+2. **Cache de lectura en SQLite con TTL por estado del run**, no un único TTL global
+   (`infrastructure/persistence/sqlite_cache.py` + `infrastructure/tracking/cached_reader.py`,
+   criterio documentado en el docstring del segundo módulo): `list_runs`/`list_children` 20 s
+   (el tipo de consulta que más rápido envejece: un job recién lanzado crea runs nuevos que la UI
+   quiere ver aparecer); un run **terminal** (`FINISHED`/`FAILED`/`KILLED`) 6 h (MLflow no permite
+   reabrirlo, así que es efectivamente inmutable, pero se pone un techo finito de todos modos, no
+   "para siempre", por si un bug de escritura necesita autocorregirse sin reiniciar el proceso); un
+   run **activo** (`RUNNING`) 10 s; historial de métricas 15 s fijo (no se sabe el estado del run
+   sin otra llamada, y el costo de una llamada extra a un run ya terminado es más barato que
+   mostrar una curva de entrenamiento desactualizada de un run que sigue corriendo). Verificado
+   contra Databricks real: la segunda llamada a `GET /api/searches?families=bilstm` (4.6 s) fue
+   más rápida que la primera `GET /api/runs?families=bilstm` (10.2 s) porque reusó la entrada de
+   cache de `list_runs` para la misma familia dentro del TTL de 20 s.
+3. **`SubprocessJobRunner`** (`infrastructure/jobs/subprocess_job_runner.py`): cola en memoria +
+   un thread worker daemon, **un job a la vez**, cada uno un subproceso `python -m
+   rio_search.interfaces.cli.main search run <config>` (mismo comando que un usuario correría a
+   mano, invocado con `sys.executable` para no depender de que el `.venv` tenga el script de
+   consola en el PATH). Además de la cola (que solo serializa jobs *de este proceso*), cada
+   ejecución toma un `ProcessLock` (`infrastructure/jobs/process_lock.py`) antes de lanzar el
+   subproceso — **portado**, no importado, del patrón de
+   `notebooks_local/ana_historic_backfill/lock.py` (PID guardado en archivo, verificado vivo con
+   `tasklist`, mismo patrón que ya usa el dashboard de ANA para el mismo problema): un `rio-search
+   search run` corrido a mano en otra terminal también queda serializado con los jobs de la API,
+   no solo estos entre sí. Los `JobRecord` viven solo en memoria del proceso de la API (no
+   persisten un reinicio del backend) — decisión deliberada: la fuente de verdad de "qué corrió y
+   qué dio" es MLflow (`GET /api/runs`), no la cola de jobs; un job es solo el mecanismo para
+   *lanzar* una búsqueda y ver su log en vivo mientras corre. Documentado como pendiente liviano
+   para la Fase 5 si la UI necesita que la cola sobreviva un reinicio (migrar `_records` al mismo
+   `SqliteReadCache`, cambio directo).
+4. **Bug real encontrado y corregido en la verificación end-to-end**: el primer intento de `POST
+   /api/jobs` con `persistence_baseline_v1.yaml` terminó en `status=failed` con `exit_code=None`
+   a pesar de que la búsqueda subyacente **sí había terminado bien** en MLflow (el log capturado
+   mostraba `search_run_id=... trials=1` real). Causa: `subprocess.Popen(text=True)` sin
+   `encoding` explícito decodifica el stdout del proceso hijo con
+   `locale.getpreferredencoding()` — cp1252 en la consola de Windows — y los íconos unicode que
+   MLflow imprime al terminar un run (🏃, 🧪, ya vistos y resueltos para el *propio* stdout del
+   CLI en `interfaces/cli/main.py`, Fase 0) tumban esa decodificación con `UnicodeDecodeError` en
+   el proceso *padre* (la API), que nunca había reconfigurado nada para leer la salida de *otro*
+   proceso. Corregido pasando `encoding="utf-8", errors="replace"` explícito a `Popen`. Re-corrida
+   real confirmatoria: mismo YAML, `status=finished`, `exit_code=0`,
+   `extra.search_run_id=6f8b5e19a39e4c1c9fe39aa56343c75e`, visible en
+   `GET /api/runs/6f8b5e19a39e4c1c9fe39aa56343c75e` con `time/dataset_refresh_s` y sub-pasos
+   poblados (bajó el dataset) y 1 trial con `skill_vs_persistence/h01 = 0.0` (exacto, coherente
+   con la Decisión de la Fase 2 sobre el baseline de persistencia). El endpoint SSE
+   (`GET /api/jobs/{id}/log`) también se verificó real: reprodujo las líneas con emoji
+   correctamente tras la corrección.
+5. **Modelo de anti-corrupción HTTP → dominio**: `interfaces/api/schemas.py` (Pydantic) es
+   deliberadamente una capa separada de los DTOs de `application` (`RunRecord`, `JobRecord`, …):
+   un cambio de forma de la API (paginación, campos opcionales) no debe forzar tocar
+   `application`/`domain`. `ApiDependencies` (`interfaces/api/dependencies.py`) es el mismo patrón
+   de `RunSearchDependencies` (Fase 2) aplicado a la API: un bundle construido una sola vez por
+   `interfaces/container.py::build_api_dependencies`, e inyectable con falsos en
+   `tests/test_api.py` (`TestClient` + `TrackingReadPort`/`JobRunner` falsos, ningún test de
+   `pytest` toca Databricks).
+
+### Alcance no cubierto en esta fase (documentado, no bloqueante)
+
+* `POST /api/champions` (§3.9, página Run: "botón promover a campeón") **no** se implementó:
+  `PromoteChampion` es un caso de uso de la Fase 6 (Predicciones) que todavía no existe en
+  `application/predictions/`; agregar el endpoint antes tendría que inventar la lógica de
+  promoción fuera de su fase.
+* `/api/forecasts/*` y `/api/research/*` (§3.9) tampoco: dependen de `IssueDailyForecast` (Fase 6)
+  y del dominio `research` (Fase 7), ninguno de los dos existe todavía.
+* `GET /api/datasets` expone la `DatasetVersion` del snapshot (modo `offline` por default, no
+  pega a Databricks salvo que se pida `ensure_latest`/`volume_as_is` explícito) pero no la
+  cobertura por columna/año que sí tiene `DescribeDataset` (Fase 1) — se dejó fuera para no
+  duplicar esa lógica en un endpoint improvisado; la Fase 5 (UI, página Datasets) puede pedir que
+  se conecte `DescribeDataset` a un endpoint dedicado cuando haga falta un experimento concreto
+  como parámetro (igual que ya hace `rio-search datasets describe --experiment`).
+
+### Pendientes para la Fase 5 (UI React)
+
+* La cola de jobs no sobrevive un reinicio del backend (punto 3 más arriba) — si la UI necesita
+  que un job lanzado siga siendo consultable después de un restart, hay que persistir
+  `SubprocessJobRunner._records` (mismo `SqliteReadCache`, cambio acotado).
+* `GET /api/runs`/`GET /api/searches` no paginan (`max_results` tope 2000): con 47 runs reales de
+  BiLSTM hoy no es un problema, pero si la Fase 9 agrega modelos y la cantidad de runs crece,
+  conviene revisar antes de que la UI liste todo sin paginar.

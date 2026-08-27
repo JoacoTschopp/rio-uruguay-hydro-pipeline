@@ -27,6 +27,9 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CACHE_DIR = BACKEND_DIR / "data" / "gold_snapshot"
 DEFAULT_FEATURE_GROUPS_PATH = BACKEND_DIR / "configs" / "feature_groups.yaml"
 DEFAULT_EXPERIMENTS_DIR = BACKEND_DIR / "configs" / "experiments"
+DEFAULT_READ_CACHE_PATH = BACKEND_DIR / "data" / "read_cache.sqlite3"
+DEFAULT_JOBS_DIR = BACKEND_DIR / "data" / "jobs"
+DEFAULT_JOB_LOCK_PATH = DEFAULT_JOBS_DIR / "rio_search.lock"
 
 
 @dataclass
@@ -163,3 +166,108 @@ def build_run_search(
         build_feature_matrix=BuildFeatureMatrix(build_feature_catalog(feature_groups_path)),
     )
     return RunSearch(deps)
+
+
+# ----------------------------------------------------------------------
+# Fase 4 -- Backend API (§3.9, §5): lectura de MLflow con cache SQLite, JobRunner y el bundle
+# `ApiDependencies` que consume `interfaces/api/main.py`.
+# ----------------------------------------------------------------------
+
+
+def build_tracking_reader(profile: str = DEFAULT_PROFILE, cache_path: Path = DEFAULT_READ_CACHE_PATH):
+    """`TrackingReadPort` real (Fase 4, §5) cacheado en SQLite (criterio de TTL documentado en
+    `infrastructure.tracking.cached_reader`)."""
+    from rio_search.infrastructure.persistence.sqlite_cache import SqliteReadCache
+    from rio_search.infrastructure.tracking.cached_reader import CachedTrackingReader
+    from rio_search.infrastructure.tracking.mlflow_read import MlflowDatabricksTrackingReader
+
+    inner = MlflowDatabricksTrackingReader(profile=profile)
+    cache = SqliteReadCache(cache_path)
+    return CachedTrackingReader(inner=inner, cache=cache)
+
+
+def rio_search_experiment_base_path(profile: str = DEFAULT_PROFILE) -> str:
+    """`/Users/<profile>/rio_search` (§3.5): raiz de las 'familias' de experimento."""
+    return f"/Users/{profile}/rio_search"
+
+
+def _search_run_command(profile: str, warehouse_id: str):
+    """`command_builder` de `SubprocessJobRunner` (Fase 4, §5): el mismo comando que un usuario
+    correria a mano (`rio-search search run <config>`), invocado como modulo con el mismo
+    interprete que corre la API (`sys.executable`) para no depender de que el `.venv` tenga el
+    script de consola instalado en el PATH."""
+    import sys
+
+    def build(config_path: Path) -> list[str]:
+        return [
+            sys.executable,
+            "-m",
+            "rio_search.interfaces.cli.main",
+            "search",
+            "run",
+            str(config_path),
+            "--profile",
+            profile,
+            "--warehouse-id",
+            warehouse_id,
+        ]
+
+    return build
+
+
+def build_job_runner(
+    profile: str = DEFAULT_PROFILE,
+    warehouse_id: str = DEFAULT_WAREHOUSE_ID,
+    jobs_dir: Path = DEFAULT_JOBS_DIR,
+    lock_path: Path = DEFAULT_JOB_LOCK_PATH,
+):
+    """`SubprocessJobRunner` (Fase 4, §5): un job (una búsqueda) a la vez, con el
+    `ProcessLock` portado de `ana_historic_backfill/lock.py` para que tampoco pise a un
+    `rio-search search run` corrido a mano en paralelo (aviso operativo de la Fase 3)."""
+    from rio_search.infrastructure.jobs.process_lock import ProcessLock
+    from rio_search.infrastructure.jobs.subprocess_job_runner import SubprocessJobRunner
+
+    return SubprocessJobRunner(
+        command_builder=_search_run_command(profile, warehouse_id),
+        log_dir=jobs_dir,
+        lock=ProcessLock(lock_path),
+        cwd=BACKEND_DIR,
+    )
+
+
+def build_api_dependencies(
+    profile: str = DEFAULT_PROFILE,
+    warehouse_id: str = DEFAULT_WAREHOUSE_ID,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    feature_groups_path: Path = DEFAULT_FEATURE_GROUPS_PATH,
+    experiments_dir: Path = DEFAULT_EXPERIMENTS_DIR,
+    read_cache_path: Path = DEFAULT_READ_CACHE_PATH,
+    jobs_dir: Path = DEFAULT_JOBS_DIR,
+    job_lock_path: Path = DEFAULT_JOB_LOCK_PATH,
+):
+    """Composition root de la API (Fase 4, §5): construye el `ApiDependencies` real que
+    `interfaces/api/main.py::create_app()` usa cuando no recibe uno inyectado (los tests de la
+    API pasan su propio `ApiDependencies` con `TrackingReadPort`/`JobRunner` falsos, §5)."""
+    from rio_search.application.experiments.compare_runs import CompareRuns
+    from rio_search.application.experiments.get_run_detail import GetRunDetail
+    from rio_search.application.experiments.list_runs import ListRuns
+    from rio_search.application.experiments.list_searches import ListSearches
+    from rio_search.interfaces.api.dependencies import ApiDependencies
+
+    reader = build_tracking_reader(profile=profile, cache_path=read_cache_path)
+    list_runs = ListRuns(reader=reader, base_path=rio_search_experiment_base_path(profile))
+    return ApiDependencies(
+        reader=reader,
+        list_runs=list_runs,
+        list_searches=ListSearches(list_runs=list_runs),
+        get_run_detail=GetRunDetail(reader=reader),
+        compare_runs=CompareRuns(reader=reader),
+        job_runner=build_job_runner(
+            profile=profile, warehouse_id=warehouse_id, jobs_dir=jobs_dir, lock_path=job_lock_path
+        ),
+        experiments_dir=experiments_dir,
+        snapshot_sync=build_gold_snapshot_sync(
+            profile=profile, warehouse_id=warehouse_id, cache_dir=cache_dir
+        ),
+        feature_catalog=build_feature_catalog(feature_groups_path),
+    )
