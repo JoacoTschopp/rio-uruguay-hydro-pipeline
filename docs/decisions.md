@@ -2641,3 +2641,131 @@ búsquedas nuevas desde HTTP sin arriesgar el hallazgo operativo de la Fase 3 (D
 * `GET /api/runs`/`GET /api/searches` no paginan (`max_results` tope 2000): con 47 runs reales de
   BiLSTM hoy no es un problema, pero si la Fase 9 agrega modelos y la cantidad de runs crece,
   conviene revisar antes de que la UI liste todo sin paginar.
+
+## Decisión 045: Cierre de la Fase 5 (UI React) — el frontend se sirve estático desde FastAPI con
+un catch-all de SPA registrado después de `/api/*`, y tres huecos de la API de la Fase 4 (artefactos,
+cobertura por columna, listar/editar YAML) se documentan en la propia UI en vez de inventarse
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra el backend real (`rio-search api serve`) y contra
+Databricks/MLflow real, no simulada: navegador headless (`browser-automation`, patchright — la
+extensión `claude-in-chrome` no tenía el navegador del usuario conectado en esta sesión) navegando
+`http://127.0.0.1:8000/` servido enteramente por FastAPI (sin proxy de Vite), 0 errores de consola
+y 0 requests fallidos en las 6 páginas. `npm run build` (TypeScript estricto, `tsc -b`) sin errores;
+`oxlint` sin errores (2 warnings menores, no bloqueantes). `pytest` en `rio_search/backend/`: **264
+tests en verde** (262 de las Fases 0-4 + 2 nuevos de esta fase), 2 `integration` deseleccionados sin
+cambios.
+
+### Contexto
+
+La Fase 4 dejó una API real con 8 endpoints de lectura/escritura (§3.9 de `rio_search_plan.md`) y el
+andamiaje Vite+React+TS de la Fase 0 (`HealthPage` mínima). Esta fase construye las 5 páginas de
+contenido que pide §3.9 (Búsquedas, Run, Comparar, Lanzar, Datasets — "Pronóstico de hoy" y Research
+quedan para las Fases 6/7 a propósito) contra el shape *real* de las respuestas, verificado con
+`curl` antes de escribir una sola línea de UI, y cierra sirviendo el build estático desde el mismo
+proceso FastAPI que ya sirve `/api/*`.
+
+### Decisión
+
+1. **Montaje estático en `interfaces/api/main.py`, no un router nuevo**: después de registrar todas
+   las rutas `/api/*`, si `rio_search/frontend/dist` existe se registra un único
+   `GET /{full_path:path}` que sirve el archivo pedido si existe bajo `dist/`, o cae a
+   `index.html` si no (fallback de SPA para que React Router resuelva `/runs/<id>`, `/compare`,
+   etc. del lado del cliente). Starlette resuelve rutas por **orden de registro** — el catch-all
+   registrado al final nunca puede robarle una request a `/api/health` ni a ninguna otra ya
+   registrada arriba — verificado con un test nuevo
+   (`test_api_routes_never_fall_through_to_the_frontend_static_mount`) y a mano:
+   `GET /api/searches` siguió devolviendo JSON real con el mount activo. El mount es condicional a
+   que `dist/` exista: los 262 tests existentes de la Fase 4 (que construyen `create_app(deps=...)`
+   sin compilar nada) siguen en verde sin tocarlos — confirmado (264 en verde, incluidos los 2
+   nuevos). Es el único cambio en `rio_search/backend/` de esta fase.
+2. **5 páginas reales, sin gestor de estado global** (TanStack Query cubre cache de servidor, React
+   Router para rutas): `SearchesPage` (`/`, lista de búsquedas+trials con filtro por familia, orden,
+   selección por checkbox → `Comparar`), `RunPage` (`/runs/:runId`, config/tags/métricas por
+   horizonte/tiempos/curva de pérdida/cobertura/artefactos/botón campeón), `ComparePage`
+   (`/compare?ids=`, tabla + métrica vs. horizonte + tiempo vs. métrica + diff de configs),
+   `LaunchPage` (`/launch`, formulario + cola de jobs + log SSE), `DatasetsPage` (`/datasets`,
+   versión del snapshot + catálogo de features). CSS modules + tokens propios en `index.css`
+   (reescrito: el `#root` centrado de 1126px del template de Vite no servía para un dashboard de
+   tablas; se conservó la paleta de acento del template y se le sumó la paleta categórica de la
+   skill `dataviz`). `HealthPage` de la Fase 0 se conserva como diagnóstico de bajo nivel, enlazada
+   desde el badge de estado del backend en la barra superior, no como página de contenido de §3.9.
+3. **Gráficos con Recharts, paleta validada de la skill `dataviz`** (`references/palette.md`, sin
+   correr el validador porque los 8 hex documentados ya vienen validados en ambos modos):
+   `HorizonLineChart` (métrica vs. horizonte, una línea por serie — reusada tanto en Run, val/test,
+   como en Comparar, una por run seleccionado), `LossCurveChart` (`train/loss` vs. `val/loss` desde
+   `GET /api/runs/{id}/series/{name}`, la única fuente de series que la API expone hoy), y
+   `TimeVsMetricChart` (scatter tiempo vs. métrica en Comparar, un `<Scatter>` por run para que cada
+   punto lleve su color de identidad). Los ocho slots categóricos (`--series-1..8`) y los cuatro
+   colores de estado (`--status-good/warning/serious/critical`) quedan como variables CSS en
+   `index.css`, con sus pasos de modo oscuro.
+4. **Hallazgo real durante la verificación, no un bug de la UI**: al navegar un trial
+   `per_horizon` real de la Fase 3 (`1d1ff53f8df84147ae235e507a3a4274`,
+   `bilstm__caudal__per_horizon__rolling_365__20260827-1630`) se encontró que **no todos** los
+   trials `per_horizon` agregan sus 8 métricas de horizonte sobre sí mismos: este en particular
+   tiene `run.metrics == {}` y un único hijo (`h01`) — corrida temprana/parcial de la Fase 3, antes
+   de que la agregación quedara consistente, sigue existiendo en MLflow tal cual. `RunPage` ya
+   distinguía "run con métricas propias" (tabla completa) de "run sin métricas propias" (lista de
+   runs hijos) para cubrir tanto los runs padre de búsqueda genuinos como este caso — se ajustó
+   solo el rótulo de esa rama de "Trials de esta búsqueda" a "Runs hijos" para que describa
+   correctamente ambos casos sin invocar un concepto (trial) que no aplica al segundo. No hizo
+   falta ningún otro cambio: la UI ya degradaba con datos reales sin romperse.
+5. **Verificación end-to-end real de Lanzar, no solo del shape de la API**: se corrió
+   `persistence_baseline_v1.yaml` desde la UI (click real en el navegador headless) mientras nada
+   más pegaba a Databricks (aviso operativo de la Fase 3) — `POST /api/jobs` devolvió
+   `job_id=22395654f1e0`, el log SSE mostró líneas reales de MLflow en vivo (con emoji, coherente
+   con la corrección de encoding de la Decisión 044), y el job terminó `status=finished`,
+   `exit_code=0`, `extra.search_run_id=444c58e2bfbc48faa056884d68654f94`, visible después en
+   `GET /api/runs/444c58e2bfbc48faa056884d68654f94` y navegable desde el link "ver run →" de la
+   cola de jobs. El log llegaba con códigos ANSI crudos (color de consola de MLflow) — se agregó
+   `stripAnsi` en `LaunchPage.tsx` para no mostrarlos literalmente en el `<pre>`.
+6. **Tres huecos de la API de la Fase 4 documentados en la propia UI (`GapNotice`), no
+   rellenados con datos inventados**, tal como pedía el criterio de esta fase:
+   - **Hidrograma TEST y `split/split.json`** (Run): la API no expone lectura/listado de
+     artefactos de MLflow (`predictions/test.parquet`, `series/*.json` del plan §3.5) — solo
+     historial de *métricas* escalares (`GET /api/runs/{id}/series/{name}`), que es lo que sí
+     alimenta la curva de pérdida real. Pintar el hidrograma real necesita un endpoint nuevo (p.
+     ej. `GET /api/runs/{id}/artifacts/predictions/test`), fuera de esta fase (no se tocó el
+     backend salvo el mount estático). La "cobertura de splits" sí se resolvió con datos reales:
+     las métricas `{split}/coverage/hNN` ya vienen en `run.metrics`.
+   - **Cobertura por columna/año** (Datasets): `GET /api/datasets` expone solo la versión del
+     snapshot (delta, sha, filas, rango, columnas), no la cobertura que sí calcula `DescribeDataset`
+     (Fase 1) — exactamente el hueco que la Decisión 044 ya había anticipado para esta fase.
+   - **YAML editable** (Lanzar): `POST /api/jobs` solo acepta un nombre de archivo que ya exista en
+     `configs/experiments/`; no hay endpoint para listar, leer ni escribir el contenido de un YAML.
+     La página ofrece un selector con los 5 configs reales conocidos hoy (lista estática en el
+     código, documentada como tal) más un campo de texto libre para un nombre nuevo; la edición real
+     del contenido queda pendiente de `GET/PUT /api/configs/{name}`.
+   - Los tres se resolvieron **documentando el hueco en la UI** (componente `GapNotice`,
+     reusado en las tres páginas) en vez de simularlos con datos falsos, como pedía el brief.
+7. **Botón "promover a campeón"**: existe en `RunPage`, deshabilitado con tooltip explicando que
+   `POST /api/champions` es un caso de uso de la Fase 6 (`PromoteChampion`) que todavía no existe —
+   igual que el resto del plan, la UI del botón está lista, la acción no.
+
+### Alcance no cubierto en esta fase (documentado, no bloqueante)
+
+* Sin tests de componentes (Vitest/Testing Library no se agregaron): la verificación de esta fase
+  fue `tsc -b` estricto + `oxlint` + navegación real contra el backend real en un navegador headless
+  (`browser-automation`, patchright), no unit tests de React. Si una fase futura necesita
+  regresiones automatizadas de UI, agregar Vitest es un cambio acotado (`vite.config.ts` ya usa
+  Vite 8).
+* El bundle de producción pesa ~685 KB sin comprimir (203 KB gzip) en un único chunk — Vite avisa
+  del tamaño pero no bloquea el build; no se hizo code-splitting por página (`React.lazy`) para no
+  ampliar el alcance de esta fase.
+* `claude-in-chrome` (extensión de navegador real) no estaba conectada en esta sesión
+  (`Browser extension is not connected`); la verificación visual se hizo con el navegador headless
+  del skill `browser-automation` en su lugar — screenshots no se tomaron (se leyó texto/DOM/consola
+  en cada página, que es lo que probaba el criterio de cierre), documentado acá por si el agente
+  principal quiere una captura visual además del texto ya verificado.
+
+### Pendientes para la Fase 6 (Inferencia diaria)
+
+* "Pronóstico de hoy" es una página nueva de esta misma UI (`GET /api/forecasts/latest`,
+  `GET /api/forecasts/backtest`, §3.9) — el layout (`components/Layout.tsx`) ya tiene un array
+  `NAV_ITEMS` centralizado, agregar el link es un cambio de una línea.
+* El botón "Promover a campeón" de `RunPage.tsx` queda con un comentario explícito de dónde
+  conectar `POST /api/champions` cuando exista.
+* Si la Fase 6 agrega `GET/PUT /api/configs/{name}` (para cerrar el hueco de "YAML editable" de
+  Lanzar) o `GET /api/runs/{id}/artifacts/...` (para el hidrograma), `LaunchPage.tsx` y
+  `RunPage.tsx` ya tienen el `GapNotice` marcando exactamente dónde conectar cada uno.

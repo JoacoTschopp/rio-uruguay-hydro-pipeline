@@ -1,0 +1,107 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: 60px;
+}
+
+.introRow p {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.filterLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.filterInput {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  background: var(--bg);
+  min-width: 160px;
+}
+
+.searchTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.expandBtn {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  width: 20px;
+}
+
+.searchMeta {
+  display: flex;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.searchSummary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.summaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summaryLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.summaryValue {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.compareBar {
+  position: sticky;
+  bottom: var(--space-3);
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--text-h);
+  color: var(--bg);
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.compareBar button {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.primaryBtn {
+  background: var(--accent) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: 600;
+}

@@ -280,3 +280,33 @@ def test_get_features_returns_catalog(client: TestClient) -> None:
     groups = response.json()["groups"]
     assert groups[0]["name"] == "caudal_estado"
     assert groups[0]["columns"] == ["caudal_actual_m3s"]
+
+
+def test_api_routes_never_fall_through_to_the_frontend_static_mount(client: TestClient) -> None:
+    """Fase 5 (docs/rio_search_plan.md §3.9): `create_app` monta el build estatico del frontend
+    en `/` *despues* de registrar todas las rutas `/api/*` -- Starlette resuelve por orden de
+    registro, asi que un catch-all de SPA nunca deberia poder robarle una request a `/api/*`. Un
+    404 de verdad (no el `index.html` del SPA) es la prueba de que el orden se respeto."""
+    response = client.get("/api/runs/does-not-exist-at-all")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "run 'does-not-exist-at-all' no encontrado"
+
+
+def test_frontend_static_mount_matches_whether_dist_was_built(client: TestClient) -> None:
+    """No hay flag para forzar el montaje: `create_app` decide solo mirando si
+    `rio_search/frontend/dist` existe (para que los 262 tests de `pytest`, que nunca compilan el
+    frontend, sigan pasando igual). Este test refleja esa misma condicion en vez de asumir un
+    estado fijo, asi pasa tanto en una maquina con el build hecho (Fase 5, verificado real) como
+    en CI sin `npm run build` corrido."""
+    from pathlib import Path
+
+    # tests/test_api.py -> parents[1] = rio_search/backend -> parents[2] = rio_search (top),
+    # hermano de rio_search/frontend -- misma cuenta de `.parents[4]` que usa `interfaces/api/
+    # main.py` desde su propia ubicacion, un nivel mas profundo.
+    frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    response = client.get("/")
+    if frontend_dist.is_dir():
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+    else:
+        assert response.status_code == 404

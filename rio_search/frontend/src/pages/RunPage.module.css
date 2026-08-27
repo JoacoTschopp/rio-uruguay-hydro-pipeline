@@ -1,0 +1,135 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: 40px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.header h1 {
+  margin: var(--space-1) 0;
+  word-break: break-word;
+}
+
+.subline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.parentLink {
+  font-size: 12px;
+}
+
+.headerActions {
+  flex-shrink: 0;
+}
+
+.championBtn {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-muted);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.championBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.paramSection {
+  margin-bottom: var(--space-3);
+}
+
+.paramSection h3 {
+  margin-bottom: var(--space-1);
+}
+
+.tagGroup {
+  margin-bottom: var(--space-3);
+}
+
+.tagList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tagRow {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: var(--space-2);
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tagRow dt {
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.tagRow dd {
+  margin: 0;
+  word-break: break-all;
+  font-family: var(--mono);
+}
+
+.searchNote {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: var(--space-2);
+}
+
+.artifactUri {
+  word-break: break-all;
+}
+
+.artifactList {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  font-size: 13px;
+}
+
+.artifactList li {
+  margin-bottom: 4px;
+}
+
+.footerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}

@@ -1,0 +1,12 @@
+.notice {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--code-bg);
+}
+
+.notice strong {
+  color: var(--text-h);
+}

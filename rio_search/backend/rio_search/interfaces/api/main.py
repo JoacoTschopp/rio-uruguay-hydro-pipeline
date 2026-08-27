@@ -12,9 +12,10 @@ api serve`) llama a la factory sin argumentos.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from rio_search.application.ports.job_runner import JobRecord
 from rio_search.application.ports.snapshot_sync import RefreshMode
@@ -194,6 +195,29 @@ def create_app(deps: ApiDependencies | None = None) -> FastAPI:
     def get_features() -> FeatureCatalogOut:
         groups = [FeatureGroupOut.model_validate(g) for g in deps.feature_catalog.groups]
         return FeatureCatalogOut(groups=groups)
+
+    # ------------------------------------------------------------------
+    # Frontend estatico (Fase 5, §3.9: "Build estatico servido por FastAPI en `/`"): montado
+    # *despues* de todas las rutas `/api/*` de arriba, a proposito -- Starlette resuelve rutas en
+    # el orden en que se registraron y devuelve el primer match, asi que un catch-all acá abajo
+    # nunca puede robarle una request a `/api/health` ni al resto. Solo se activa si
+    # `rio_search/frontend/dist` existe (post `npm run build`); si no existe (tests de la API,
+    # backend sin frontend compilado todavia) la API sigue funcionando igual, sin servir "/" --
+    # asi los 262 tests de `pytest` (que construyen `create_app(deps=fake)` sin buildear nada)
+    # siguen en verde sin tocarlos.
+    frontend_dist = Path(__file__).resolve().parents[4] / "frontend" / "dist"
+    if frontend_dist.is_dir():
+        index_file = frontend_dist / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def serve_frontend(full_path: str) -> FileResponse:
+            candidate = (frontend_dist / full_path).resolve()
+            if full_path and candidate.is_file() and frontend_dist in candidate.parents:
+                return FileResponse(candidate)
+            # Fallback de SPA (React Router con `BrowserRouter`): cualquier ruta de la UI que no
+            # sea un archivo real del build (`/runs/<id>`, `/compare`, ...) sirve `index.html` y
+            # React Router resuelve la ruta en el cliente.
+            return FileResponse(index_file)
 
     return app
 
