@@ -16,9 +16,11 @@ import {
   fetchForecastBacktest,
   fetchForecastHistory,
   fetchLatestForecast,
+  fetchRunDetail,
   type TargetVariable,
 } from '../lib/api'
-import { formatNumber, truncateHash } from '../lib/format'
+import { listTimeMetrics } from '../lib/metrics'
+import { formatNumber, formatTimingValue, truncateHash } from '../lib/format'
 import { Badge } from '../components/ui/Badge'
 import { Panel } from '../components/ui/Panel'
 import { GapNotice } from '../components/ui/GapNotice'
@@ -56,6 +58,16 @@ export function ForecastPage() {
     queryKey: ['forecast-backtest', target],
     queryFn: () => fetchForecastBacktest(target, 30),
   })
+  // `time/*` (dataset_refresh_s, model_load_s, preprocess_s, predict_s, total_s, §3.12) viven
+  // en el run corto de MLflow (`daily_forecast`), no en el `Forecast` en si -- se leen del mismo
+  // endpoint que ya usa la pagina Run (`GET /api/runs/{id}`), sin duplicar esa logica acá.
+  const forecastRunId = latest.data?.forecast_run_id ?? undefined
+  const forecastRun = useQuery({
+    queryKey: ['run', forecastRunId],
+    queryFn: () => fetchRunDetail(forecastRunId as string),
+    enabled: !!forecastRunId,
+  })
+  const timeMetrics = forecastRun.data ? listTimeMetrics(forecastRun.data.run.metrics) : []
 
   const chartData = latest.data
     ? [...latest.data.points]
@@ -212,6 +224,34 @@ export function ForecastPage() {
               </table>
             </div>
           </>
+        )}
+      </Panel>
+
+      <Panel title="Panel de tiempos (time/*, run de daily_forecast)">
+        {!forecastRunId && <p>Sin pronóstico vigente todavía.</p>}
+        {forecastRunId && forecastRun.isLoading && <p>Cargando…</p>}
+        {forecastRunId && timeMetrics.length > 0 && (
+          <div className={tableStyles.wrap}>
+            <table className={tableStyles.table}>
+              <thead>
+                <tr>
+                  <th>métrica</th>
+                  <th className={tableStyles.num}>valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timeMetrics.map((m) => (
+                  <tr key={m.key}>
+                    <td>{m.key}</td>
+                    <td className={tableStyles.num}>{formatTimingValue(m.key, m.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {forecastRunId && !forecastRun.isLoading && timeMetrics.length === 0 && (
+          <p>Sin métricas de tiempo en el run <code>{truncateHash(forecastRunId, 16)}</code>.</p>
         )}
       </Panel>
 
