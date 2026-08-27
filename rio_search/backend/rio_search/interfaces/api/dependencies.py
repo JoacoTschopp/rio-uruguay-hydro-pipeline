@@ -14,9 +14,13 @@ from rio_search.application.experiments.compare_runs import CompareRuns
 from rio_search.application.experiments.get_run_detail import GetRunDetail
 from rio_search.application.experiments.list_runs import ListRuns
 from rio_search.application.experiments.list_searches import ListSearches
+from rio_search.application.ports.champion_store import ChampionStorePort
+from rio_search.application.ports.forecast_repository import ForecastRepositoryPort
 from rio_search.application.ports.job_runner import JobRunner
 from rio_search.application.ports.snapshot_sync import SnapshotSyncPort
 from rio_search.application.ports.tracking_read import TrackingReadPort
+from rio_search.application.predictions.backtest_recent import BacktestRecent
+from rio_search.application.predictions.promote_champion import PromoteChampion
 from rio_search.domain.datasets.feature_catalog import FeatureCatalog
 
 
@@ -31,3 +35,10 @@ class ApiDependencies:
     experiments_dir: Path
     snapshot_sync: SnapshotSyncPort
     feature_catalog: FeatureCatalog
+    # Fase 6 (Predicciones, §3.9): `POST /api/champions`, `GET /api/champions`,
+    # `GET /api/forecasts/*`. `IssueDailyForecast` (la corrida pesada) no vive acá a proposito
+    # -- ver el docstring de `interfaces.container.build_api_dependencies`.
+    promote_champion: PromoteChampion
+    champion_store: ChampionStorePort
+    forecast_repository: ForecastRepositoryPort
+    backtest_recent: BacktestRecent

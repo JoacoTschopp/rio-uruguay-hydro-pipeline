@@ -7,8 +7,10 @@ mano, no como parte de `pytest`.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
+import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
@@ -18,9 +20,14 @@ from rio_search.application.experiments.list_runs import ListRuns
 from rio_search.application.experiments.list_searches import ListSearches
 from rio_search.application.ports.job_runner import JobRecord, JobStatus
 from rio_search.application.ports.tracking_read import MetricPoint, RunRecord
+from rio_search.application.predictions.backtest_recent import BacktestRecent
+from rio_search.application.predictions.promote_champion import PromoteChampion
 from rio_search.domain.datasets.dataset_version import DatasetVersion
 from rio_search.domain.datasets.feature_catalog import FeatureCatalog
 from rio_search.domain.datasets.feature_group import FeatureGroup
+from rio_search.domain.predictions.champion import Champion
+from rio_search.domain.predictions.forecast import Forecast, ForecastPoint
+from rio_search.domain.shared.target_variable import TargetVariable
 from rio_search.interfaces.api.dependencies import ApiDependencies
 from rio_search.interfaces.api.main import create_app
 
@@ -120,12 +127,80 @@ class FakeSnapshotSync:
         return version, Path("/fake/cache/training_dataset_v0.parquet")
 
 
+class FakeChampionStore:
+    def __init__(self) -> None:
+        self._by_target: dict[str, Champion] = {}
+        self._history: dict[str, list[Champion]] = {}
+
+    def set(self, champion: Champion) -> None:
+        self._by_target[champion.target.value] = champion
+        self._history.setdefault(champion.target.value, []).insert(0, champion)
+
+    def get(self, target: TargetVariable) -> Champion | None:
+        return self._by_target.get(target.value)
+
+    def history(self, target: TargetVariable, max_results: int = 50) -> list[Champion]:
+        return self._history.get(target.value, [])[:max_results]
+
+
+class FakeForecastRepository:
+    def __init__(self) -> None:
+        self._by_target: dict[str, list[Forecast]] = {}
+
+    def save(self, forecast: Forecast) -> None:
+        self._by_target.setdefault(forecast.target.value, []).insert(0, forecast)
+
+    def latest(self, target: TargetVariable) -> Forecast | None:
+        items = self._by_target.get(target.value, [])
+        return items[0] if items else None
+
+    def list_recent(self, target: TargetVariable, max_results: int = 30) -> list[Forecast]:
+        return self._by_target.get(target.value, [])[:max_results]
+
+
+class FakeDatasetRepository:
+    def load(self, mode: str = "ensure_latest", force: bool = False):
+        version = DatasetVersion(
+            delta_version=268,
+            sha256="a" * 64,
+            rows=3,
+            fecha_min="2026-08-01",
+            fecha_max="2026-08-03",
+            columns=("fecha", "caudal_actual_m3s"),
+        )
+        df = pl.DataFrame(
+            {
+                "fecha": [date(2026, 8, 1), date(2026, 8, 2), date(2026, 8, 3)],
+                "caudal_actual_m3s": [1000.0, 1010.0, None],
+            }
+        )
+        return version, df
+
+
+def _champion_candidate_run() -> RunRecord:
+    """Trial `bilstm` real de la Fase 3 (tags/metricas minimas que `PromoteChampion` necesita):
+    `rio_search.model`, `rio_search.target`, `registered_model_name`/`_version`,
+    `val/kge/mean`."""
+    return _run(
+        "bilstm-v9",
+        "search-1",
+        400,
+        tags={
+            "rio_search.model": "bilstm",
+            "rio_search.target": "caudal",
+            "rio_search.registered_model_name": "weather.ml.rio_search_bilstm",
+            "rio_search.registered_model_version": "9",
+        },
+        metrics={"val/kge/mean": 0.207},
+    )
+
+
 def _hierarchy() -> list[RunRecord]:
     search = _run("search-1", None, 300)
     trial_a = _run("trial-a", "search-1", 200, params={"model.name": "bilstm"})
     trial_b = _run("trial-b", "search-1", 100, params={"model.name": "persistence"})
     horizon = _run("h01", "trial-a", 250)
-    return [search, trial_a, trial_b, horizon]
+    return [search, trial_a, trial_b, horizon, _champion_candidate_run()]
 
 
 @pytest.fixture()
@@ -145,6 +220,8 @@ def client(experiments_dir: Path) -> TestClient:
     feature_catalog = FeatureCatalog(
         groups=(FeatureGroup(name="caudal_estado", columns=("caudal_actual_m3s",), default_on=True),)
     )
+    champion_store = FakeChampionStore()
+    forecast_repository = FakeForecastRepository()
     deps = ApiDependencies(
         reader=reader,
         list_runs=list_runs,
@@ -155,8 +232,21 @@ def client(experiments_dir: Path) -> TestClient:
         experiments_dir=experiments_dir,
         snapshot_sync=FakeSnapshotSync(),
         feature_catalog=feature_catalog,
+        promote_champion=PromoteChampion(reader=reader, store=champion_store, model_alias=None),
+        champion_store=champion_store,
+        forecast_repository=forecast_repository,
+        backtest_recent=BacktestRecent(
+            forecast_repository=forecast_repository, dataset_repository=FakeDatasetRepository()
+        ),
     )
-    return TestClient(create_app(deps=deps))
+    test_client = TestClient(create_app(deps=deps))
+    # Atributos extra (no parte de `TestClient`) para que los tests de Fase 6 puedan sembrar el
+    # repo falso directamente -- las rutas HTTP no exponen "crear un pronostico", eso lo hace
+    # `IssueDailyForecast` (CLI/Task Scheduler), no la API (ver docstring de
+    # `interfaces.container.build_api_dependencies`).
+    test_client.forecast_repository = forecast_repository  # type: ignore[attr-defined]
+    test_client.champion_store = champion_store  # type: ignore[attr-defined]
+    return test_client
 
 
 def test_health(client: TestClient) -> None:
@@ -169,7 +259,7 @@ def test_list_runs_returns_all_records(client: TestClient) -> None:
     response = client.get("/api/runs")
     assert response.status_code == 200
     run_ids = {r["run_id"] for r in response.json()["runs"]}
-    assert run_ids == {"search-1", "trial-a", "trial-b", "h01"}
+    assert run_ids == {"search-1", "trial-a", "trial-b", "h01", "bilstm-v9"}
 
 
 def test_list_searches_groups_trials(client: TestClient) -> None:
@@ -178,7 +268,7 @@ def test_list_searches_groups_trials(client: TestClient) -> None:
     searches = response.json()["searches"]
     assert len(searches) == 1
     assert searches[0]["search"]["run_id"] == "search-1"
-    assert sorted(t["run_id"] for t in searches[0]["trials"]) == ["trial-a", "trial-b"]
+    assert sorted(t["run_id"] for t in searches[0]["trials"]) == ["bilstm-v9", "trial-a", "trial-b"]
 
 
 def test_get_run_detail(client: TestClient) -> None:
@@ -186,7 +276,7 @@ def test_get_run_detail(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["run"]["run_id"] == "search-1"
-    assert sorted(c["run_id"] for c in body["children"]) == ["trial-a", "trial-b"]
+    assert sorted(c["run_id"] for c in body["children"]) == ["bilstm-v9", "trial-a", "trial-b"]
 
 
 def test_get_run_detail_404_for_unknown_run(client: TestClient) -> None:
@@ -310,3 +400,85 @@ def test_frontend_static_mount_matches_whether_dist_was_built(client: TestClient
         assert "text/html" in response.headers["content-type"]
     else:
         assert response.status_code == 404
+
+
+# ------------------------------------------------------------------
+# Fase 6 -- Predicciones (§3.9): POST/GET /api/champions, GET /api/forecasts/*.
+# ------------------------------------------------------------------
+
+
+def test_promote_champion_sets_it_from_a_real_run(client: TestClient) -> None:
+    response = client.post("/api/champions", json={"run_id": "bilstm-v9", "target": "caudal"})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["run_id"] == "bilstm-v9"
+    assert body["model_name"] == "bilstm"
+    assert body["metric_value"] == pytest.approx(0.207)
+    assert body["registered_model_version"] == "9"
+
+    get_response = client.get("/api/champions", params={"target": "caudal"})
+    assert get_response.status_code == 200
+    assert get_response.json()["run_id"] == "bilstm-v9"
+
+
+def test_promote_champion_rejects_run_without_metric(client: TestClient) -> None:
+    response = client.post(
+        "/api/champions", json={"run_id": "trial-b", "target": "caudal", "metric_name": "val/kge/mean"}
+    )
+    assert response.status_code == 400
+
+
+def test_get_champion_404_when_none_promoted(client: TestClient) -> None:
+    response = client.get("/api/champions", params={"target": "nivel"})
+    assert response.status_code == 404
+
+
+def _sample_forecast(as_of: date, issued_at: str) -> Forecast:
+    return Forecast(
+        target=TargetVariable.CAUDAL,
+        as_of=as_of,
+        issued_at=issued_at,
+        dataset_delta_version=268,
+        dataset_sha256="a" * 64,
+        champion_run_id="bilstm-v9",
+        champion_model_name="bilstm",
+        device_type="cpu",
+        data_lag_days=1,
+        points=(
+            ForecastPoint(horizon=1, target_date=date(2026, 8, 2), value=1005.0),
+            ForecastPoint(horizon=2, target_date=date(2026, 8, 3), value=1010.0),
+        ),
+        forecast_run_id="forecast-run-1",
+    )
+
+
+def test_forecasts_latest_and_history_and_backtest(client: TestClient) -> None:
+    empty = client.get("/api/forecasts/latest", params={"target": "caudal"})
+    assert empty.status_code == 404
+
+    older = _sample_forecast(date(2026, 8, 1), "2026-08-01T06:30:00+00:00")
+    newer = _sample_forecast(date(2026, 8, 2), "2026-08-02T06:30:00+00:00")
+    client.forecast_repository.save(older)  # type: ignore[attr-defined]
+    client.forecast_repository.save(newer)  # type: ignore[attr-defined]
+
+    latest = client.get("/api/forecasts/latest", params={"target": "caudal"})
+    assert latest.status_code == 200
+    assert latest.json()["as_of"] == "2026-08-02"
+    assert latest.json()["points"][0]["horizon"] == 1
+
+    history = client.get("/api/forecasts/history", params={"target": "caudal"})
+    assert history.status_code == 200
+    assert [f["as_of"] for f in history.json()["forecasts"]] == ["2026-08-02", "2026-08-01"]
+
+    # `_sample_forecast` predice horizonte 1 -> fecha_objetivo=2026-08-02 (observado real en
+    # `FakeDatasetRepository` = 1010.0) y horizonte 2 -> fecha_objetivo=2026-08-03 (nulo en el
+    # dataset falso, todavia "pendiente" en el backtest).
+    backtest = client.get("/api/forecasts/backtest", params={"target": "caudal"})
+    assert backtest.status_code == 200
+    body = backtest.json()
+    assert body["target"] == "caudal"
+    assert len(body["points"]) == 4  # 2 forecasts x 2 horizontes cada uno
+    resolved = [p for p in body["points"] if p["observed"] is not None]
+    pending = [p for p in body["points"] if p["observed"] is None]
+    assert len(resolved) == 2 and len(pending) == 2
+    assert all(p["horizon"] == 1 and p["observed"] == pytest.approx(1010.0) for p in resolved)

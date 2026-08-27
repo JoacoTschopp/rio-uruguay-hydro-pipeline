@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { fetchRunDetail, fetchRunSeries } from '../lib/api'
+import { fetchRunDetail, fetchRunSeries, promoteChampion, type TargetVariable } from '../lib/api'
 import {
   extractMetricByHorizon,
   groupParamsBySection,
@@ -37,10 +37,19 @@ const KNOWN_ARTIFACT_PATHS = [
 
 export function RunPage() {
   const { runId = '' } = useParams()
+  const queryClient = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ['run', runId],
     queryFn: () => fetchRunDetail(runId),
     enabled: runId.length > 0,
+  })
+
+  const promote = useMutation({
+    mutationFn: (target: TargetVariable) => promoteChampion({ run_id: runId, target }),
+    onSuccess: (champion) => {
+      queryClient.invalidateQueries({ queryKey: ['champion', champion.target] })
+      queryClient.invalidateQueries({ queryKey: ['forecast-latest', champion.target] })
+    },
   })
 
   const [selectedChildId, setSelectedChildId] = useState<string | undefined>(undefined)
@@ -101,15 +110,41 @@ export function RunPage() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            disabled
-            title="POST /api/champions es un caso de uso de la Fase 6 (Predicciones/PromoteChampion) -- todavia no existe en el backend. El boton queda listo, deshabilitado."
-            className={styles.championBtn}
-          >
-            Promover a campeón
-          </button>
+          {(() => {
+            const runTarget = run.tags['rio_search.target']
+            const target: TargetVariable | null =
+              runTarget === 'caudal' || runTarget === 'nivel' ? runTarget : null
+            if (!target) {
+              return (
+                <button
+                  disabled
+                  title="Este run no tiene el tag rio_search.target (caudal|nivel) -- no parece un trial promovible."
+                  className={styles.championBtn}
+                >
+                  Promover a campeón
+                </button>
+              )
+            }
+            return (
+              <button
+                disabled={promote.isPending}
+                title={`POST /api/champions (PromoteChampion, Fase 6) -- fija este run como campeón de ${target} (alias champion_${target} en Unity Catalog + copia local en SQLite).`}
+                className={styles.championBtn}
+                onClick={() => promote.mutate(target)}
+              >
+                {promote.isPending
+                  ? 'Promoviendo…'
+                  : promote.isSuccess
+                    ? `Campeón de ${target} ✓`
+                    : `Promover a campeón (${target})`}
+              </button>
+            )
+          })()}
         </div>
       </div>
+      {promote.isError && (
+        <p className={styles.promoteError}>{(promote.error as Error).message}</p>
+      )}
 
       <div className={styles.grid}>
         <Panel title="Config">

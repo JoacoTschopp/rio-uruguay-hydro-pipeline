@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/compare', label: 'Comparar' },
   { to: '/launch', label: 'Lanzar' },
   { to: '/datasets', label: 'Datasets' },
+  { to: '/forecast', label: 'Pronóstico de hoy' },
 ]
 
 export function Layout() {

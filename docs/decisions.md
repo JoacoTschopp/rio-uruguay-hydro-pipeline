@@ -2769,3 +2769,221 @@ proceso FastAPI que ya sirve `/api/*`.
 * Si la Fase 6 agrega `GET/PUT /api/configs/{name}` (para cerrar el hueco de "YAML editable" de
   Lanzar) o `GET /api/runs/{id}/artifacts/...` (para el hidrograma), `LaunchPage.tsx` y
   `RunPage.tsx` ya tienen el `GapNotice` marcando exactamente dónde conectar cada uno.
+
+## Decisión 046: Campeón provisorio de `caudal` fijado en la versión 9 de
+`weather.ml.rio_search_bilstm` — sujeto a que el usuario revise `weather.ml` y confirme o cambie
+la política de versiones/alias (§8 del plan)
+
+### Estado
+
+`Provisoria` (2026-08-27): el mecanismo (`PromoteChampion`) está implementado, probado y
+verificado real contra Databricks/MLflow, pero la elección concreta de *cuál* versión es la
+campeona sigue sujeta a la revisión pendiente del usuario que ya preveía el plan (§8: "Revisar
+`weather.ml` después de la primera corrida registrada", Decisión #12) — el usuario todavía no
+hizo esa revisión. Se documenta acá para no bloquear la Fase 6, no para cerrar la pregunta.
+
+### Contexto
+
+La Fase 3 registró 4 versiones (9-12) de `weather.ml.rio_search_bilstm` desde una búsqueda
+`random` de 4 trials (`bilstm_baseline_v1.yaml`) y dejó pendiente, a propósito, la revisión de
+nombre/alias/política de versiones con el usuario (fila de Notas de la Fase 3 en
+`rio_search_plan.md`, "Estado de implementación"). La Fase 6 (Inferencia diaria) necesita un
+campeón fijado para poder ejercitar `IssueDailyForecast` de punta a punta contra Databricks/MLflow
+real — sin una versión elegida no hay nada que predecir. Instrucción explícita del agente
+principal para esta fase: no bloquear el trabajo esperando esa revisión, fijar un campeón
+provisorio con la mejor métrica de VAL disponible y dejarlo claramente marcado como tal.
+
+### Decisión
+
+1. **Versión 9 de `weather.ml.rio_search_bilstm`** (`run_id`
+   `2bad22f8bdd54e2cb39e071398881b51`, `bilstm__caudal__multi_output__rolling_365__20260827-1730`,
+   hijo de la búsqueda `7ba3d432e4bb495e837128adf94ad1b2`) es el campeón provisorio de `caudal`:
+   **mejor `val/kge/mean` de las 4 versiones registradas** (`0.20702039776959796`, verificado leyendo
+   las métricas reales de las 4 con `MlflowClient` — versiones 10/11/12 quedan por debajo),
+   `multi_output`, `lookback_days=90`, `hidden_size=32`, `num_layers=1`,
+   `split.train_window.start=2000-01-01`, dataset `delta_version=268`. Selección por VAL, nunca
+   TEST (§3.7, ya decidido).
+2. **Fijado con el mecanismo real de esta fase**: `rio-search champions set --run
+   2bad22f8bdd54e2cb39e071398881b51 --target caudal` (`PromoteChampion`) — alias
+   `champion_caudal` fijado en Unity Catalog sobre `weather.ml.rio_search_bilstm` v9 (verificado
+   con `MlflowClient.get_model_version_by_alias`, devuelve versión 9) y copia local en
+   `data/champions.sqlite3`, con `note` explícito: *"campeon provisorio, pendiente de revision
+   del usuario (weather.ml, Decision #12 / Fase 3 -- version 9 = mejor val/kge/mean=0.207 segun
+   el reporte de la Fase 3, comparacion no confirmada con el usuario todavia)"* — visible en la
+   UI ("Pronóstico de hoy") y en cualquier consulta de `GET /api/champions`.
+3. **Nada de esto es una decisión de nombres/aliases/política de versiones** (eso sigue siendo la
+   pregunta abierta de §8): es solo la elección operativa mínima para poder cerrar el criterio de
+   la Fase 6 con una corrida real. Si el usuario, al revisar, decide otra versión/modelo como
+   campeón, `rio-search champions set` vuelve a correrse con el `run_id` correcto — no hace falta
+   tocar código, el mecanismo ya soporta reemplazar el campeón vigente en cualquier momento
+   (`ChampionStorePort.set` es upsert por target, `champion_history` guarda el rastro de todas las
+   promociones anteriores).
+
+## Decisión 047: `preprocess/pipeline.pkl` (§3.5 del plan) nunca se logueó en la Fase 2/3 —
+`IssueDailyForecast` reconstruye el `ImputerStats`/`ScalerStats` de forma determinista desde
+`split/split.json` del propio run campeón, sin tocar `RunSearch`
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow real: `IssueDailyForecast` cargó el
+campeón real de la Decisión 046 y predijo un pronóstico real, verificado bit-idéntico entre CUDA y
+CPU (ver Decisión 048).
+
+### Contexto
+
+El plan (§3.5, lista de artefactos de un trial) dice que cada run loguea `preprocess/pipeline.pkl`
+(imputador + escalador ajustados con TRAIN). Al implementar `IssueDailyForecast` (§3.8, paso 2:
+"carga el campeón — `run_id` → `model/`, `preprocess/pipeline.pkl`, `features/spec.json` —
+exactamente los artefactos del run, nada se recalcula distinto") se encontró que **ese artefacto
+nunca se implementó**: `application/experiments/run_search.py` (Fase 2/3, ya cerrada y con 264
+tests en verde) calcula `ImputerStats`/`ScalerStats` en memoria (`BuildFeatureMatrix.execute`,
+Fase 1) pero nunca los serializa a MLflow — se verificó listando los artefactos reales del run
+campeón (`2bad22f8bdd54e2cb39e071398881b51`): `code/`, `config/`, `features/`, `model/`,
+`predictions/`, `split/`, `timings/`, sin ningún `preprocess/`. Sin ese artefacto, cargar "los
+mismos artefactos del run, nada recalculado distinto" tal como pide literalmente el paso 2 es
+imposible.
+
+### Decisión
+
+1. **No se modificó `RunSearch` ni `BuildFeatureMatrix`** (Fase 1-3, ya cerradas y testeadas):
+   agregar el logueo de `preprocess/pipeline.pkl` ahí es un cambio válido para una fase futura,
+   pero esta fase evita tocar código ya cerrado cuando existe una alternativa sin ese riesgo — y
+   además no hubiera resuelto el problema para las versiones **ya registradas** (9-12), que de
+   todos modos no tienen el artefacto.
+2. **`IssueDailyForecast` reconstruye el pipeline de preprocesamiento de forma determinista**,
+   usando artefactos que sí existen en todo run real: descarga `split/split.json` (fechas exactas
+   de TRAIN del propio run: `2000-01-01..2024-07-12` para el campeón de la Decisión 046) y
+   `config/experiment.yaml` (grupos de features, transforms, método de escalado — el YAML
+   completo tal como corrió), recorta el dataset **actual** (recién refrescado, §3.6) a ese mismo
+   rango de fechas de TRAIN, y vuelve a correr `BuildFeatureMatrix.execute` (el mismo código de
+   la Fase 1, sin tocarlo) sobre ese recorte — obteniendo el mismo `ImputerStats`/`ScalerStats`
+   que el entrenamiento original, siempre que Gold no reescriba datos históricos (solo agregue
+   días nuevos, que es como se comporta hoy). Implementado en
+   `application/predictions/issue_daily_forecast.py::IssueDailyForecast._build_inference_window`.
+3. **Riesgo documentado, no observado hasta ahora**: si alguna vez Gold corrige un valor histórico
+   (no solo agrega días), esta reconstrucción dejaría de ser idéntica al pipeline que efectivamente
+   entrenó el modelo — divergencia silenciosa, no hay forma de detectarla sin el `pipeline.pkl`
+   real para comparar. Mitigación futura natural: agregar el logueo de `preprocess/pipeline.pkl`
+   en `RunSearch` (Fase 9 o antes) para que los *próximos* campeones no dependan de esta
+   reconstrucción — la Fase 6 no lo hizo para no ampliar su propio alcance sobre código ya cerrado.
+4. **Hallazgo relacionado, mismo mecanismo**: `_load_champion_model` (mismo archivo) no puede
+   asumir que todo adaptador serializa igual — `BaseTorchAdapter.save/load` (Decisión 039) escribe
+   `model_state_dict.pth`/`architecture.json` y **ignora** el nombre de archivo que recibe (usa
+   `path.parent`), mientras que los adaptadores naive (`PersistenceAdapter`, etc.) escriben/leen
+   literalmente el archivo que reciben — y `run_search.py` siempre llama
+   `adapter.save(tmp_dir / "model_state.json")` para cualquier familia. Pasar exactamente ese mismo
+   nombre (`model_state.json`) a `adapter_cls.load(...)`, y resolver `adapter_cls` desde el tag
+   `rio_search.model` del run (nunca desde `architecture.json`, que solo existe para adaptadores
+   torch) reproduce el contrato real de cualquier adaptador sin que `IssueDailyForecast` necesite
+   conocerlo — encontrado escribiendo el test offline con el adaptador `persistence` como campeón
+   de prueba (`tests/test_issue_daily_forecast.py`), antes de correr contra el campeón real.
+
+## Decisión 048: Cierre de la Fase 6 (Inferencia diaria) — `IssueDailyForecast` verificado real
+contra Databricks/MLflow con el campeón provisorio de la Decisión 046, CUDA y CPU reproducen el
+mismo pronóstico bit a bit, Task Scheduler probado y desregistrado
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow real (no simulada): dos corridas
+reales de `rio-search predict run --target caudal` (una en CUDA por default, una forzada en
+`--device cpu`) contra el campeón provisorio de la Decisión 046, con el mismo `dataset_delta_version=268`,
+mismo `as_of=2026-08-23` y **predicciones bit-idénticas** en los 8 horizontes entre ambos
+dispositivos (t+1=1514.76 ... t+14=1503.67, verificado comparando los valores exactos logueados en
+cada run de MLflow). UI ("Pronóstico de hoy") verificada con navegador headless
+(`browser-automation`) contra el backend real: 0 errores de consola, 0 requests fallidos, los 8
+puntos del pronóstico, `as_of`, `data_lag_days`, `dataset_delta_version`, `champion_run_id`,
+`device` y el panel de tiempos visibles con datos reales; el botón "Promover a campeón" de
+`RunPage.tsx` (que quedó deshabilitado al cierre de la Fase 5) se probó real haciendo click en el
+navegador headless y re-promovió el campeón con éxito (`POST /api/champions` real, verificado con
+`GET /api/champions` después del click). Tarea de Task Scheduler `RioSearch_Daily_Forecast`
+registrada, verificada (`Get-ScheduledTask`: trigger diario a las 06:30, acción apuntando al
+wrapper correcto) y **desregistrada** al terminar la prueba — no queda ninguna tarea programada
+real corriendo en la máquina del usuario sin que lo haya pedido. 302 tests offline en verde (264
+de las Fases 0-5 + 38 nuevos de esta fase), 2 `integration` deseleccionados sin cambios; `ruff
+check` limpio; `npm run build` (`tsc -b` estricto) y `oxlint` limpios (mismo warning preexistente
+de `LaunchPage.tsx`, no de esta fase).
+
+### Contexto
+
+La Fase 4/5 dejaron el botón "Promover a campeón" deshabilitado y el ítem de navegación
+"Pronóstico de hoy" sin agregar, ambos marcados explícitamente como pendientes de esta fase
+(Decisión 045, "Pendientes para la Fase 6"). El plan (§3.8) pide el protocolo completo de
+inferencia diaria: refresco del dataset, resolución de device (Decisión #6, también en cada
+re-ejecución de predicción), carga del campeón exactamente como se guardó (Decisión 039),
+`AsOfPolicy`, predicción t+1…t+7/t+14, persistencia local (SQLite + parquet) y un run corto en
+`daily_forecast` con sus tiempos — más Task Scheduler a las 06:30 Montevideo y la página "Pronóstico
+de hoy" en la UI.
+
+### Decisión
+
+1. **Dominio nuevo** `domain/predictions/` (`Champion`, `Forecast`/`ForecastPoint`,
+   `AsOfPolicy`) y **aplicación nueva** `application/predictions/` (`PromoteChampion`,
+   `IssueDailyForecast`, `BacktestRecent`), con sus puertos (`ChampionStorePort`,
+   `ForecastRepositoryPort`, `ModelAliasPort`, `ArtifactRepositoryPort`, `VolumePublisherPort`) e
+   infraestructura (`SqliteChampionStore`, `SqliteForecastRepository`,
+   `MlflowArtifactRepository`, `MlflowModelAlias`, `DatabricksVolumePublisher` — este último sobre
+   un método `upload` nuevo, aditivo, en `DatabricksVolumeFiles`) — mismo patrón Onion+DDD que el
+   resto del backend, sin tocar `domain`/`application` de fases anteriores.
+2. **`PromoteChampion`** valida el run real contra `TrackingReadPort` (tags `rio_search.model`/
+   `rio_search.target`, métrica pedida presente), fija el alias `champion_<target>` en Unity
+   Catalog (si el run registró un modelo) y persiste en SQLite con historial append-only por
+   target. Usado para fijar la Decisión 046.
+3. **`IssueDailyForecast`** (ver Decisión 047 para el hallazgo del `pipeline.pkl` faltante):
+   `RefreshDataset` (mismo stopwatch compartido que `RunSearch`, patrón idéntico) → resuelve
+   device → descarga `config/`, `split/`, `features/`, `model/` del campeón → reconstruye el
+   pipeline → `AsOfPolicy` (ffill acotado **sin** relleno por mediana, para no fabricar el dato
+   del día más reciente — a diferencia de la imputación de entrenamiento) → predice una única
+   ventana → guarda `Forecast` (SQLite + parquet) → loguea un run corto en
+   `/Users/<profile>/rio_search/daily_forecast` con tags (`as_of`, `dataset_delta_version`,
+   `champion_run_id`, `device`, procedencia) y `time/{dataset_refresh_s,model_load_s,
+   preprocess_s,predict_s,total_s}` (más los sub-pasos de `dataset_refresh_s`, §3.12) —
+   verificado real en ambos runs (CUDA: `total_s=70.9s`, dominado por `model_load_s=44.3s` y
+   `dataset_refresh_s=26.3s` porque disparó `dataset_gold_version_s`; CPU: `total_s=48.5s`, sin
+   volver a pegarle a la Statement API para la versión de Gold — el manifest ya estaba fresco).
+   Soporta `per_horizon` (un `_PerHorizonEnsemble` que carga los N modelos de horizonte) aunque no
+   se ejerció contra un campeón real `per_horizon` (el campeón provisorio es `multi_output`) —
+   cubierto solo por tests offline.
+4. **`rio-search predict run` toma el mismo `ProcessLock`** que `SubprocessJobRunner`/`rio-search
+   search run` (Decisión 044): la tarea diaria y una búsqueda lanzada a mano o desde la API nunca
+   compiten por el cache de tokens OAuth. No estaba pedido explícitamente por el criterio de
+   cierre, pero es la forma directa de cerrar el aviso operativo que el propio encargo de esta
+   fase señalaba como relevante.
+5. **`--publish` implementado, no ejercitado contra Databricks real** (instrucción explícita del
+   agente principal para esta fase): sube el parquet de un `Forecast` a
+   `/Volumes/weather/raw/gold_export_volume/forecasts/` vía `DatabricksVolumeFiles.upload`
+   (método nuevo, `client.files.upload(path, io.BytesIO(contents), overwrite=True)`). Cubierto por
+   tests offline (`FakeVolumePublisher`) únicamente.
+6. **Task Scheduler**: `scheduler/run_daily_forecast_task.ps1` (wrapper que activa el `.venv`
+   propio de `rio_search/backend` y corre `rio-search predict run --target caudal`) +
+   `scheduler/register_tasks.ps1` (`New-ScheduledTaskTrigger -Daily -At "06:30"`, distinto del
+   patrón de redisparo horario de los backfills de ANA/TIGGE porque esta corrida no tiene estado
+   que retomar) — **adaptado**, no importado, del patrón de
+   `notebooks_local/*/scheduler/register_tasks.ps1`, viviendo enteramente dentro de
+   `rio_search/backend/scheduler/` (nada fuera de `rio_search/`). Registrado, verificado con
+   `Get-ScheduledTask` (trigger/acción/descripción correctos) y **desregistrado** en la misma
+   sesión — no queda ninguna tarea programada real corriendo.
+7. **UI**: página `ForecastPage.tsx` (`/forecast`, agregada a `NAV_ITEMS` de `Layout.tsx`) —
+   campeón vigente, abanico t+1…t+14 (Recharts), `as_of`/`data_lag_days`/`dataset_delta_version`/
+   `champion_run_id`/`device`/`issued_at`/`forecast_run_id`/publicación, backtest reciente
+   (`BacktestRecent`, con estado "pendiente" para `target_date` sin observado todavía) e historial
+   de pronósticos. El botón "Promover a campeón" de `RunPage.tsx` (Fase 5, deshabilitado a
+   propósito) ahora llama `POST /api/champions` de verdad con `useMutation` de TanStack Query,
+   deriva el `target` del tag `rio_search.target` del propio run e invalida las queries de
+   campeón/pronóstico para que "Pronóstico de hoy" quede al día sin recargar.
+8. **API**: `POST /api/champions`, `GET /api/champions`, `GET /api/forecasts/{latest,history,
+   backtest}` — de solo lectura o escritura liviana (SQLite + alias UC), **`IssueDailyForecast` no
+   se expone por HTTP a propósito**: es la corrida pesada que corre por CLI/Task Scheduler, exponerla
+   como endpoint duplicaría la cola de exclusión mutua que ya resuelve el `ProcessLock` del punto 4
+   sin necesidad real para el criterio de cierre.
+
+### No cubierto en esta fase (documentado, no bloqueante)
+
+* `preprocess/pipeline.pkl` real (Decisión 047) sigue sin loguearse desde `RunSearch` — los
+  *próximos* campeones seguirán dependiendo de la reconstrucción determinista hasta que se agregue
+  (cambio acotado, fuera del alcance de esta fase para no tocar código ya cerrado).
+* `--publish` no ejercitado contra Databricks real (punto 5 de arriba) — implementado y testeado
+  offline, a la espera de que el usuario decida activarlo en el wrapper del Task Scheduler.
+* Campeón `per_horizon` real no ejercitado (punto 3) — el mecanismo existe y está testeado offline,
+  pero el campeón provisorio de la Decisión 046 es `multi_output`.
+* La revisión de `weather.ml` (§8 del plan, nombre/alias/política de versiones) sigue pendiente del
+  usuario — la Decisión 046 es explícitamente provisoria hasta esa revisión.

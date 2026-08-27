@@ -49,6 +49,12 @@ app.add_typer(datasets_app, name="datasets")
 search_app = typer.Typer(help="Corridas de busqueda (Fase 2, §4.2, §5).")
 app.add_typer(search_app, name="search")
 
+champions_app = typer.Typer(help="Campeon vigente por target (Fase 6, Decision #12, §4.2).")
+app.add_typer(champions_app, name="champions")
+
+predict_app = typer.Typer(help="Inferencia diaria del campeon (Fase 6, §3.8, §4.2).")
+app.add_typer(predict_app, name="predict")
+
 
 @databricks_app.command("init-schema")
 def init_schema(
@@ -200,6 +206,92 @@ def search_run(
             f"  trial={trial.name} run_id={trial.run_id} status={trial.status.value} "
             f"test/skill_vs_persistence/h01={skill_h01}"
         )
+
+
+@champions_app.command("set")
+def champions_set(
+    run_id: str = typer.Option(..., "--run", help="run_id de MLflow (Databricks) del trial a promover."),
+    target: str = typer.Option("caudal", help="caudal | nivel."),
+    metric_name: str = typer.Option(
+        "val/kge/mean", "--metric", help="Metrica de seleccion sobre VAL (§3.7: nunca TEST)."
+    ),
+    note: str = typer.Option(
+        None,
+        "--note",
+        help="Nota libre (p. ej. 'campeon provisorio, pendiente de revision del usuario', §8).",
+    ),
+    profile: str = typer.Option(DEFAULT_PROFILE, help="Perfil de la CLI de Databricks / MLflow."),
+) -> None:
+    """`PromoteChampion` (Fase 6, Decision #12, §3.5, §4.2): fija el alias
+    `champion_<target>` en Unity Catalog y la copia local en SQLite."""
+    from rio_search.domain.shared.target_variable import TargetVariable
+    from rio_search.interfaces.container import build_promote_champion
+
+    promote = build_promote_champion(profile=profile)
+    champion = promote.execute(
+        run_id=run_id, target=TargetVariable(target), metric_name=metric_name, note=note
+    )
+    typer.echo(
+        f"campeon target={champion.target.value} run_id={champion.run_id} model={champion.model_name} "
+        f"{champion.metric_name}={champion.metric_value:.4f}"
+    )
+    if champion.registered_model_name:
+        typer.echo(
+            f"  alias champion_{champion.target.value} -> {champion.registered_model_name} "
+            f"v{champion.registered_model_version}"
+        )
+    if champion.note:
+        typer.echo(f"  nota: {champion.note}")
+
+
+@predict_app.command("run")
+def predict_run(
+    target: str = typer.Option("caudal", help="caudal | nivel."),
+    as_of: str = typer.Option(
+        None, "--as-of", help="YYYY-MM-DD; default: resuelto por AsOfPolicy (§3.8 paso 3)."
+    ),
+    device: str = typer.Option("auto", help="auto | cuda | mps | cpu (Decision #6, tambien en inferencia)."),
+    publish: bool = typer.Option(
+        False, "--publish", help="Publica el parquet en el Volume (§3.8 paso 5)."
+    ),
+    profile: str = typer.Option(DEFAULT_PROFILE, help="Perfil de la CLI de Databricks / MLflow."),
+    warehouse_id: str = typer.Option(DEFAULT_WAREHOUSE_ID, help="Warehouse SQL serverless."),
+) -> None:
+    """`IssueDailyForecast` (Fase 6, §3.8): protocolo completo de inferencia diaria -- mismo
+    comando que corre el Task Scheduler a las 06:30 Montevideo (`scheduler/register_tasks.ps1`).
+
+    Toma el mismo `ProcessLock` de archivo que `SubprocessJobRunner`/`rio-search search run`
+    (Decision 044, docs/decisions.md): la tarea diaria y una busqueda lanzada a mano (o desde la
+    API) nunca le pegan a Databricks/MLflow al mismo tiempo con el mismo perfil de CLI."""
+    from datetime import date as _date
+
+    from rio_search.domain.shared.target_variable import TargetVariable
+    from rio_search.infrastructure.jobs.process_lock import ProcessLock
+    from rio_search.interfaces.container import DEFAULT_JOB_LOCK_PATH, build_issue_daily_forecast
+
+    lock = ProcessLock(DEFAULT_JOB_LOCK_PATH)
+    lock.acquire_blocking(label="predict_run", poll_seconds=2.0, timeout_seconds=None)
+    try:
+        issue = build_issue_daily_forecast(profile=profile, warehouse_id=warehouse_id)
+        as_of_override = _date.fromisoformat(as_of) if as_of else None
+        forecast = issue.execute(
+            target=TargetVariable(target),
+            as_of_override=as_of_override,
+            device_preferred=device,
+            publish=publish,
+        )
+    finally:
+        lock.release()
+
+    typer.echo(
+        f"forecast_run_id={forecast.forecast_run_id} as_of={forecast.as_of} "
+        f"data_lag_days={forecast.data_lag_days} device={forecast.device_type} "
+        f"dataset_delta_version={forecast.dataset_delta_version} champion_run_id={forecast.champion_run_id}"
+    )
+    for point in sorted(forecast.points, key=lambda p: p.horizon):
+        typer.echo(f"  t+{point.horizon:02d} ({point.target_date}): {point.value:.2f}")
+    if forecast.published_path:
+        typer.echo(f"  publicado en {forecast.published_path}")
 
 
 @api_app.command("serve")

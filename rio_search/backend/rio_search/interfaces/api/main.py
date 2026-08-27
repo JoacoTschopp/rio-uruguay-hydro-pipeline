@@ -20,16 +20,26 @@ from fastapi.responses import FileResponse, StreamingResponse
 from rio_search.application.ports.job_runner import JobRecord
 from rio_search.application.ports.snapshot_sync import RefreshMode
 from rio_search.application.ports.tracking_read import RunRecord
+from rio_search.domain.predictions.champion import Champion
+from rio_search.domain.predictions.forecast import Forecast
+from rio_search.domain.shared.target_variable import TargetVariable
 from rio_search.interfaces.api.dependencies import ApiDependencies
 from rio_search.interfaces.api.schemas import (
+    BacktestOut,
+    BacktestPointOut,
+    ChampionOut,
     DatasetOut,
     DatasetVersionOut,
     FeatureCatalogOut,
     FeatureGroupOut,
+    ForecastHistoryOut,
+    ForecastOut,
+    ForecastPointOut,
     JobListOut,
     JobOut,
     JobSubmitIn,
     MetricSeriesOut,
+    PromoteChampionIn,
     RunComparisonOut,
     RunDetailOut,
     RunListOut,
@@ -197,6 +207,85 @@ def create_app(deps: ApiDependencies | None = None) -> FastAPI:
         return FeatureCatalogOut(groups=groups)
 
     # ------------------------------------------------------------------
+    # Predicciones (§3.9, Fase 6): POST /api/champions, GET /api/champions, GET /api/forecasts/*.
+    # `IssueDailyForecast` no se dispara desde acá (ver docstring de
+    # `interfaces.container.build_api_dependencies`): estos endpoints solo leen/fijan el campeon
+    # vigente y leen pronosticos ya emitidos por `rio-search predict run` (CLI/Task Scheduler).
+    # ------------------------------------------------------------------
+    @app.post("/api/champions", response_model=ChampionOut, status_code=201)
+    def promote_champion(body: PromoteChampionIn) -> ChampionOut:
+        try:
+            target = TargetVariable(body.target)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"target invalido: {body.target!r}") from exc
+        try:
+            champion = deps.promote_champion.execute(
+                run_id=body.run_id, target=target, metric_name=body.metric_name, note=body.note
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _champion_out(champion)
+
+    @app.get("/api/champions", response_model=ChampionOut)
+    def get_champion(target: str = Query("caudal")) -> ChampionOut:
+        try:
+            target_value = TargetVariable(target)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"target invalido: {target!r}") from exc
+        champion = deps.champion_store.get(target_value)
+        if champion is None:
+            raise HTTPException(status_code=404, detail=f"sin campeon promovido para target={target!r}")
+        return _champion_out(champion)
+
+    @app.get("/api/forecasts/latest", response_model=ForecastOut)
+    def get_latest_forecast(target: str = Query("caudal")) -> ForecastOut:
+        try:
+            target_value = TargetVariable(target)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"target invalido: {target!r}") from exc
+        forecast = deps.forecast_repository.latest(target_value)
+        if forecast is None:
+            raise HTTPException(status_code=404, detail=f"sin pronosticos emitidos para target={target!r}")
+        return _forecast_out(forecast)
+
+    @app.get("/api/forecasts/history", response_model=ForecastHistoryOut)
+    def get_forecast_history(
+        target: str = Query("caudal"), max_results: int = Query(20, ge=1, le=200)
+    ) -> ForecastHistoryOut:
+        try:
+            target_value = TargetVariable(target)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"target invalido: {target!r}") from exc
+        forecasts = deps.forecast_repository.list_recent(target_value, max_results=max_results)
+        return ForecastHistoryOut(forecasts=[_forecast_out(f) for f in forecasts])
+
+    @app.get("/api/forecasts/backtest", response_model=BacktestOut)
+    def get_forecast_backtest(
+        target: str = Query("caudal"), max_forecasts: int = Query(30, ge=1, le=200)
+    ) -> BacktestOut:
+        try:
+            target_value = TargetVariable(target)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"target invalido: {target!r}") from exc
+        points = deps.backtest_recent.execute(target_value, max_forecasts=max_forecasts)
+        return BacktestOut(
+            target=target_value.value,
+            points=[
+                BacktestPointOut(
+                    forecast_run_id=p.forecast_run_id,
+                    issued_at=p.issued_at,
+                    as_of=p.as_of.isoformat(),
+                    horizon=p.horizon,
+                    target_date=p.target_date.isoformat(),
+                    predicted=p.predicted,
+                    observed=p.observed,
+                    error=p.error,
+                )
+                for p in points
+            ],
+        )
+
+    # ------------------------------------------------------------------
     # Frontend estatico (Fase 5, §3.9: "Build estatico servido por FastAPI en `/`"): montado
     # *despues* de todas las rutas `/api/*` de arriba, a proposito -- Starlette resuelve rutas en
     # el orden en que se registraron y devuelve el primer match, asi que un catch-all acá abajo
@@ -220,6 +309,40 @@ def create_app(deps: ApiDependencies | None = None) -> FastAPI:
             return FileResponse(index_file)
 
     return app
+
+
+def _champion_out(champion: Champion) -> ChampionOut:
+    return ChampionOut(
+        target=champion.target.value,
+        run_id=champion.run_id,
+        model_name=champion.model_name,
+        metric_name=champion.metric_name,
+        metric_value=champion.metric_value,
+        promoted_at=champion.promoted_at,
+        registered_model_name=champion.registered_model_name,
+        registered_model_version=champion.registered_model_version,
+        note=champion.note,
+    )
+
+
+def _forecast_out(forecast: Forecast) -> ForecastOut:
+    return ForecastOut(
+        target=forecast.target.value,
+        as_of=forecast.as_of.isoformat(),
+        issued_at=forecast.issued_at,
+        dataset_delta_version=forecast.dataset_delta_version,
+        dataset_sha256=forecast.dataset_sha256,
+        champion_run_id=forecast.champion_run_id,
+        champion_model_name=forecast.champion_model_name,
+        device_type=forecast.device_type,
+        data_lag_days=forecast.data_lag_days,
+        forecast_run_id=forecast.forecast_run_id,
+        published_path=forecast.published_path,
+        points=[
+            ForecastPointOut(horizon=p.horizon, target_date=p.target_date.isoformat(), value=p.value)
+            for p in forecast.points
+        ],
+    )
 
 
 _SENTINEL = object()

@@ -7,6 +7,7 @@ igual que `notebooks_local/*/sync_to_databricks.py`.
 
 from __future__ import annotations
 
+import io
 import time
 from datetime import timedelta
 from typing import Any
@@ -81,7 +82,7 @@ class DatabricksGoldCatalog:
 
 
 class DatabricksVolumeFiles:
-    """Descarga archivos de un Unity Catalog Volume via la Files API (`/Volumes/...`)."""
+    """Descarga/sube archivos de un Unity Catalog Volume via la Files API (`/Volumes/...`)."""
 
     def __init__(self, client: WorkspaceClient) -> None:
         self._client = client
@@ -89,6 +90,11 @@ class DatabricksVolumeFiles:
     def download(self, path: str) -> bytes:
         response = self._client.files.download(path)
         return response.contents.read()
+
+    def upload(self, path: str, contents: bytes, overwrite: bool = True) -> None:
+        """Sube `contents` a `path` (`/Volumes/...`, Fase 6 -- `--publish` de
+        `rio-search predict run`, docs/rio_search_plan.md §3.8 paso 5)."""
+        self._client.files.upload(path, io.BytesIO(contents), overwrite=overwrite)
 
 
 class DatabricksJobSubmitter:

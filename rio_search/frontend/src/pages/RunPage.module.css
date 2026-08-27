@@ -47,6 +47,17 @@
   opacity: 0.7;
 }
 
+.championBtn:not(:disabled) {
+  cursor: pointer;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.promoteError {
+  color: var(--status-critical);
+  font-size: 13px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

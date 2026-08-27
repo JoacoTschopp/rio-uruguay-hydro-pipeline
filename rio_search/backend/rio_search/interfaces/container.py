@@ -30,6 +30,12 @@ DEFAULT_EXPERIMENTS_DIR = BACKEND_DIR / "configs" / "experiments"
 DEFAULT_READ_CACHE_PATH = BACKEND_DIR / "data" / "read_cache.sqlite3"
 DEFAULT_JOBS_DIR = BACKEND_DIR / "data" / "jobs"
 DEFAULT_JOB_LOCK_PATH = DEFAULT_JOBS_DIR / "rio_search.lock"
+# Fase 6 (Predicciones, §5): copia local del campeon vigente, pronosticos emitidos y cache de
+# artefactos descargados del campeon (config/split/features/model, §3.8 paso 2).
+DEFAULT_CHAMPIONS_DB_PATH = BACKEND_DIR / "data" / "champions.sqlite3"
+DEFAULT_FORECASTS_DB_PATH = BACKEND_DIR / "data" / "forecasts.sqlite3"
+DEFAULT_FORECASTS_PARQUET_DIR = BACKEND_DIR / "data" / "forecasts"
+DEFAULT_CHAMPION_ARTIFACTS_DIR = BACKEND_DIR / "data" / "champion_artifacts"
 
 
 @dataclass
@@ -169,6 +175,127 @@ def build_run_search(
 
 
 # ----------------------------------------------------------------------
+# Fase 6 -- Predicciones (§3.8, §5): `PromoteChampion`, `IssueDailyForecast`, `BacktestRecent`.
+# ----------------------------------------------------------------------
+
+
+def build_champion_store(db_path: Path = DEFAULT_CHAMPIONS_DB_PATH):
+    """`ChampionStorePort` real (Decision #12, §3.5: "copia local en SQLite")."""
+    from rio_search.infrastructure.persistence.champion_store import SqliteChampionStore
+
+    return SqliteChampionStore(db_path)
+
+
+def build_forecast_repository(
+    db_path: Path = DEFAULT_FORECASTS_DB_PATH, parquet_dir: Path = DEFAULT_FORECASTS_PARQUET_DIR
+):
+    """`ForecastRepositoryPort` real (§3.8 paso 4: "SQLite + `data/forecasts/*.parquet`")."""
+    from rio_search.infrastructure.persistence.forecast_repository import SqliteForecastRepository
+
+    return SqliteForecastRepository(db_path, parquet_dir)
+
+
+def build_model_alias(profile: str = DEFAULT_PROFILE):
+    """`ModelAliasPort` real (Decision #12: alias `champion_<target>` en Unity Catalog)."""
+    from rio_search.infrastructure.tracking.mlflow_model_alias import MlflowModelAlias
+
+    return MlflowModelAlias(profile=profile)
+
+
+def build_artifact_repository(profile: str = DEFAULT_PROFILE):
+    """`ArtifactRepositoryPort` real (§3.8 paso 2: descarga `config/`, `split/`, `features/`,
+    `model/` del run campeon)."""
+    from rio_search.infrastructure.tracking.mlflow_artifact_repository import MlflowArtifactRepository
+
+    return MlflowArtifactRepository(profile=profile)
+
+
+def build_volume_publisher(profile: str = DEFAULT_PROFILE, warehouse_id: str = DEFAULT_WAREHOUSE_ID):
+    """`VolumePublisherPort` real (§3.8 paso 5, `--publish`)."""
+    from rio_search.infrastructure.databricks.volume_publisher import DatabricksVolumePublisher
+
+    collaborators = build_databricks_collaborators(profile=profile, warehouse_id=warehouse_id)
+    return DatabricksVolumePublisher(collaborators.volume_files)
+
+
+def build_promote_champion(
+    profile: str = DEFAULT_PROFILE, championsdb_path: Path = DEFAULT_CHAMPIONS_DB_PATH
+):
+    """`PromoteChampion` (§3.5, §4.2: `rio-search champions set`)."""
+    from rio_search.application.predictions.promote_champion import PromoteChampion
+
+    return PromoteChampion(
+        reader=build_tracking_reader(profile=profile),
+        store=build_champion_store(championsdb_path),
+        model_alias=build_model_alias(profile=profile),
+    )
+
+
+def build_issue_daily_forecast(
+    profile: str = DEFAULT_PROFILE,
+    warehouse_id: str = DEFAULT_WAREHOUSE_ID,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    feature_groups_path: Path = DEFAULT_FEATURE_GROUPS_PATH,
+    champions_db_path: Path = DEFAULT_CHAMPIONS_DB_PATH,
+    forecasts_db_path: Path = DEFAULT_FORECASTS_DB_PATH,
+    forecasts_parquet_dir: Path = DEFAULT_FORECASTS_PARQUET_DIR,
+    champion_artifacts_dir: Path = DEFAULT_CHAMPION_ARTIFACTS_DIR,
+):
+    """`IssueDailyForecast` (§3.8): mismo patron de `Stopwatch` compartido con `RefreshDataset`
+    que `build_run_search` (Fase 2/3) -- `time/dataset_refresh_s` queda bajo el mismo reloj que
+    `time/model_load_s`/`preprocess_s`/`predict_s`/`total_s` de esta corrida."""
+    from rio_search.application.predictions.issue_daily_forecast import (
+        IssueDailyForecast,
+        IssueDailyForecastDependencies,
+    )
+    from rio_search.infrastructure.device.torch_device_resolver import TorchDeviceResolver
+
+    stopwatch = PerfCounterStopwatch()
+    refresh_dataset = build_refresh_dataset(
+        profile=profile,
+        warehouse_id=warehouse_id,
+        cache_dir=cache_dir,
+        feature_groups_path=feature_groups_path,
+        stopwatch=stopwatch,
+    )
+    deps = IssueDailyForecastDependencies(
+        refresh_dataset=refresh_dataset,
+        device_resolver=TorchDeviceResolver(),
+        git_provenance=build_git_provenance(),
+        champion_store=build_champion_store(champions_db_path),
+        tracking_reader=build_tracking_reader(profile=profile),
+        artifact_repository=build_artifact_repository(profile=profile),
+        tracking=build_tracking(profile=profile),
+        model_registry=build_model_registry(),
+        feature_catalog=build_feature_catalog(feature_groups_path),
+        forecast_repository=build_forecast_repository(forecasts_db_path, forecasts_parquet_dir),
+        stopwatch=stopwatch,
+        experiment_base_path=rio_search_experiment_base_path(profile),
+        artifacts_cache_dir=champion_artifacts_dir,
+        volume_publisher=build_volume_publisher(profile=profile, warehouse_id=warehouse_id),
+    )
+    return IssueDailyForecast(deps)
+
+
+def build_backtest_recent(
+    profile: str = DEFAULT_PROFILE,
+    warehouse_id: str = DEFAULT_WAREHOUSE_ID,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    forecasts_db_path: Path = DEFAULT_FORECASTS_DB_PATH,
+    forecasts_parquet_dir: Path = DEFAULT_FORECASTS_PARQUET_DIR,
+):
+    """`BacktestRecent` (§3.8, §3.9: "backtest movil" de la pagina Pronostico de hoy)."""
+    from rio_search.application.predictions.backtest_recent import BacktestRecent
+
+    return BacktestRecent(
+        forecast_repository=build_forecast_repository(forecasts_db_path, forecasts_parquet_dir),
+        dataset_repository=build_gold_parquet_repository(
+            profile=profile, warehouse_id=warehouse_id, cache_dir=cache_dir
+        ),
+    )
+
+
+# ----------------------------------------------------------------------
 # Fase 4 -- Backend API (§3.9, §5): lectura de MLflow con cache SQLite, JobRunner y el bundle
 # `ApiDependencies` que consume `interfaces/api/main.py`.
 # ----------------------------------------------------------------------
@@ -244,10 +371,22 @@ def build_api_dependencies(
     read_cache_path: Path = DEFAULT_READ_CACHE_PATH,
     jobs_dir: Path = DEFAULT_JOBS_DIR,
     job_lock_path: Path = DEFAULT_JOB_LOCK_PATH,
+    champions_db_path: Path = DEFAULT_CHAMPIONS_DB_PATH,
+    forecasts_db_path: Path = DEFAULT_FORECASTS_DB_PATH,
+    forecasts_parquet_dir: Path = DEFAULT_FORECASTS_PARQUET_DIR,
 ):
     """Composition root de la API (Fase 4, §5): construye el `ApiDependencies` real que
     `interfaces/api/main.py::create_app()` usa cuando no recibe uno inyectado (los tests de la
-    API pasan su propio `ApiDependencies` con `TrackingReadPort`/`JobRunner` falsos, §5)."""
+    API pasan su propio `ApiDependencies` con `TrackingReadPort`/`JobRunner` falsos, §5).
+
+    Fase 6 (§3.9, "Pronostico de hoy"): agrega `promote_champion` (`POST /api/champions`),
+    `champion_store`/`forecast_repository` (`GET /api/champions`, `GET /api/forecasts/*`) y
+    `backtest_recent` (`GET /api/forecasts/backtest`) -- todos de solo lectura o de escritura
+    liviana (SQLite local + alias UC), nunca disparan `IssueDailyForecast` (esa corrida pesada
+    queda en el CLI/Task Scheduler, Decision 044: nunca dos procesos pegandole a Databricks/
+    MLflow a la vez con el mismo perfil, y la API ya tiene su propio `JobRunner` serializado
+    para eso -- exponer un endpoint que dispare inferencia agregaria una segunda cola paralela
+    sin necesidad real para el criterio de cierre de esta fase)."""
     from rio_search.application.experiments.compare_runs import CompareRuns
     from rio_search.application.experiments.get_run_detail import GetRunDetail
     from rio_search.application.experiments.list_runs import ListRuns
@@ -270,4 +409,14 @@ def build_api_dependencies(
             profile=profile, warehouse_id=warehouse_id, cache_dir=cache_dir
         ),
         feature_catalog=build_feature_catalog(feature_groups_path),
+        promote_champion=build_promote_champion(profile=profile, championsdb_path=champions_db_path),
+        champion_store=build_champion_store(champions_db_path),
+        forecast_repository=build_forecast_repository(forecasts_db_path, forecasts_parquet_dir),
+        backtest_recent=build_backtest_recent(
+            profile=profile,
+            warehouse_id=warehouse_id,
+            cache_dir=cache_dir,
+            forecasts_db_path=forecasts_db_path,
+            forecasts_parquet_dir=forecasts_parquet_dir,
+        ),
     )

@@ -117,3 +117,74 @@ class FeatureGroupOut(BaseModel):
 
 class FeatureCatalogOut(BaseModel):
     groups: list[FeatureGroupOut]
+
+
+# ----------------------------------------------------------------------
+# Fase 6 -- Predicciones (§3.8, §3.9): campeon vigente + pronostico diario + backtest movil.
+# ----------------------------------------------------------------------
+
+
+class ChampionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    target: str
+    run_id: str
+    model_name: str
+    metric_name: str
+    metric_value: float
+    promoted_at: str
+    registered_model_name: str | None
+    registered_model_version: str | None
+    note: str | None
+
+
+class PromoteChampionIn(BaseModel):
+    run_id: str
+    target: str = "caudal"
+    metric_name: str = "val/kge/mean"
+    note: str | None = None
+
+
+class ForecastPointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    horizon: int
+    target_date: str
+    value: float
+
+
+class ForecastOut(BaseModel):
+    target: str
+    as_of: str
+    issued_at: str
+    dataset_delta_version: int
+    dataset_sha256: str
+    champion_run_id: str
+    champion_model_name: str
+    device_type: str
+    data_lag_days: int
+    forecast_run_id: str | None
+    published_path: str | None
+    points: list[ForecastPointOut]
+
+
+class ForecastHistoryOut(BaseModel):
+    forecasts: list[ForecastOut]
+
+
+class BacktestPointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    forecast_run_id: str | None
+    issued_at: str
+    as_of: str
+    horizon: int
+    target_date: str
+    predicted: float
+    observed: float | None
+    error: float | None
+
+
+class BacktestOut(BaseModel):
+    target: str
+    points: list[BacktestPointOut]
