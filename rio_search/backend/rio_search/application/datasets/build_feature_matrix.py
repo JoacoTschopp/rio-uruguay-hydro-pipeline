@@ -5,11 +5,21 @@ experimentales -> imputa (ajustado solo con TRAIN) -> escala (ajustado solo con 
 Recibe un `SplitDataFrames` ya particionado por `BuildSplit`: el imputador y el escalador se
 ajustan **una sola vez** sobre `split_dfs.train` y se reaplican tal cual sobre VAL/TEST -- es
 la invariante que protege el contexto Datasets (§3.2: "El escalador se ajusta solo con TRAIN").
+
+Decision 041 (docs/decisions.md): `transforms.build_expressions` no resuelve globs (columnas
+como `"caudal_*"` en el YAML de ejemplo, §4.1) -- `pl.col("caudal_*")` no es un glob para
+Polars, es un nombre de columna literal que no existe, y `build_expressions` fallaria con
+`ColumnNotFoundError`. Este modulo resuelve el glob **antes** de llamar a `build_expressions`,
+expandiendolo contra `base_columns` (las columnas ya seleccionadas de `features.groups`, no
+contra *todas* las columnas del dataset): asi un patron como `"caudal_*"` nunca alcanza
+columnas de target (`caudal_t_mas_7d`) ni de metadata, solo features que el experimento ya
+pidio explicitamente via sus grupos.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import fnmatch
+from dataclasses import dataclass, replace
 
 import polars as pl
 
@@ -48,9 +58,16 @@ class BuildFeatureMatrix:
         experimental_transforms: list[ExperimentalTransformSpec] | None = None,
         imputation_max_ffill_days: int = 3,
         scaling_method: ScalingMethod = "standard",
+        exclude: list[str] | None = None,
     ) -> FeatureMatrices:
-        specs = experimental_transforms or []
-        base_columns = list(self._feature_catalog.columns_for(group_names))
+        """`exclude` (§4.1, bloque `features:`): columnas de los grupos seleccionados que se
+        descartan igual (p. ej. `caudal_registros_validos` -- casi constante en TRAIN, `std`
+        ~0.013: un escalador `standard` la convierte en z-scores extremos (~-77) que
+        desestabilizan el entrenamiento de un modelo torch, Decision 043). Se filtra **antes**
+        de expandir globs de `experimental_transforms` para que un patron como `"caudal_*"`
+        tampoco alcance las columnas excluidas."""
+        base_columns = [c for c in self._feature_catalog.columns_for(group_names) if c not in (exclude or [])]
+        specs = _expand_glob_columns(experimental_transforms or [], base_columns)
         transform_columns = _transform_output_columns(specs)
         feature_columns = base_columns + [c for c in transform_columns if c not in base_columns]
 
@@ -77,6 +94,37 @@ class BuildFeatureMatrix:
             scaler_stats=scaler_stats,
             imputation_reports=(train_report, val_report, test_report),
         )
+
+
+def _expand_glob_columns(
+    specs: list[ExperimentalTransformSpec], available_columns: list[str]
+) -> list[ExperimentalTransformSpec]:
+    """Resuelve patrones glob (`"caudal_*"`) en `spec.columns` contra `available_columns`
+    (Decision 041). Columnas sin `*`/`?` se dejan tal cual (no se valida que existan aca --
+    eso lo hace Polars/`build_expressions` al aplicarlas, igual que antes). Dedup preservando
+    orden: el YAML de ejemplo (§4.1) declara `["caudal_*", "caudal_agregado_alta_frontera_m3s"]`
+    a proposito -- la segunda columna ya matchea el glob, expandir no debe duplicarla."""
+    expanded: list[ExperimentalTransformSpec] = []
+    for spec in specs:
+        if not spec.columns:
+            expanded.append(spec)
+            continue
+        resolved: list[str] = []
+        for pattern in spec.columns:
+            if "*" in pattern or "?" in pattern:
+                matches = [c for c in available_columns if fnmatch.fnmatch(c, pattern)]
+                if not matches:
+                    raise ValueError(
+                        f"Transform {spec.name!r}: el patron {pattern!r} no matchea ninguna "
+                        f"columna de features.groups seleccionados ({available_columns})"
+                    )
+                resolved.extend(matches)
+            else:
+                resolved.append(pattern)
+        seen: set[str] = set()
+        deduped = [c for c in resolved if not (c in seen or seen.add(c))]
+        expanded.append(replace(spec, columns=tuple(deduped)))
+    return expanded
 
 
 def _with_transforms(df: pl.DataFrame, specs: list[ExperimentalTransformSpec]) -> pl.DataFrame:

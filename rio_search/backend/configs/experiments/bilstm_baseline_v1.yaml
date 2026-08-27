@@ -1,4 +1,4 @@
-# configs/experiments/bilstm_baseline_v1.yaml
+# configs/experiments/bilstm_baseline_v1.yaml (Fase 3, docs/rio_search_plan.md §4.1, §5)
 name: bilstm_baseline_v1
 description: Baseline BiLSTM, caudal, multi-output, ventana 2008->, CPTEC + estado hidrologico.
 
@@ -9,15 +9,19 @@ dataset:
   target: caudal             # caudal | nivel
   horizons: [1, 2, 3, 4, 5, 6, 7, 14]
 
+# search.n_trials reducido de 40 (ejemplo original del plan) a 4 para la corrida baseline real
+# de la Fase 3 (Decision 043, docs/decisions.md): sin presupuesto de tiempo (Decision #13), pero
+# la exhaustividad de la busqueda no es el punto de este checklist -- que funcione end-to-end
+# contra Databricks/MLflow real si lo es. Ampliar n_trials es un cambio de un numero, no de diseno.
 search:                      # opcional: sin este bloque la busqueda tiene un unico trial
   strategy: random           # grid | random | tpe (Optuna)
-  n_trials: 40                # sin limite de tiempo (Decision #13)
+  n_trials: 4
   objective: val/kge/mean
   space:
-    sequence.lookback_days: [30, 60, 90, 120]
-    model.params.hidden_size: [32, 64, 128, 256]
-    model.params.num_layers: [1, 2, 3]
-    training.optimizer.lr: {log_uniform: [0.0001, 0.01]}
+    sequence.lookback_days: [30, 60, 90]
+    model.params.hidden_size: [32, 64, 128]
+    model.params.num_layers: [1, 2]
+    training.optimizer.lr: {log_uniform: [0.0005, 0.01]}
     split.train_window.start: ["2000-01-01", "2008-01-01"]
 
 provenance:
@@ -31,10 +35,38 @@ split:
 
 features:
   groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
-  exclude: []
+  # Decision 043 (docs/decisions.md): `caudal_registros_validos`/`nivel_registros_validos` son
+  # banderas casi constantes en TRAIN (std ~0.013 para caudal: >99% de los dias vale 1) -- un
+  # escalador `standard` las convierte en z-scores extremos (~-77 en TRAIN real) que
+  # desestabilizan el entrenamiento de BiLSTM (loss -> NaN desde el epoch 1, verificado real).
+  # Se excluyen del feature set (misma idea que el grupo `calidad`, §3.6, pero estas dos
+  # quedaron categorizadas en `caudal_estado`/`nivel_estado` en la Fase 1).
+  exclude: [caudal_registros_validos, nivel_registros_validos]
+  # Decision 041 (docs/decisions.md): `transforms.build_expressions` no resolvia el glob
+  # `"caudal_*"` del ejemplo original de este YAML (§4.1) -- Polars trata `pl.col("caudal_*")`
+  # como un nombre de columna literal, no un glob, y `BuildFeatureMatrix` fallaba con
+  # `ColumnNotFoundError`. Se resolvio en el codigo (expansion contra las columnas ya
+  # seleccionadas de `features.groups`, ver `application/datasets/build_feature_matrix.py`) y
+  # se prueba end-to-end en `tests/test_run_search_phase3.py`. Para esta corrida real se elige
+  # ademas una **lista explicita** (segunda opcion que ofrecia la Decision 041) en vez del glob:
+  # `"caudal_*"` tambien matchea `caudal_delta_1d` (una diferencia dia a dia, puede ser negativa)
+  # y `log1p` de un valor < -1 da NaN -- un problema de modelado real, no del bug del glob. La
+  # lista de abajo son las columnas de caudal que son siempre >= 0 (estado y lags, nunca deltas).
   experimental_transforms:
     - {name: clip, columns: [caudal_agregado_alta_frontera_m3s], max: 50000, version: 1}
-    - {name: log1p, columns: ["caudal_*", "caudal_agregado_alta_frontera_m3s"], version: 1}
+    - name: log1p
+      version: 1
+      columns:
+        - caudal_actual_m3s
+        - caudal_lag_1d
+        - caudal_lag_3d
+        - caudal_lag_7d
+        - caudal_media_3d
+        - caudal_media_7d
+        - caudal_agregado_alta_frontera_m3s
+        - caudal_agregado_alta_frontera_lag_1d
+        - caudal_agregado_alta_frontera_lag_2d
+        - caudal_agregado_alta_frontera_lag_3d
     - {name: doy_cyclic, version: 1}
   imputation: {method: ffill_median, max_ffill_days: 3}
   scaling: standard
@@ -48,10 +80,10 @@ model:
   params: {hidden_size: 64, num_layers: 2, dropout: 0.2}
 
 training:
-  max_epochs: 1000            # techo de seguridad, no un presupuesto: corta el early stopping (Decision #13)
+  max_epochs: 1000           # techo de seguridad, no un presupuesto: corta el early stopping (Decision #13)
   batch_size: 64
   optimizer: {name: adam, lr: 0.001, weight_decay: 0.0}
-  loss: mse                   # mse | mae | huber
+  loss: mse                  # mse | mae | huber
   early_stopping: {monitor: val/loss, patience: 25}
   grad_clip: 1.0
   seed: 42
@@ -60,4 +92,4 @@ training:
 tracking:
   experiment: /Users/joaquintschopp@gmail.com/rio_search/bilstm
   tags: {thesis_chapter: baseline}
-  register_model: false
+  register_model: true       # weather.ml.rio_search_bilstm (Decision #12, §3.5)

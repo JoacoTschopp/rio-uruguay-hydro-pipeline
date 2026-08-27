@@ -1,0 +1,102 @@
+# configs/experiments/bilstm_baseline_v1_per_horizon.yaml (Fase 3, docs/rio_search_plan.md
+# §4.1, §5): variante `per_horizon` de `bilstm_baseline_v1.yaml` -- mismo dataset/split/
+# features/arquitectura base, para que ambas estrategias de horizonte sean comparables
+# (criterio de cierre de la Fase 3). `search.n_trials: 1` (Decision 043, docs/decisions.md):
+# un intento real con `n_trials: 2` corrio 1 trial completo (~22 min, 8 runs nietos) y fallo a
+# mitad del segundo con `RestException 401`. Causa real (diagnosticada corriendo otro proceso
+# de verificacion en paralelo): contencion sobre el cache local de credenciales OAuth del CLI
+# de Databricks (`~/.databricks/token-cache.json`) -- dos procesos que refrescan el token al
+# mismo tiempo compiten por el `rename` atomico del archivo, y en Windows el que pierde la
+# carrera recibe "Access is denied", lo que tumba esa llamada HTTP con 401. No es un bug de
+# `RunSearch` ni del perfil en si (verificado: el perfil siguio andando antes y despues); es
+# la razon de fondo detras del riesgo ya anticipado por el plan ("un solo proceso pesado a la
+# vez", §6) -- se corrigio en la practica corriendo un unico proceso contra Databricks a la
+# vez, no con un cambio de codigo. `n_trials: 1` ademas mantiene el mecanismo probado
+# end-to-end (8 runs nietos, agregacion de metricas/tiempos) dentro de una ventana ya exitosa.
+name: bilstm_baseline_v1_per_horizon
+description: >
+  Baseline BiLSTM, caudal, per-horizon (8 modelos, uno por horizonte), ventana 2008->, CPTEC +
+  estado hidrologico. Comparable con bilstm_baseline_v1.yaml (multi_output): mismo dataset,
+  split, features y espacio de busqueda.
+
+dataset:
+  source: gold_training_dataset_v0
+  refresh: ensure_latest
+  version: latest
+  target: caudal
+  horizons: [1, 2, 3, 4, 5, 6, 7, 14]
+
+search:
+  strategy: random
+  n_trials: 1
+  objective: val/kge/mean
+  space:
+    sequence.lookback_days: [30, 60, 90]
+    model.params.hidden_size: [32, 64, 128]
+    model.params.num_layers: [1, 2]
+    training.optimizer.lr: {log_uniform: [0.0005, 0.01]}
+    split.train_window.start: ["2000-01-01", "2008-01-01"]
+
+provenance:
+  require_clean_git: false
+
+split:
+  policy: rolling_365
+  embargo_days: 14
+  train_window:
+    start: 2008-01-01
+
+features:
+  groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
+  # Decision 043: mismo fix que bilstm_baseline_v1.yaml -- *_registros_validos son banderas
+  # casi constantes en TRAIN, un escalador standard las vuelve z-scores extremos (~-77) y
+  # desestabiliza el entrenamiento (NaN desde epoch 1, verificado real).
+  exclude: [caudal_registros_validos, nivel_registros_validos]
+  # Mismas columnas que bilstm_baseline_v1.yaml (Decision 041): lista explicita en vez del
+  # glob "caudal_*" (que tambien matchea caudal_delta_1d, negativo -> log1p da NaN).
+  experimental_transforms:
+    - {name: clip, columns: [caudal_agregado_alta_frontera_m3s], max: 50000, version: 1}
+    - name: log1p
+      version: 1
+      columns:
+        - caudal_actual_m3s
+        - caudal_lag_1d
+        - caudal_lag_3d
+        - caudal_lag_7d
+        - caudal_media_3d
+        - caudal_media_7d
+        - caudal_agregado_alta_frontera_m3s
+        - caudal_agregado_alta_frontera_lag_1d
+        - caudal_agregado_alta_frontera_lag_2d
+        - caudal_agregado_alta_frontera_lag_3d
+    - {name: doy_cyclic, version: 1}
+  imputation: {method: ffill_median, max_ffill_days: 3}
+  scaling: standard
+
+sequence:
+  lookback_days: 60
+
+model:
+  name: bilstm
+  horizon_strategy: per_horizon    # multi_output | per_horizon (Decision #2)
+  params: {hidden_size: 64, num_layers: 2, dropout: 0.2}
+
+training:
+  max_epochs: 1000
+  batch_size: 64
+  optimizer: {name: adam, lr: 0.001, weight_decay: 0.0}
+  loss: mse
+  early_stopping: {monitor: val/loss, patience: 25}
+  grad_clip: 1.0
+  seed: 42
+  device: auto
+
+tracking:
+  experiment: /Users/joaquintschopp@gmail.com/rio_search/bilstm
+  tags: {thesis_chapter: baseline}
+  # false a proposito (Decision 043): registrar cada uno de los 8 modelos por trial x 2
+  # trials generaria 16 versiones de weather.ml.rio_search_bilstm_h{NN} en la primera corrida
+  # de demostracion; el mecanismo de registro por horizonte ya esta implementado y probado
+  # offline (tests/test_run_search_phase3.py no lo ejercita contra UC real a proposito, pero
+  # el codigo -- RunSearch._run_single_horizon -- es el mismo camino que multi_output).
+  register_model: false

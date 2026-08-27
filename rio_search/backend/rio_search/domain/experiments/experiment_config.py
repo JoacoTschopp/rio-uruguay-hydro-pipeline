@@ -16,6 +16,7 @@ from typing import Any
 
 from rio_search.domain.datasets.feature_transform import ExperimentalTransformSpec
 from rio_search.domain.datasets.split_policy import SplitPolicy
+from rio_search.domain.experiments.search_spec import SearchSpec
 from rio_search.domain.experiments.training_spec import TrainingSpec
 from rio_search.domain.models.model_spec import ModelSpec
 from rio_search.domain.shared.target_variable import TargetVariable
@@ -114,11 +115,16 @@ class ExperimentConfig:
     model: ModelSpec
     training: TrainingSpec
     tracking: TrackingConfig
+    search: SearchSpec | None = None
 
     def trials(self) -> tuple["ExperimentConfig", ...]:
-        """Sin bloque `search:` en el YAML (grid/random/tpe, §4.1) la busqueda tiene un unico
-        trial: esta misma config (§0, vocabulario: "un experimento simple es una busqueda de
-        un solo trial"). La expansion real de `search:` es Fase 3."""
+        """Sin bloque `search:` en el YAML la busqueda tiene un unico trial: esta misma config
+        (§0, vocabulario: "un experimento simple es una busqueda de un solo trial"). Con
+        bloque `search:` (grid/random/tpe, §4.1, Fase 3) la expansion real de trials vive en
+        `infrastructure.experiments.search_strategies` (necesita el `raw_dict` original del
+        YAML para aplicar overrides por path punteado, y `random`/`tpe` necesitan estado
+        mutable / feedback del objetivo que un metodo puro de este VO no puede dar) --
+        `RunSearch` llama a este metodo solo cuando `self.search is None`."""
         return (self,)
 
     @classmethod
@@ -134,4 +140,5 @@ class ExperimentConfig:
             model=ModelSpec.from_dict(data["model"]),
             training=TrainingSpec.from_dict(data.get("training")),
             tracking=TrackingConfig.from_dict(data["tracking"]),
+            search=SearchSpec.from_dict(data.get("search")),
         )

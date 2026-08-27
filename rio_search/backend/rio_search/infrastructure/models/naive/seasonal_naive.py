@@ -60,7 +60,15 @@ class SeasonalNaiveAdapter:
         fuente que este baseline necesita para mirar `target_date - 365`."""
         self._history = {d: float(v) for d, v in zip(dates, values) if np.isfinite(v)}
 
-    def fit(self, train: Sequences, val: Sequences, training: Any, callbacks: Any = None) -> FitResult:
+    def fit(
+        self,
+        train: Sequences,
+        val: Sequences,
+        training: Any,
+        callbacks: Any = None,
+        train_y: Any = None,
+        val_y: Any = None,
+    ) -> FitResult:
         return FitResult(epochs=0, best_epoch=0)
 
     def predict(self, X: Sequences) -> Predictions:

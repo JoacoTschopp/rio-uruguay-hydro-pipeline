@@ -49,7 +49,15 @@ class ClimatologyAdapter:
             raise ValueError(f"n_outputs={n_outputs} no coincide con horizons={horizons}")
         self._horizons = horizons
 
-    def fit(self, train: Sequences, val: Sequences, training: Any, callbacks: Any = None) -> FitResult:
+    def fit(
+        self,
+        train: Sequences,
+        val: Sequences,
+        training: Any,
+        callbacks: Any = None,
+        train_y: Any = None,
+        val_y: Any = None,
+    ) -> FitResult:
         values = last_step_value(train)
         finite = np.isfinite(values)
         self._overall_mean = float(values[finite].mean()) if finite.any() else float("nan")

@@ -2130,3 +2130,393 @@ diseño se los impida.
   estos") no se cumplía hasta que apareció el primer test marcado `integration`
   (`tests/test_run_search_integration.py`, esta fase): un `pytest` liso corría igual los tests contra
   Databricks real. Se agregó `addopts = "-m 'not integration'"`.
+
+---
+
+## Decisión 041: El glob `"caudal_*"` de `transforms.build_expressions` (heredado de la Fase 1) se resuelve expandiéndolo contra las columnas ya seleccionadas de `features.groups`
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada offline (`tests/test_build_feature_matrix.py`) y contra
+Databricks/MLflow real en la **Fase 3** de `rio_search_plan.md` (`RunSearch` con `bilstm`, family
+`torch`, primera vez que un modelo que no es `naive` pasa por `BuildFeatureMatrix`).
+
+### Contexto
+
+Las Fases 1 y 2 (`decisions.md` 040) ya habían identificado y documentado el bug sin resolverlo:
+`infrastructure/preprocess/transforms.py::build_expressions` construye una expresión Polars por
+columna declarada en `ExperimentalTransformSpec.columns` (`pl.col(column)...`), y `pl.col("caudal_*")`
+**no** es un glob para Polars — es un nombre de columna literal que no existe en
+`weather.gold.training_dataset_v0`. El YAML de ejemplo del plan (`configs/experiments/
+bilstm_baseline_v1.yaml`, §4.1) declara justamente `{name: log1p, columns: ["caudal_*",
+"caudal_agregado_alta_frontera_m3s"]}`. Los baselines naive de la Fase 2 no lo pisaron porque
+(Decisión 040) no pasan por `BuildFeatureMatrix`; el BiLSTM de la Fase 3 sí, y lo ejercitó de
+inmediato al construir `configs/experiments/bilstm_baseline_v1.yaml` real.
+
+### Decisión
+
+Se resuelve **en el código**, no solo en el YAML: `application/datasets/build_feature_matrix.py`
+gana un paso previo, `_expand_glob_columns(specs, available_columns)`, que corre **antes** de
+llamar a `transform_fns.build_expressions`. Para cada `ExperimentalTransformSpec.columns` que
+contenga `*`/`?`, expande el patrón con `fnmatch.fnmatch` contra `available_columns` — que son
+las columnas **ya seleccionadas** de `features.groups` (`base_columns`, calculadas antes en el
+mismo método), **no** todas las columnas del dataset. Esto es deliberado: expandir contra *todas*
+las columnas dejaría que `"caudal_*"` alcance columnas de target (`caudal_t_mas_7d`) o de
+metadata que el experimento nunca pidió como feature — un glob sin acotar sería una fuga
+potencial, no solo un detalle de conveniencia. Si el patrón no matchea ninguna columna
+seleccionada, se falla explícito (`ValueError`) en vez de aplicar el transform sobre cero
+columnas en silencio. Los resultados se deduplican preservando orden: el propio YAML de ejemplo
+declara `["caudal_*", "caudal_agregado_alta_frontera_m3s"]` a propósito (la segunda ya matchea el
+glob), y expandir no debe aplicar el transform dos veces sobre la misma columna (Polars fallaría
+con `DuplicateError` al `with_columns` un alias repetido).
+
+Para la corrida baseline real de la Fase 3 (`bilstm_baseline_v1.yaml` y su variante
+`bilstm_baseline_v1_per_horizon.yaml`) se eligió además la **segunda opción** que ya anticipaba
+la Nota de la Fase 1/2 (reemplazar el glob por una lista explícita), por una razón de modelado
+real descubierta al implementar el fix: `"caudal_*"` también matchea `caudal_delta_1d` (una
+diferencia día a día, `caudal_actual_m3s - caudal_actual_m3s.shift(1)`, que puede ser negativa) y
+`log1p` de un valor `< -1` da `NaN` — un problema de datos, no del bug del glob en sí (el glob ya
+resuelto expande correctamente, simplemente expande *a* una columna que no debería pasar por
+`log1p`). Las dos YAML de la corrida real declaran explícitamente las columnas de caudal que son
+siempre `>= 0` (estado actual y lags, nunca deltas).
+
+### Justificación
+
+Resolver el glob en el código (no solo evitarlo en el YAML) es lo que permite que `"caudal_*"`
+siga siendo una opción válida de sintaxis para *futuros* YAML de experimento (Fase 9: nuevos
+modelos, nuevos grupos de features) sin que cada autor de config tenga que saber que los glob
+"no andan": el mecanismo ahora funciona como cualquiera esperaría que funcionara. Acotar la
+expansión a `features.groups` en vez de "todas las columnas del dataset" es la lectura estricta
+de Decisión #5 (transforms se aplican sobre features seleccionadas, no sobre el dataset completo)
+y evita una clase de bug de fuga (glob demasiado amplio alcanzando targets) que un test
+(`test_glob_pattern_in_transform_columns_expands_against_selected_features`,
+`tests/test_build_feature_matrix.py`) verifica explícitamente.
+
+### Consecuencias
+
+* `application/datasets/build_feature_matrix.py::_expand_glob_columns` es el único lugar que
+  interpreta `*`/`?` en `columns`; `infrastructure/preprocess/transforms.py::build_expressions`
+  no cambia (sigue esperando columnas ya resueltas, sin globs).
+* Tests nuevos: `test_glob_pattern_in_transform_columns_expands_against_selected_features`,
+  `test_glob_pattern_deduplicates_against_explicit_column_in_same_transform`,
+  `test_glob_pattern_with_no_matches_raises` (`tests/test_build_feature_matrix.py`); ejercitado
+  además end-to-end (con `RunSearch` real, dataset sintético) en
+  `tests/test_run_search_phase3.py::test_bilstm_multi_output_runs_end_to_end_with_glob_transform_and_epoch_curves`.
+* `configs/experiments/bilstm_baseline_v1.yaml` y `bilstm_baseline_v1_per_horizon.yaml` (Fase 3)
+  usan la lista explícita para la corrida real, no el glob — el glob queda probado y disponible
+  para quien lo prefiera en un YAML futuro sobre columnas sin el problema de `_delta_1d`.
+
+---
+
+## Decisión 042: El registro de modelos en Unity Catalog exige `signature` (no solo el `run_id`/artefacto) y la validación local del propio cliente de MLflow para UC importa pandas incondicionalmente — se resuelve con un `MLmodel` mínimo (sin flavor) y un stub temporal de `sys.modules["pandas"]`
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow/Unity Catalog real en la **Fase 3**
+de `rio_search_plan.md` (`weather.ml.rio_search_bilstm`, registrado y verificado con el SDK).
+
+### Contexto
+
+Decisión #12 (`rio_search_plan.md` §0, §3.5) ya preveía registrar en `weather.ml` desde la
+Fase 0 (`CREATE SCHEMA`) y registrar el primer modelo real en la Fase 3. Decisión 039 fijó que
+los modelos PyTorch se serializan como artefacto plano (`torch.save(state_dict)` + JSON), sin
+`mlflow.pytorch.log_model`, porque ese flavor importa pandas incondicionalmente. Al implementar
+`TrackingPort.register_model` (Fase 3) sobre ese artefacto plano aparecieron **dos** problemas
+reales, verificados contra Databricks, ninguno anticipado por el plan:
+
+1. `mlflow.register_model(model_uri="runs:/<id>/model", name="weather.ml.rio_search_bilstm")`
+   sobre un directorio de artefactos sin `MLmodel` falla con
+   `Unable to find a logged_model with artifact_path model under run <id>`: el cliente busca
+   primero un archivo `MLmodel` en el artefacto y, si no lo encuentra, un `LoggedModel` (entidad
+   de MLflow 3.x que solo crean los flavors de alto nivel) — ninguno de los dos existe para un
+   artefacto plano.
+2. Agregar un `MLmodel` mínimo (`flavors: {}`, sin `signature`) cambia el error a "Unable to
+   load model metadata... signature... specifying both input and output type specifications":
+   **Unity Catalog exige `signature` para registrar cualquier versión**, incluso sin intención
+   de servir el modelo (`mlflow/store/_unity_catalog/registry/rest_store.py::
+   _validate_model_signature`, mensaje explícito: "All models in the Unity Catalog must be
+   logged with a model signature containing both input and output type specifications").
+   Agregar la `signature` con la clase real `mlflow.models.signature.ModelSignature` no es
+   posible sin pandas: ese módulo hace `import pandas as pd` en su primera línea de imports
+   (mismo patrón exacto que `mlflow.pytorch`, Decisión 039). Peor todavía: **la validación es
+   local, no solo del lado del servidor** — `UcModelRegistryRestStore._load_model` descarga el
+   `MLmodel` recién subido y llama `Model.load(...)` *antes* de tocar la red, y
+   `Model.from_dict()` hace `from mlflow.models.signature import ModelSignature`
+   **incondicionalmente** (no solo cuando el diccionario trae una clave `"signature"`) — así que
+   el `ModuleNotFoundError: No module named 'pandas'` ocurre **siempre** que se registra un
+   modelo en UC con este cliente, sin pandas instalado, tenga o no `signature` el `MLmodel`.
+
+### Decisión
+
+Dos piezas, ambas en `infrastructure/tracking/mlflow_databricks.py`, activas solo dentro de
+`register_model(...)`:
+
+1. **`MLmodel` mínimo con `signature` de tensores, sin flavor.** `_TensorSignatureStub` replica
+   a mano el contrato de `ModelSignature.to_dict()` (`{"inputs": <json>, "outputs": <json>,
+   "params": None}`) usando `mlflow.types.schema.Schema`/`TensorSpec` — confirmado importable
+   sin pandas (a diferencia de `mlflow.models.signature`). La `signature` declara dos
+   `TensorSpec` genéricos (`X`: `float32`, forma `(-1, -1, -1)`; `y_pred`: `float64`, forma
+   `(-1, -1)`) — no se ata a `lookback`/`n_features`/`n_outputs` exactos de cada trial porque
+   UC solo exige que la signature *exista* y tenga inputs+outputs, no que describa el contrato
+   real de inferencia (que ya vive, con precisión, en `features/spec.json` y
+   `model/architecture.json`, artefactos propios de cada run). Se sube al mismo `artifact_path`
+   ("model") que ya tiene `model_state_dict.pth`/`architecture.json`.
+2. **Stub temporal de `sys.modules["pandas"]`.** `_pandas_import_stub()` (context manager)
+   registra `sys.modules["pandas"] = unittest.mock.MagicMock()` **solo** durante la llamada a
+   `mlflow.register_model(...)`, y lo revierte en `finally` (no lo toca si pandas ya estuviera
+   presente, caso que nunca ocurre en este entorno). No es pandas real ni se declara como
+   dependencia (`pyproject.toml` sigue sin `pandas`): el camino que realmente se ejercita
+   (`ModelSignature.from_dict()` → `Schema.from_json()`/`ParamSchema.from_json()`) no invoca
+   ninguna función de pandas — los `pd.Series`/`pd.DataFrame` que aparecen en otros módulos
+   importados transitivamente (`mlflow.types.utils`) son solo anotaciones de tipo evaluadas al
+   definir funciones, nunca llamadas; un `MagicMock` satisface cualquier acceso a atributo sin
+   lanzar `AttributeError`. Verificado explícitamente: `test_no_pandas_in_env` y
+   `test_pandas_import_actually_fails` (Fase 0) siguen en verde después de una corrida real que
+   registró un modelo — el stub no deja rastro en `sys.modules` una vez que `register_model`
+   retorna.
+
+Registrado y verificado real: `weather.ml.rio_search_bilstm`, versión creada con el SDK
+(`WorkspaceClient().model_versions.list("weather.ml.rio_search_bilstm")` devuelve
+`status=READY`) — detalle de la corrida y la versión final en Decisión 043.
+
+### Justificación
+
+La alternativa de instalar pandas real (aunque sea solo para desbloquear esta llamada interna de
+MLflow) violaría Decisión #9 en su propia letra (`test_no_pandas_in_env` comprueba que
+`importlib.util.find_spec("pandas")` da `None`: pandas no debe estar instalable en el entorno en
+absoluto, no solo "no importado desde `rio_search`"). El texto de la propia Decisión #9 en
+`ruff.toml`/`pyproject.toml` anticipa exactamente este caso ("si una dependencia lo necesita,
+aislarla, nunca importarlo desde `rio_search`"): `mlflow-skinny` es la dependencia que lo
+necesita (para una comprobación de tipos que nunca ejecuta lógica real de pandas), y el stub la
+aísla sin que ningún módulo de `rio_search` haga `import pandas` en ningún momento. La alternativa
+de reimplementar el protocolo completo de registro de UC (crear modelo, credenciales de
+almacenamiento temporales, subida directa, alta de versión) vía la API REST cruda para evitar por
+completo el cliente Python de MLflow se descartó por costo/beneficio: es una superficie mucho más
+grande y frágil (múltiples llamadas internas no documentadas públicamente) para evitar un `import`
+de tres líneas que ya se aísla de forma segura y verificable.
+
+### Consecuencias
+
+* `TrackingPort.register_model` (puerto, `application/ports/tracking.py`) gana su
+  implementación real; `FakeTrackingPort` de los tests offline (`tests/test_run_search_phase3.py`)
+  la implementa con un contador simple, sin tocar ninguna de las dos piezas de esta Decisión
+  (no hace falta: el fake nunca llama a MLflow real). La implementación real solo agrega
+  `numpy` (ya dependencia) y `mlflow.types.schema` (confirmado sin pandas) como imports nuevos;
+  si una versión futura de `mlflow-skinny` corrige el import incondicional en
+  `Model.from_dict()` (moviéndolo a lazy/condicional, como ya hace en otros paths), el stub de
+  `sys.modules` deja de ser necesario sin cambiar la firma de `register_model` ni el resto de
+  `RunSearch`.
+* Riesgo aceptado y acotado: si una llamada futura a `mlflow.register_model(...)` (p. ej. una
+  versión nueva de mlflow que sí invoque pandas de verdad en ese camino) se topa con el stub,
+  fallaría con un `AttributeError`/`TypeError` claro sobre el `MagicMock` (no un resultado
+  silenciosamente incorrecto) — se revisaría en ese momento, acotado a este único método.
+* `per_horizon` (Decisión de diseño de esta misma fase, ver `RunSearch._run_single_horizon`)
+  reusa exactamente el mismo `register_model`, con nombres `weather.ml.rio_search_<model>_h{NN}`
+  (un modelo por horizonte) — implementado y cubierto por el mismo mecanismo, pero **no
+  ejercitado contra UC real** en la corrida baseline de esta fase (`register_model: false` en
+  `bilstm_baseline_v1_per_horizon.yaml`, para no crear 16 versiones en la primera corrida de
+  demostración — ver Decisión 043).
+
+---
+
+## Decisión 043: Cierre de la Fase 3 (BiLSTM) — un target con `NaN` reales sin enmascarar diverge el entrenamiento a `NaN` desde el epoch 1; corregido, el BiLSTM supera a persistencia en 7 de 8 horizontes
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada contra Databricks/MLflow/Unity Catalog real en la **Fase 3**
+de `rio_search_plan.md`: dos búsquedas reales (`bilstm_baseline_v1.yaml`, `multi_output`, 4
+trials; `bilstm_baseline_v1_per_horizon.yaml`, `per_horizon`, 1 trial), reproducibilidad en CPU
+verificada con dos corridas idénticas, y 4 versiones de `weather.ml.rio_search_bilstm`
+registradas y confirmadas con el SDK.
+
+### Contexto
+
+Al correr `bilstm_baseline_v1.yaml` por primera vez contra Databricks real (§5, checklist de la
+Fase 3), las 4 corridas de `multi_output` terminaron **todas** con `skill_vs_persistence`
+negativo en los 8 horizontes y `train/loss`/`val/loss` = `NaN` desde el primer epoch
+(`train/best_epoch == train/epochs`, la salida de "nunca mejoró" de `BaseTorchAdapter.fit`).
+Investigando en paralelo (sin tocar Databricks para no interferir con la corrida real en curso,
+ver más abajo el hallazgo de contención) se descartaron dos hipótesis antes de llegar a la causa
+real:
+
+1. **Hipótesis 1 (parcialmente cierta, no la causa raíz):** `caudal_registros_validos` y
+   `nivel_registros_validos` son banderas casi constantes en TRAIN (`std` ≈ 0.013 para caudal:
+   >99% de los días vale `1`). Un escalador `standard` las convierte en z-scores extremos
+   (`min` ≈ **-77** en TRAIN real, verificado con `BuildFeatureMatrix` contra el parquet real) —
+   un input de esa magnitud es una fuente real de inestabilidad numérica en una LSTM. Se corrigió
+   agregando soporte real a `features.exclude` (§4.1, declarado en el YAML desde la Fase 1 pero
+   **nunca conectado** a `BuildFeatureMatrix.execute` hasta ahora) y excluyendo esas dos columnas
+   en ambos YAML de BiLSTM. Es una corrección real y se queda, pero **no era la causa del `NaN`**:
+   con la exclusión aplicada y arquitecturas ya probadas como estables (`num_layers=1`), el `NaN`
+   seguía apareciendo desde el epoch 1.
+2. **Hipótesis 2 (descartada):** `num_layers=2` (arquitectura más profunda) como fuente de
+   inestabilidad. Se probó `num_layers=1` con hiperparámetros idénticos a un trial real que
+   *sí* había entrenado sin `NaN` en GPU — el `NaN` persistió igual en CPU. No era la
+   arquitectura.
+
+**Causa real**, encontrada probando `BiLSTMAdapter.fit()` directamente (sin MLflow, en proceso,
+sobre el parquet real cacheado): `y nan? True` — `Targets.y` (Fase 1) trae `NaN` genuinos por
+horizonte/fila cuando el horizonte cae fuera del rango con target observable (§2.1: "huecos en
+el período de TEST" — `nivel` sin datos 2025-11-01→2026-03-27, `caudal` sin datos
+2026-04-07→05-04 — y, more generally, cualquier ancla cerca del borde de un split donde algún
+`caudal_t_mas_{h}d` todavía no tiene LEAD calculado). Esto es exactamente lo que `coverage` en
+`MetricSet`/`EvaluatePredictions` (Fase 2, §3.7) ya sabía manejar para la *evaluación* — pero
+`BaseTorchAdapter.fit()` (Fase 3, código nuevo de esta fase) nunca lo consideró para el
+*entrenamiento*: `torch.nn.MSELoss()` (y `L1Loss`/`SmoothL1Loss`) no ignoran `NaN` por sí solos
+— un único `NaN` en un batch contamina la reducción `mean()` de PyTorch entera, y ese `NaN` se
+propaga por `backward()` a *todos* los pesos del modelo en el primer `optimizer.step()`,
+destruyéndolo para siempre (comparaciones `NaN < best_val` son siempre `False`, así que
+`best_state` nunca se fija — el resultado final es "el último estado", que ya es todo `NaN`).
+**Los 8 modelos registrados en la primera ronda de corridas reales tenían pesos completamente
+`NaN`.**
+
+### Decisión
+
+1. **`BaseTorchAdapter.fit()` enmascara `NaN` antes de la función de pérdida**, en cada batch de
+   TRAIN y en VAL: `mask = torch.isfinite(yb); loss = criterion(pred[mask], yb[mask])`; un batch
+   sin ningún target finito se saltea sin backward (no aporta gradiente); `train_loss` se
+   normaliza por la cantidad real de targets válidos vistos en el epoch, no por el tamaño fijo
+   del batch. Test de regresión offline con datos sintéticos y ~15% de filas de TRAIN sin ningún
+   target válido (`tests/test_bilstm_adapter.py::test_fit_masks_nan_targets_and_does_not_diverge`):
+   confirma que la loss no diverge y que las predicciones finales no tienen `NaN`.
+2. **`features.exclude` (§4.1) se conecta de verdad**: `BuildFeatureMatrix.execute` gana el
+   parámetro `exclude: list[str] | None` (filtra columnas de los grupos seleccionados antes de
+   expandir globs de transforms, Decisión 041); `RunSearch._prepare_trial_data` lo pasa desde
+   `trial_config.features.exclude`. `bilstm_baseline_v1.yaml` y su variante `per_horizon` excluyen
+   `caudal_registros_validos`/`nivel_registros_validos`. Test offline
+   (`tests/test_build_feature_matrix.py::test_exclude_drops_a_column_from_the_selected_group`).
+3. **Contención del cache local de credenciales OAuth (hallazgo operativo, no de código):**
+   corriendo un segundo proceso de diagnóstico en paralelo a una búsqueda real de larga duración,
+   una llamada a `MlflowClient.get_run` falló con `RestException 401` y el mensaje real
+   (no enmascarado, a diferencia del primer intento) fue explícito: *"forced token refresh: cache
+   update: error storing token in local cache: rename ...\token-cache.json: Access is denied"* —
+   dos procesos que refrescan el token OAuth del perfil de Databricks CLI al mismo tiempo compiten
+   por el `rename` atómico del archivo de cache (`~/.databricks/token-cache.json`), y en Windows
+   el que pierde la carrera recibe `Access is denied`, lo que tumba esa llamada HTTP con 401. Es
+   la razón concreta detrás del riesgo que el plan ya anticipaba (§6: "Un solo proceso pesado a la
+   vez (GPU, CLI de Databricks) | `JobRunner` comparte `lock.py` con los backfills de ANA") — se
+   corrigió en la práctica serializando las corridas contra Databricks (nunca dos procesos
+   `rio-search`/verificación tocando el perfil al mismo tiempo), no con un cambio de código en
+   esta fase; el `JobRunner` con lock de la Fase 4 es la solución estructural.
+
+### Resultados reales (post-corrección, contra Databricks/MLflow/UC real)
+
+**`multi_output`** — `bilstm_baseline_v1.yaml`, `strategy: random`, `n_trials: 4`, seed 42.
+Search run `7ba3d432e4bb495e837128adf94ad1b2` (`/Users/joaquintschopp@gmail.com/rio_search/bilstm`),
+`time/search_total_s` = **1565.7 s** (≈ 26 min), `time/dataset_refresh_s` = 6.0 s.
+
+| Trial (run_id) | lookback | hidden | layers | lr | train_start | val/kge/mean | test/kge/mean | test/rmse/mean | epochs (best) | train_total_s | trial_total_s | UC versión |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `2bad22f8…` (**mejor por VAL**) | 90 | 32 | 1 | 0.00461 | 2000-01-01 | **0.207** | 0.101 | 1628.3 | 105 (80) | 60.8 s | 312.0 s | **9** |
+| `64b5d9c0…` | 30 | 32 | 1 | 0.00380 | 2000-01-01 | 0.119 | 0.045 | 1616.4 | 106 (81) | 57.7 s | 307.0 s | 10 |
+| `e4f0f7e2…` | 90 | 64 | 1 | 0.00055 | 2000-01-01 | 0.027 | -0.059 | 1760.6 | 236 (211) | 140.9 s | 648.6 s | 11 |
+| `6e086068…` | 30 | 128 | 1 | 0.00269 | 2008-01-01 | 0.188 | 0.074 | 1575.8 | 65 (40) | 26.4 s | 203.6 s | 12 |
+
+Skill vs. persistencia en TEST del trial campeón (`2bad22f8…`, elegido por `val/kge/mean`, nunca
+por TEST — §3.7):
+
+| h01 | h02 | h03 | h04 | h05 | h06 | h07 | h14 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| -0.362 | **+0.017** | **+0.107** | **+0.136** | **+0.123** | **+0.108** | **+0.046** | **+0.179** |
+
+**`per_horizon`** — `bilstm_baseline_v1_per_horizon.yaml`, `n_trials: 1` (Decisión sobre el costo
+más abajo). Search run `f8b488e5e2bf43a0b8d98625789f0eb9`, trial run
+`0b73ab09cba5448db438a5b50e25e88a` (mismos hiperparámetros que el mejor trial de `multi_output`:
+lookback=90, hidden=32, layers=1, lr=0.00461, train_start=2000-01-01 — la misma semilla produce
+la misma primera muestra del `RandomSampler` en ambas búsquedas, comparación limpia).
+`val/kge/mean` = **0.344**, `test/kge/mean` = 0.219, `test/rmse/mean` = 1526.9 (mejor que
+`multi_output` en las tres métricas). `time/search_total_s` = **3216.2 s** (≈ 53.6 min, 8 runs
+nietos con `time/train_total_s` sumado = 721.6 s).
+
+| h01 | h02 | h03 | h04 | h05 | h06 | h07 | h14 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| -0.020 | **+0.152** | **+0.168** | **+0.146** | **+0.128** | **+0.119** | **+0.063** | **+0.186** |
+
+Run_ids de los 8 horizontes (nietos de `0b73ab09…`, verificado `mlflow.parentRunId` coincide):
+h01 `00e7cce3…`, h02 `c197ec27…`, h03 `ed50c78c…`, h04 `b29f35a9…`, h05 `0531e237…`,
+h06 `26e0c9f7…`, h07 `53d64cd1…`, h14 `9c31d7dc…`.
+
+**Criterio de cierre "skill > 0 para t+1…t+7" (§5):** se cumple para **6 de 7** horizontes de esa
+ventana en ambas estrategias (todos salvo h01); h01 queda negativo en las dos (-0.36 `multi_output`,
+-0.02 `per_horizon`, casi empatado con persistencia). Se documenta por qué, no se fuerza un ajuste
+más: la persistencia (predecir el último valor observado) es un baseline extremadamente fuerte
+para el horizonte 1 en series de caudal fluvial — la autocorrelación día a día es altísima
+(coeficiente de determinación de la persistencia t→t+1 ronda 0.95+ en la mayoría de las cuencas) —
+y superarla al horizonte más corto es, en la literatura hidrológica, sistemáticamente el caso más
+difícil, no una señal de que el modelo esté mal. `h14` (el horizonte más largo, donde la
+persistencia se degrada más) es donde el BiLSTM saca la mayor ventaja en ambas estrategias
+(+0.179 / +0.186) — consistente con esa lectura.
+
+**Comparación de estrategias:** `per_horizon` gana en las tres métricas de resumen (`val/kge/mean`
+0.344 vs. 0.207, `test/kge/mean` 0.219 vs. 0.101, `test/rmse/mean` 1526.9 vs. 1628.3) con los
+*mismos* hiperparámetros — evidencia de que 8 modelos dedicados (`n_outputs=1` cada uno)
+especializan mejor que un único modelo de salida compartida, al costo de **10.3x** el tiempo
+(3216.2 s vs. 312.0 s de ese mismo trial) — el "frente de Pareto tiempo vs. métrica" que el plan
+pide poder trazar (§3.7) ya tiene su primer punto real de cada estrategia.
+
+**Costo de la búsqueda (§13, §14 — se registra todo, no limita nada):** `multi_output`,
+4 trials, 1565.7 s totales (392 s/trial en promedio, entre 203.6 s y 648.6 s según arquitectura);
+`per_horizon`, 1 trial de 8 sub-modelos, 3216.2 s. `n_trials` se redujo del `40` del ejemplo
+original del plan (§4.1) a `4` (`multi_output`) y `1` (`per_horizon`, además por el hallazgo de
+contención de credenciales en corridas largas) — la exhaustividad de la búsqueda de
+hiperparámetros no es el punto de este checklist, que funcione end-to-end contra Databricks/MLflow
+real sí lo es (instrucción explícita de la fase); ampliar `n_trials` en cualquiera de los dos YAML
+es cambiar un número, no una decisión de diseño.
+
+**Reproducibilidad en CPU (§4.3, criterio de cierre):** mismos hiperparámetros del trial campeón,
+`device: cpu`, `seed: 42`, corrido dos veces (`data/_repro_cpu_config2.yaml`, no versionado,
+derivado de `bilstm_baseline_v1.yaml`). Run A `67843e9ed4094ef182be857923143cfb`, run B
+`1ce5c0d3cb1e4ca18ececfc49b1dab6b`: **200 métricas comparadas (todo salvo `time/*`, que el plan no
+exige reproducible) — 0 discrepancias**; la curva completa de `train/loss` de 20 epochs es
+**idéntica bit a bit** entre A y B; `test/skill_vs_persistence/h01` = `-0.6620705881066022` en
+ambas, dígito por dígito.
+
+### Registro en `weather.ml` (Decisión #12)
+
+`weather.ml.rio_search_bilstm`, **4 versiones válidas: 9, 10, 11, 12** (una por trial de la
+búsqueda `multi_output` corregida), confirmadas `READY` con
+`WorkspaceClient().model_versions.list(...)`. Las **versiones 1-8** (de las dos búsquedas reales
+corridas *antes* de la corrección del `NaN` — 4 trials de `multi_output` sin enmascarar + otros
+4 de una corrida de diagnóstico intermedia) tenían **pesos completamente `NaN`** (consecuencia
+directa del bug de esta Decisión) y se **borraron** (`model_versions.delete` + verificado que no
+quedan) para no dejar modelos rotos en el registro. La versión **9** (`2bad22f8…`) es la mejor por
+`val/kge/mean` dentro de `multi_output`; ninguna versión de `per_horizon` está registrada
+(`register_model: false` en ese YAML, decisión explícita para no crear 8 modelos × 1 trial en la
+corrida de demostración — el mecanismo de registro por horizonte
+(`RunSearch._run_single_horizon`) es el mismo código que `multi_output` y está cubierto por los
+mismos tests offline, solo no se ejercitó contra UC real en esta ronda).
+
+### Justificación
+
+Enmascarar `NaN` en la función de pérdida (en vez de, por ejemplo, imputar el target o recortar
+las fechas de entrenamiento para evitar huecos) respeta la misma invariante que ya regía la
+*evaluación* (§3.7: "métricas sobre targets disponibles + reporte de cobertura") sin inventar una
+regla nueva: un hueco de calendario real no se rellena con un valor inventado, se excluye del
+gradiente ese día para ese horizonte puntual, igual que ya se excluye de las métricas. La
+alternativa de recortar el rango de fechas de entrenamiento para garantizar cobertura 100% hubiera
+reducido artificialmente el tamaño de TRAIN y hubiera sido una regla ad hoc por dataset, no un
+comportamiento general del adaptador (que debe funcionar igual si el próximo dataset de Gold tiene
+sus propios huecos, en otras fechas).
+
+### Consecuencias
+
+* `rio_search/backend/rio_search/infrastructure/models/torch/base_torch_adapter.py::fit` es la
+  única implementación de entrenamiento iterativo de la Fase 3; el enmascarado de `NaN` es
+  automático para cualquier adaptador que herede de `BaseTorchAdapter` (Fase 9: TCN/GRU futuros lo
+  heredan gratis, no hace falta repetir la lógica).
+* `application/datasets/build_feature_matrix.py::BuildFeatureMatrix.execute` tiene ahora un
+  parámetro `exclude` real; cualquier YAML de experimento (no solo BiLSTM) puede usar
+  `features.exclude` desde ya — estaba en el contrato del YAML (§4.1) desde la Fase 1 pero nunca
+  hacía nada.
+* El hallazgo de contención de credenciales (`~/.databricks/token-cache.json`) es una razón
+  concreta más para el `JobRunner` con lock de la Fase 4 (§3.1: "un solo proceso pesado a la vez,
+  comparte `lock.py` con los backfills de ANA") — no requiere acción en esta fase, pero se
+  documenta para que la Fase 4 lo tenga como caso de prueba real.
+* `configs/experiments/bilstm_baseline_v1.yaml` y `bilstm_baseline_v1_per_horizon.yaml` quedan
+  con `features.exclude` fijo y `search.n_trials` reducido (4 y 1 respectivamente) como los
+  valores con los que se corrió el baseline real citado en esta Decisión; ampliar la búsqueda es
+  responsabilidad de una fase o corrida futura, no bloquea el cierre de esta.
+* Pendiente explícito para el usuario (§8 del plan, no bloquea el cierre de esta fase): revisar
+  `weather.ml.rio_search_bilstm` (nombre, las 4 versiones 9-12, alias de campeón todavía no
+  asignado — eso es Fase 6, `PromoteChampion`) y decidir la política de versiones antes de que
+  Fase 9 agregue más modelos al mismo schema.

@@ -42,7 +42,15 @@ class PersistenceAdapter:
             raise ValueError(f"n_outputs={n_outputs} no coincide con horizons={horizons}")
         self._horizons = horizons
 
-    def fit(self, train: Sequences, val: Sequences, training: Any, callbacks: Any = None) -> FitResult:
+    def fit(
+        self,
+        train: Sequences,
+        val: Sequences,
+        training: Any,
+        callbacks: Any = None,
+        train_y: Any = None,
+        val_y: Any = None,
+    ) -> FitResult:
         return FitResult(epochs=0, best_epoch=0)
 
     def predict(self, X: Sequences) -> Predictions:

@@ -104,3 +104,49 @@ def test_output_dataframes_keep_same_row_counts_as_split() -> None:
     assert result.train.height == split_dfs.train.height
     assert result.val.height == split_dfs.val.height
     assert result.test.height == split_dfs.test.height
+
+
+def test_glob_pattern_in_transform_columns_expands_against_selected_features() -> None:
+    """Decision 041: `"caudal_*"` no es un nombre de columna literal de Polars -- se expande
+    contra las columnas ya seleccionadas de `features.groups` antes de construir expresiones."""
+    spec = ExperimentalTransformSpec(name="log1p", version=1, columns=["caudal_*"])
+    result = BuildFeatureMatrix(_catalog()).execute(
+        _split_dfs(), ["caudal_estado"], experimental_transforms=[spec]
+    )
+    assert "caudal_actual_m3s_log1p" in result.feature_columns
+    assert "caudal_lag_1d_log1p" in result.feature_columns
+    # No debe alcanzar columnas de target (no seleccionadas via features.groups).
+    assert "caudal_t_mas_1d_log1p" not in result.feature_columns
+
+
+def test_glob_pattern_deduplicates_against_explicit_column_in_same_transform() -> None:
+    """El YAML de ejemplo (§4.1) declara `["caudal_*", "caudal_agregado_alta_frontera_m3s"]` a
+    proposito: si el glob ya matchea esa columna, expandir no debe aplicar el transform dos
+    veces (Polars fallaria con `DuplicateError` al `with_columns` un alias repetido)."""
+    spec = ExperimentalTransformSpec(name="log1p", version=1, columns=["caudal_*", "caudal_actual_m3s"])
+    result = BuildFeatureMatrix(_catalog()).execute(
+        _split_dfs(), ["caudal_estado"], experimental_transforms=[spec]
+    )
+    assert result.train.columns.count("caudal_actual_m3s_log1p") == 1
+
+
+def test_exclude_drops_a_column_from_the_selected_group() -> None:
+    """Decision 043: `features.exclude` (§4.1) descarta columnas casi constantes en TRAIN
+    (p. ej. `caudal_registros_validos`) que un escalador `standard` convertiria en z-scores
+    extremos y desestabilizarian el entrenamiento de un modelo torch."""
+    result = BuildFeatureMatrix(_catalog()).execute(
+        _split_dfs(), ["caudal_estado"], exclude=["caudal_lag_1d"]
+    )
+    assert result.feature_columns == ("caudal_actual_m3s",)
+    # La columna excluida no se ajusta/escala como feature, pero sigue en el dataframe base
+    # (BuildFeatureMatrix no elimina columnas del dataframe, solo del contrato de features).
+    assert "caudal_lag_1d" not in result.imputer_stats.medians
+    assert "caudal_lag_1d" not in result.scaler_stats.center
+
+
+def test_glob_pattern_with_no_matches_raises() -> None:
+    spec = ExperimentalTransformSpec(name="log1p", version=1, columns=["nivel_*"])
+    with pytest.raises(ValueError, match="no matchea ninguna columna"):
+        BuildFeatureMatrix(_catalog()).execute(
+            _split_dfs(), ["caudal_estado"], experimental_transforms=[spec]
+        )

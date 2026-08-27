@@ -134,10 +134,13 @@ def build_run_search(
     cache_dir: Path = DEFAULT_CACHE_DIR,
     feature_groups_path: Path = DEFAULT_FEATURE_GROUPS_PATH,
 ):
-    """`RunSearch` (Fase 2, §3.2, §5): compone `RefreshDataset` (Fase 1), el resolutor de
-    device, la procedencia git, el registro de modelos y el tracking de MLflow. El `Stopwatch`
-    compartido con `RefreshDataset` es el mismo objeto que mide `time/dataset_refresh_s`
-    (§3.12): por eso `RunSearch` lo recibe ya cableado, no crea el suyo."""
+    """`RunSearch` (Fase 2/3, §3.2, §5): compone `RefreshDataset` (Fase 1), el resolutor de
+    device, la procedencia git, el registro de modelos, `BuildFeatureMatrix` (Fase 1/3: lo
+    necesitan los modelos que no son `naive`, Decision 040) y el tracking de MLflow. El
+    `Stopwatch` compartido con `RefreshDataset` es el mismo objeto que mide
+    `time/dataset_refresh_s` (§3.12): por eso `RunSearch` lo recibe ya cableado, no crea el
+    suyo."""
+    from rio_search.application.datasets.build_feature_matrix import BuildFeatureMatrix
     from rio_search.application.experiments.run_search import RunSearch, RunSearchDependencies
     from rio_search.infrastructure.device.torch_device_resolver import TorchDeviceResolver
 
@@ -157,5 +160,6 @@ def build_run_search(
         tracking=build_tracking(profile=profile),
         stopwatch=stopwatch,
         stopwatch_factory=PerfCounterStopwatch,
+        build_feature_matrix=BuildFeatureMatrix(build_feature_catalog(feature_groups_path)),
     )
     return RunSearch(deps)

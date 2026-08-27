@@ -12,6 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+import numpy as np
+
 from rio_search.domain.experiments.fit_result import FitResult
 from rio_search.domain.experiments.horizon_strategy import HorizonStrategy
 from rio_search.domain.experiments.training_spec import TrainingSpec
@@ -42,9 +44,17 @@ class ModelAdapterPort(Protocol):
         val: Sequences,
         training: TrainingSpec,
         callbacks: FitCallbacks | None = None,
+        train_y: np.ndarray | None = None,
+        val_y: np.ndarray | None = None,
     ) -> FitResult:
         """Para los baselines naive (Fase 2) es un no-op deterministico
-        (`FitResult(epochs=0, ...)`): no hay entrenamiento iterativo (Decision #13 no aplica)."""
+        (`FitResult(epochs=0, ...)`): no hay entrenamiento iterativo (Decision #13 no aplica),
+        y `train_y`/`val_y` se ignoran (los baselines regresan del propio `Sequences.X`, no de
+        un target real -- Decision 040). `BaseTorchAdapter` (Fase 3) los requiere: son la
+        matriz de targets `(N, n_outputs)` alineada 1:1 con `train.anchor_dates`/
+        `val.anchor_dates` (`Targets.y`, `infrastructure.datasets.target_builder`). Van despues
+        de `training`/`callbacks` (con default `None`) para no romper las llamadas
+        posicionales `fit(seq, seq, training=None)` de los tests de la Fase 2."""
         ...
 
     def predict(self, X: Sequences) -> Predictions: ...

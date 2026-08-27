@@ -51,3 +51,11 @@ class TrackingPort(Protocol):
     def log_meta_dataset(self, name: str, digest: str, source_path: str, context: str) -> None:
         """`MetaDataset` (§3.5): nombre, digest y origen del dataset sin materializarlo."""
         ...
+
+    def register_model(self, run_id: str, artifact_path: str, name: str) -> str:
+        """Registro en Unity Catalog (Decision #12, §3.5, Fase 3): `name` con formato completo
+        `<catalog>.<schema>.<model>` (p. ej. `weather.ml.rio_search_bilstm`), `artifact_path`
+        el artefacto plano ya subido por `save()`/`log_artifact_dir` (Decision 039 -- **no**
+        `mlflow.pytorch.log_model`, esta llamada no depende de ese flavor). Devuelve la version
+        registrada como `str` (p. ej. `"1"`)."""
+        ...
