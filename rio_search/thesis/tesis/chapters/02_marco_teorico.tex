@@ -1,0 +1,46 @@
+% Capitulo 2: Marco teorico y antecedentes (Fase 8, docs/rio_search_plan.md S3.11)
+\chapter{Marco te\'orico y antecedentes}
+\label{chap:marco-teorico}
+
+\section{Redes recurrentes para series temporales}
+
+Las redes \emph{Long Short-Term Memory} (LSTM), introducidas por
+\citep{hochreiter-1997-lstm}, resuelven el problema del desvanecimiento del gradiente que
+limitaba a las redes recurrentes cl\'asicas en secuencias largas, mediante una celda de memoria
+con compuertas de entrada, olvido y salida. Esa capacidad de retener dependencias de largo plazo
+es la raz\'on por la que se eligi\'o una variante \textbf{bidireccional} (BiLSTM) como primer
+modelo no trivial de \emph{Rio\_Search}: la ventana de entrada (\texttt{lookback\_days}, t\'ipicamente
+30-120 d\'ias) necesita capturar tanto la din\'amica r\'apida de una crecida como la estacionalidad
+anual de la cuenca.
+
+\section{LSTM aplicada a modelado lluvia-escorrent\'ia}
+
+\citep{kratzert-2018-lstm-rainfall-runoff} muestran que las LSTM igualan o superan a modelos
+hidrol\'ogicos conceptuales calibrados por cuenca cuando se entrenan sobre un conjunto grande de
+cuencas con variables meteorol\'ogicas de entrada, sin necesidad de par\'ametros f\'isicos
+ajustados a mano. Ese resultado motiva el dise\~no de \emph{Rio\_Search} como un banco de pruebas
+orientado a datos: el modelo aprende la relaci\'on entre las variables hidrol\'ogicas y
+meteorol\'ogicas disponibles en \texttt{weather.gold.training\_dataset\_v0} (estado del r\'io,
+agregados de caudal aguas arriba, precipitaci\'on y temperatura en grilla CPTEC/INPE) y el caudal
+futuro, sin modelar expl\'icitamente los procesos f\'isicos de la cuenca.
+
+\section{M\'etricas de evaluaci\'on hidrol\'ogica}
+
+\citep{gupta-2009-kge} descomponen el error cuadr\'atico medio normalizado (NSE) en sus tres
+componentes -- correlaci\'on, sesgo relativo en la media y sesgo relativo en la variabilidad -- y
+proponen el \emph{Kling-Gupta Efficiency} (KGE) como alternativa que pondera esos tres componentes
+por separado. \emph{Rio\_Search} adopta KGE sobre el conjunto de validaci\'on
+(\texttt{val/kge/mean}) como m\'etrica de selecci\'on del modelo campe\'on (\S\ref{sec:evaluacion}),
+precisamente para evitar que un modelo con buena correlaci\'on pero sesgo sistem\'atico en la
+media -- un error com\'un al proyectar caudales de r\'ios con estacionalidad marcada -- se
+seleccione como el mejor.
+
+\section{Trabajos previos del autor}
+
+El formato de este documento -- clase, portada, estilo bibliogr\'afico -- se extrajo del trabajo
+final de otra materia de la misma carrera del autor, presentado y aprobado, disponible como
+modelo en \texttt{rio\_search/research/templates/}. Ese trabajo (proyecci\'on de la calidad del
+agua en el embalse de Salto Grande) comparte con esta tesis el enfoque general -- predicci\'on
+sobre series temporales hidrol\'ogicas con aprendizaje autom\'atico -- pero no su objeto de
+estudio ni sus datos; se cita aqu\'i \'unicamente como antecedente metodol\'ogico de forma, no de
+contenido.

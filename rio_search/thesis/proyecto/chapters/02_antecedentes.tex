@@ -1,0 +1,22 @@
+% Capitulo 2: Antecedentes (Proyecto de Tesis -- Fase 8, docs/rio_search_plan.md S3.11)
+\chapter{Antecedentes}
+\label{chap:antecedentes}
+
+Las redes \emph{Long Short-Term Memory} \citep{hochreiter-1997-lstm} resuelven el desvanecimiento
+del gradiente que limita a las redes recurrentes cl\'asicas en secuencias largas, mediante una
+celda de memoria con compuertas de entrada, olvido y salida -- la raz\'on por la que se propone una
+variante bidireccional como primer modelo no trivial de este proyecto.
+\citep{kratzert-2018-lstm-rainfall-runoff} muestran que las LSTM igualan o superan a modelos
+hidrol\'ogicos conceptuales calibrados por cuenca cuando se entrenan sobre variables meteorol\'ogicas
+de entrada sin par\'ametros f\'isicos ajustados a mano, lo que motiva un enfoque orientado a datos
+en vez de un modelo hidrol\'ogico conceptual expl\'icito.
+
+Para la evaluaci\'on, \citep{gupta-2009-kge} descomponen el error cuadr\'atico medio normalizado en
+correlaci\'on, sesgo en la media y sesgo en la variabilidad, y proponen el \emph{Kling-Gupta
+Efficiency} (KGE) como m\'etrica que pondera esos tres componentes por separado -- la m\'etrica que
+este proyecto adopta para seleccionar el modelo campe\'on sobre el conjunto de validaci\'on.
+
+El formato de este documento se extrajo de un trabajo final previo del autor, de la misma carrera,
+disponible como modelo en \texttt{rio\_search/research/templates/}: comparte el enfoque general de
+predicci\'on sobre series temporales hidrol\'ogicas con aprendizaje autom\'atico, pero no su objeto
+de estudio.

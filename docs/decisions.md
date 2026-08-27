@@ -3081,3 +3081,110 @@ validado.
 Al cierre de esta fase corresponde pedirle al usuario **el trabajo con formato LaTeX ya validado**
 para `rio_search/research/templates/` (insumo de la Fase 8, §8 del plan) — este sub-agente no
 puede pedírselo directamente.
+
+---
+
+## Decisión 050: Cierre de la Fase 8 (Tesis LaTeX) — clase propia extraída del modelo del
+usuario, dos documentos que compilan real con `latexmk`, y `rio-search thesis export` como puente
+verificado con MLflow real
+
+### Estado
+
+`Aceptada` (2026-08-27), verificada de punta a punta con el mecanismo real: los dos documentos
+(`rio_search/thesis/proyecto/main.tex`, `rio_search/thesis/tesis/main.tex`) compilan con
+`latexmk -pdf -outdir=build` corrido **desde PowerShell nativo** (Decisión 049), 0 referencias y 0
+citas indefinidas en ambos `build/main.log`, con salida real: `proyecto/build/main.pdf` (11
+páginas, 263.596 bytes) y `tesis/build/main.pdf` (15 páginas, 325.601 bytes). `rio-search thesis
+export --run 6e086068c9ef41a3afd8209518bf26a2 --compare f3738cdae71f4007b02ad98955b2e65e` corrió
+contra Databricks/MLflow real (experimentos `/rio_search/bilstm` y `/rio_search/baselines`) y
+generó `thesis/tables/metrics_6e086068c9ef.tex`, `thesis/tables/compare_6e086068c9ef.tex` y
+`thesis/figures/metric_vs_horizon_6e086068c9ef.{pdf,tex}`, los tres con el/los `run_id` real(es)
+en un comentario LaTeX; el capítulo de Resultados de `thesis/tesis/` los incluye con `\input` y
+compiló junto con el resto del documento (`(../figures/metric_vs_horizon_6e086068c9ef.tex)
+[10 <.../metric_vs_horizon_6e086068c9ef.pdf>]` en el log). 367 tests offline en verde (362 de las
+Fases 0-7 + 5 nuevas de esta fase), 2 `integration` deseleccionados sin cambios; `ruff check`
+limpio; `npm run build` (`tsc -b` estricto + Vite) limpio, sin tocar el frontend.
+
+### Contexto
+
+El plan (§3.11, Decisión #8 de las decisiones cerradas antes de escribir el plan) pide extraer el
+formato de un trabajo ya presentado y validado por el usuario
+(`rio_search/research/templates/FINAL-G1-TSCHOPP-JOAQUIN-2025.tex`, proyección de calidad de agua
+en el embalse de Salto Grande — otro tema, misma carrera) y replicarlo en `thesis/common/` para dos
+documentos nuevos (`proyecto/`, `tesis/`) de la tesis de Río Uruguay, más un puente
+`rio-search thesis export` que genere figuras/tablas desde runs reales de MLflow.
+
+### Decisión
+
+1. **Clase LaTeX propia** `rio_search/thesis/common/riosearch.cls` (`\LoadClass[11pt]{report}`)
+   en vez de reusar el `.tex` del modelo tal cual: reproduce exactamente su conjunto de paquetes
+   (`inputenc[utf8]`, `babel[spanish]`, `fontenc[T1]`, `lmodern`, `geometry` con márgenes de 3cm,
+   `setspace`+`onehalfspacing`, `hyperref`, `longtable`, `booktabs`, `graphicx`, `subcaption`,
+   `enumitem`, `apacite`+`natbib` juntos — combinación no recomendada por `apacite` pero es la que
+   el modelo del usuario ya probó y compiló, `research/templates/*.bbl` existe) y su estilo de
+   portada (escudo + Universidad de Buenos Aires + Facultad de Ciencias Exactas y Naturales +
+   Maestría en Explotación de Datos y Descubrimiento de Conocimiento), pero parametrizado por
+   comandos (`\riosearchstage`, `\riosearchtitle`, `\riosearchauthor`, `\riosearchdirector`,
+   `\riosearchyear`, `\makeriosearchcover`, `\riosearchbibliography`) para poder reusarla en los
+   dos documentos con título/autor/fecha de Río Uruguay. El escudo (`img/escudo_uba.png`) se copió
+   de `research/templates/Imagenes/` a `thesis/common/img/` — el archivo del usuario en
+   `research/templates/` no se tocó.
+   **Pendiente de confirmación del usuario** (§8 del plan): la institución/carrera de la portada
+   se copió tal cual asumiendo que es el mismo programa de esta tesis — si no lo es, ajustar
+   `\riosearchinstitution`/`\riosearchfaculty`/`\riosearchprogram` en `riosearch.cls`.
+2. **Dos documentos**, capítulos en archivos separados, `\input` desde `main.tex`:
+   `thesis/proyecto/` (`chapters/01_introduccion.tex` … `04_plan_de_trabajo.tex`) y `thesis/tesis/`
+   (`chapters/01_introduccion.tex` … `05_conclusiones.tex`) — contenido real y específico del
+   proyecto (dataset, `ana_74100000`, decisiones citadas por número, resultado preliminar del
+   BiLSTM), no relleno genérico; no es la tesis terminada, es el esqueleto que el criterio de
+   cierre pide (que compile, no que esté completo). El capítulo de Metodología de ambos documentos
+   cita explícitamente las Decisiones 018, 019, 021, 033, 039, 042, 043 y 046 (`docs/decisions.md`)
+   como justificación de cada elección de diseño, tal como pide §3.11 del plan.
+3. **Hallazgo real de compilación, no anticipado por el plan**: `latexmk -outdir=build` cambia el
+   directorio de trabajo a `build/` **solo** para invocar `bibtex` (no para `pdflatex`, que recibe
+   `-output-directory` sin cambiar de directorio) — así que una ruta relativa fija en
+   `\bibliography{...}` no puede servir a la vez para el chequeo previo de latexmk (que resuelve
+   la ruta relativa al directorio del `.tex` principal) y para la ejecución real de `bibtex` (que
+   la resuelve relativa a `build/`, un nivel más abajo). Se resolvió sacando la ruta de
+   `\bibliography{references}` (sin ruta) y agregando `thesis/common/` a la variable de entorno
+   `BIBINPUTS` en un `.latexmkrc` por documento (`thesis/proyecto/.latexmkrc`,
+   `thesis/tesis/.latexmkrc`, cada uno resuelve `../common` a ruta absoluta con `Cwd::abs_path`
+   antes de que `latexmk` cambie de directorio) — con eso, un nombre sin ruta lo encuentra
+   `kpathsea` sin importar el directorio de trabajo real en cada paso. Documentado en un comentario
+   extenso en `riosearch.cls` para que no se repita el diagnóstico si se agrega un tercer documento.
+4. **`rio-search thesis export --run <run_id> [--compare <run_id> ...]`** (CLI nuevo,
+   `interfaces/cli/main.py`, `thesis_app`): `application/thesis/export_thesis_artifacts.py`
+   (`ExportThesisArtifacts`) reusa el mismo `TrackingReadPort` cacheado en SQLite de la Fase 4 (sin
+   puerto nuevo) para leer `RunRecord.metrics` (`{split}/{metrica}/hNN`, el mismo formato jerárquico
+   que loguea `MetricSet.as_mlflow_metrics` desde la Fase 2) y delega el renderizado a
+   `infrastructure/thesis/latex_export.py`: tablas LaTeX (`booktabs`) y una figura `matplotlib`
+   (backend `Agg`, sin GUI) con NumPy/listas puras — **nunca `pandas`**, ni siquiera `polars` hace
+   falta porque los datos ya llegan como `dict[str, float]` desde MLflow, no como artefacto
+   parquet. Cada archivo generado (`thesis/tables/metrics_<id>.tex`,
+   `thesis/tables/compare_<id>.tex` si se pasa `--compare`,
+   `thesis/figures/metric_vs_horizon_<id>.{pdf,tex}`) lleva el/los `run_id` de origen en un
+   comentario `%` al inicio — el `.tex` de la figura es el que un capítulo hace `\input`; el `.pdf`
+   además lleva los `run_id` en sus metadatos (`Subject`). Un run sin métricas `{split}/<m>/hNN`
+   (p. ej. el run padre de una búsqueda) levanta `ThesisExportError` con un mensaje explícito en
+   vez de escribir una tabla vacía.
+5. **`matplotlib>=3.8` agregado a `pyproject.toml`** (única dependencia nueva de la fase): no
+   arrastra `pandas` (verificado — `test_no_pandas_in_env` sigue en verde tras `uv sync`), así que
+   no viola la Decisión #9.
+
+### Consecuencias
+
+* `rio_search/thesis/common/riosearch.cls` es la única fuente del formato de portada/bibliografía
+  para cualquier documento LaTeX futuro de la tesis — si el usuario aporta una versión corregida
+  del modelo o cambia de programa/carrera, el cambio se hace en un solo archivo.
+* Los archivos generados por `rio-search thesis export` (`thesis/figures/*.{pdf,tex}`,
+  `thesis/tables/*.tex`) se versionan en git como entregable de la tesis (§3.1 del plan los lista
+  en el árbol del repositorio); solo `thesis/**/build/` (la salida de compilar los documentos) está
+  gitignorado — un futuro `rio-search thesis export --run <otro_id>` no pisa los archivos de este
+  ejemplo porque el nombre incluye el prefijo del `run_id`.
+* El ejemplo real usado (`run_id=6e086068c9ef41a3afd8209518bf26a2`, BiLSTM `multi_output`, vs.
+  `run_id=f3738cdae71f4007b02ad98955b2e65e`, persistencia) confirma en TEST lo ya documentado en la
+  Decisión 043: la persistencia es difícil de superar en `t+1`, pero el BiLSTM iguala o supera su
+  KGE a partir de `t+2`.
+* Queda pendiente, no bloqueante: escribir el contenido completo de ambos documentos (hoy son
+  esqueletos reales pero parciales) y decidir, junto con el usuario, si la institución/carrera de
+  la portada extraída del modelo aplica igual a esta tesis.

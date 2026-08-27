@@ -58,6 +58,9 @@ app.add_typer(predict_app, name="predict")
 research_app = typer.Typer(help="Biblioteca de investigacion (Fase 7, §3.10, §4.2). Sin LLM (Decision #3).")
 app.add_typer(research_app, name="research")
 
+thesis_app = typer.Typer(help="Puente MLflow -> tesis LaTeX (Fase 8, §3.11, §4.2).")
+app.add_typer(thesis_app, name="thesis")
+
 
 @databricks_app.command("init-schema")
 def init_schema(
@@ -344,6 +347,31 @@ def research_export_bib() -> None:
     export_bibtex = build_export_bibtex()
     result = export_bibtex.execute(DEFAULT_REFERENCES_BIB_PATH)
     typer.echo(f"{result.output_path} ({result.entry_count} entradas): {', '.join(result.keys)}")
+
+
+@thesis_app.command("export")
+def thesis_export(
+    run: str = typer.Option(..., "--run", help="run_id de MLflow (trial u horizonte) a exportar."),
+    compare: list[str] = typer.Option(
+        [], "--compare", help="run_id(s) adicionales para comparar contra --run (repetible)."
+    ),
+    profile: str = typer.Option(DEFAULT_PROFILE, help="Perfil de la CLI de Databricks / MLflow."),
+) -> None:
+    """`ExportThesisArtifacts` (Fase 8, §3.11, §5): genera `thesis/tables/metrics_<id>.tex`
+    (metricas por horizonte en TEST del `--run`), `thesis/figures/metric_vs_horizon_<id>.{pdf,tex}`
+    (KGE vs. horizonte, `--run` + cada `--compare`) y, si se paso `--compare`, tambien
+    `thesis/tables/compare_<id>.tex`. Cada archivo lleva el/los `run_id` de origen en un
+    comentario LaTeX al inicio."""
+    from rio_search.interfaces.container import build_export_thesis_artifacts
+
+    export = build_export_thesis_artifacts(profile=profile)
+    result = export.execute(run_id=run, compare_run_ids=tuple(compare))
+
+    typer.echo(f"tabla: {result.table.path} (run_ids={result.table.run_ids})")
+    typer.echo(f"figura: {result.figure.pdf_path}")
+    typer.echo(f"  snippet: {result.figure.tex_path} (run_ids={result.figure.run_ids})")
+    if result.compare_table is not None:
+        typer.echo(f"tabla comparativa: {result.compare_table.path} (run_ids={result.compare_table.run_ids})")
 
 
 @api_app.command("serve")

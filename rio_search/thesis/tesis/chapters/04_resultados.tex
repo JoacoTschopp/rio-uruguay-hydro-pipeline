@@ -1,0 +1,41 @@
+% Capitulo 4: Resultados (Fase 8, docs/rio_search_plan.md S3.11): figura y tabla generadas por
+% `rio-search thesis export --run <id> --compare <id>` (application/thesis/export_thesis_artifacts.py)
+% a partir de runs reales de MLflow -- ver comentario `% run_id(s)=...` al inicio de cada archivo
+% .tex incluido para la trazabilidad exacta (Decisiones 043 y 046, docs/decisions.md).
+\chapter{Resultados}
+\label{chap:resultados}
+
+\section{Ejemplo real: BiLSTM vs. persistencia en TEST}
+
+Como ejemplo del puente entre MLflow y esta tesis (\S\ref{sec:evaluacion} y
+\texttt{docs/rio\_search\_plan.md} \S4.2), esta secci\'on incluye la figura y la tabla que produjo
+\texttt{rio-search thesis export} a partir de dos corridas reales del experimento
+\texttt{/rio\_search/bilstm} y \texttt{/rio\_search/baselines}: un \emph{trial} BiLSTM
+(\texttt{multi\_output}, \texttt{run\_id=6e086068c9ef41a3afd8209518bf26a2}) comparado contra el
+baseline de persistencia (\texttt{run\_id=f3738cdae71f4007b02ad98955b2e65e}), ambos evaluados sobre
+el mismo \emph{split} TEST del mismo \texttt{dataset\_delta\_version}.
+
+\input{../figures/metric_vs_horizon_6e086068c9ef.tex}
+
+La Figura~\ref{fig:metric_vs_horizon_6e086068c9ef} confirma en TEST lo documentado en la
+Decisi\'on 043: la persistencia es dif\'icil de superar en \texttt{t+1} (alta autocorrelaci\'on
+d\'ia a d\'ia del caudal fluvial), pero el KGE del BiLSTM iguala o supera al de la persistencia a
+partir de \texttt{t+2}, mientras que el KGE de la persistencia se degrada r\'apidamente con el
+horizonte.
+
+\input{../tables/metrics_6e086068c9ef.tex}
+
+\input{../tables/compare_6e086068c9ef.tex}
+
+\section{Trabajo pendiente}
+\label{sec:trabajo-futuro}
+
+Al momento de escribir este cap\'itulo, la b\'usqueda de hiperpar\'ametros del BiLSTM
+(\S\ref{chap:metodologia}) ya compar\'o ambas estrategias de horizonte (\texttt{multi\_output} vs.
+\texttt{per\_horizon}) y registr\'o un modelo campe\'on provisorio en Unity Catalog. Quedan
+pendientes, y no se reportan a\'un en este cap\'itulo: (i) la revisi\'on del usuario sobre el
+nombre, \emph{alias} y pol\'itica de versiones del modelo registrado (Decisi\'on 046); (ii) el
+experimento \emph{con vs. sin pron\'ostico} una vez que el grupo de \emph{features}
+\texttt{forecast} llegue a la capa Gold; y (iii) la promoci\'on a Gold de las transformaciones
+experimentales que demuestren aportar valor (p. ej. el recorte del agregado de caudal en la
+frontera alta, o la normalizaci\'on de la lluvia acumulada por cantidad de estaciones).

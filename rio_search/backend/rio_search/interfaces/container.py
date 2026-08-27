@@ -46,6 +46,10 @@ DEFAULT_RESEARCH_CATALOG_DIR = RIO_SEARCH_DIR / "research" / "catalog"
 DEFAULT_RESEARCH_NOTES_DIR = RIO_SEARCH_DIR / "research" / "notes"
 DEFAULT_RESEARCH_DOCUMENTS_DIR = RIO_SEARCH_DIR / "research" / "documents"
 DEFAULT_REFERENCES_BIB_PATH = RIO_SEARCH_DIR / "thesis" / "common" / "references.bib"
+# Fase 8 (Tesis LaTeX, §3.11): `rio-search thesis export` escribe aca, igual que
+# `references.bib` de arriba -- son entregables versionados de la tesis, no cache descartable.
+DEFAULT_THESIS_FIGURES_DIR = RIO_SEARCH_DIR / "thesis" / "figures"
+DEFAULT_THESIS_TABLES_DIR = RIO_SEARCH_DIR / "thesis" / "tables"
 
 
 @dataclass
@@ -420,6 +424,24 @@ def build_export_bibtex(store=None, exporter=None):
 
     return ExportBibtex(
         store=store or build_document_store(), exporter=exporter or build_bibliography_exporter()
+    )
+
+
+def build_export_thesis_artifacts(
+    profile: str = DEFAULT_PROFILE,
+    read_cache_path: Path = DEFAULT_READ_CACHE_PATH,
+    figures_dir: Path = DEFAULT_THESIS_FIGURES_DIR,
+    tables_dir: Path = DEFAULT_THESIS_TABLES_DIR,
+):
+    """`ExportThesisArtifacts` (Fase 8, §3.11, §4.2: `rio-search thesis export`). Reusa el mismo
+    `TrackingReadPort` cacheado en SQLite de la Fase 4 (`build_tracking_reader`) -- no hace
+    falta un puerto nuevo, solo lee runs ya logueados."""
+    from rio_search.application.thesis.export_thesis_artifacts import ExportThesisArtifacts
+
+    return ExportThesisArtifacts(
+        reader=build_tracking_reader(profile=profile, cache_path=read_cache_path),
+        figures_dir=figures_dir,
+        tables_dir=tables_dir,
     )
 
 

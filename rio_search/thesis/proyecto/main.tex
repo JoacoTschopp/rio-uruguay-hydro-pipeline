@@ -1,0 +1,50 @@
+% thesis/proyecto/main.tex -- Documento "Proyecto de Tesis" de Rio_Search
+% (Fase 8, docs/rio_search_plan.md S3.11).
+%
+% Compilar (PowerShell nativo -- Decision 049, docs/decisions.md: Git Bash/MSYS reescribe
+% BIBINPUTS y bibtex.exe no resuelve las citas):
+%   cd rio_search/thesis/proyecto
+%   latexmk -pdf -outdir=build main.tex
+%
+% Salida en build/ (gitignored, rio_search/.gitignore -- "thesis/**/build/").
+\documentclass{../common/riosearch}
+
+\riosearchstage{Proyecto de Tesis}
+\riosearchtitle{Proyecci\'on del caudal del R\'io Uruguay en la cuenca alta\\[0.3cm]
+  \large mediante aprendizaje autom\'atico}
+\riosearchauthor{Joaqu\'in Sebasti\'an Tschopp}
+\riosearchyear{2026}
+
+\begin{document}
+
+\makeriosearchcover
+
+\tableofcontents
+\newpage
+
+\section*{Resumen}
+
+Este proyecto de tesis propone \emph{Rio\_Search}: un banco de pruebas reproducible para
+determinar qu\'e metodolog\'ia proyecta mejor el caudal del r\'io Uruguay en su cuenca alta
+(\texttt{ana\_74100000}) a horizontes de 1 a 7 y 14 d\'ias, con trazabilidad completa (dataset,
+configuraci\'on, c\'odigo, m\'etricas y tiempos) en MLflow. Se compararan modelos \emph{naive}
+contra un modelo BiLSTM bajo dos estrategias de horizonte, seleccionando el modelo campe\'on por
+KGE sobre validaci\'on. Al momento de escribir este proyecto, la implementaci\'on ya cubre las
+primeras ocho fases del plan (\S\ref{sec:plan-trabajo}) y el primer resultado preliminar --
+detallado en el documento de tesis -- indica que el BiLSTM supera a la persistencia en 7 de los 8
+horizontes evaluados.
+
+\textbf{Palabras clave:} hidrolog\'ia computacional, LSTM, r\'io Uruguay, series temporales,
+aprendizaje autom\'atico, MLflow.
+
+\newpage
+
+\input{chapters/01_introduccion}
+\input{chapters/02_antecedentes}
+\input{chapters/03_metodologia}
+\input{chapters/04_plan_de_trabajo}
+
+\cleardoublepage
+\riosearchbibliography
+
+\end{document}

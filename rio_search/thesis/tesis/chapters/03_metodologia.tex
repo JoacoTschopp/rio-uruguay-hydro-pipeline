@@ -1,0 +1,101 @@
+% Capitulo 3: Metodologia (Fase 8, docs/rio_search_plan.md S3.11: "el capitulo de metodologia
+% se escribe desde decisions.md, citando las Decisiones relevantes").
+\chapter{Metodolog\'ia}
+\label{chap:metodologia}
+
+Este cap\'itulo describe el dise\~no de \emph{Rio\_Search} y, para cada decisi\'on de dise\~no,
+cita la Decisi\'on t\'ecnica de \texttt{docs/decisions.md} que la respalda -- todo n\'umero o
+figura de esta tesis puede rastrearse hasta un \texttt{run\_id} de MLflow, y todo criterio de
+dise\~no hasta una Decisi\'on documentada.
+
+\section{Alcance y consolidaci\'on del dataset}
+
+El dataset de entrenamiento cubre \'unicamente la sub-cuenca \texttt{alta\_frontera}, con el
+target fijado en \texttt{ana\_74100000} -- la Decisi\'on 018 cierra deliberadamente el segundo
+punto de predicci\'on aguas abajo (asociado a Salto Grande) por falta de una fuente de datos
+propia, sin recortar la ingesta de las otras sub-cuencas. Las reglas que deciden qu\'e observaci\'on
+llega a la tabla Gold -- c\'omo tratar estaciones sin curva de aforo vigente, c\'omo extrapolar
+crecidas fuera del rango calibrado, y la ampliaci\'on de 4 a 8 horizontes de predicci\'on
+(\texttt{t+1} a \texttt{t+7} y \texttt{t+14}) -- se fijan en la Decisi\'on 019. La incorporaci\'on
+de las grillas MERGE (precipitaci\'on) y SAMeT (temperatura) de CPTEC/INPE, con cobertura del
+100\,\% en todo el per\'iodo 2000--2026 (a diferencia de las estaciones meteorol\'ogicas
+terrestres, con 0\,\% de cobertura entre 2000 y 2005), se documenta en la Decisi\'on 033 y es el
+grupo de \emph{features} m\'as limpio del cat\'alogo. El pron\'ostico ECMWF/GEFS empalmado desde
+2000 (Decisi\'on 021) a\'un no llega a la capa Gold al momento de escribir este cap\'itulo; su
+incorporaci\'on como grupo de \emph{features} \texttt{forecast} es, por dise\~no, un experimento
+\emph{con vs. sin pron\'ostico} pendiente (\S\ref{sec:trabajo-futuro}).
+
+\section{Protocolo de frescura y trazabilidad del dataset}
+
+Cada b\'usqueda descarga el dataset vigente antes de entrenar nada: verifica la versi\'on Delta de
+\texttt{weather.gold.training\_dataset\_v0}, regenera el \emph{snapshot} del Volume si qued\'o
+atr\'as de Gold, y valida el \texttt{sha256} del parquet descargado contra el manifiesto. Esa
+versi\'on (\texttt{delta\_version} + \texttt{sha256}) queda fijada como tag de MLflow en el run
+padre de la b\'usqueda y es compartida por todos sus \emph{trials}, de modo que ning\'un
+experimento compara metodolog\'ias sobre versiones distintas del dato sin saberlo.
+
+\section{Modelos y estrategias de horizonte}
+
+\emph{Rio\_Search} compara modelos \emph{naive} (persistencia, climatolog\'ia, estacionalidad
+naive) -- la vara de comparaci\'on obligatoria de todo modelo m\'as complejo -- contra un modelo
+BiLSTM (PyTorch, con detecci\'on autom\'atica de \emph{device}: CUDA, luego Apple MPS, luego CPU).
+Cada modelo se eval\'ua bajo dos estrategias de horizonte configurables: \texttt{multi\_output} (un
+\'unico modelo con ocho salidas) y \texttt{per\_horizon} (ocho modelos, uno por horizonte). Un
+hallazgo real de la b\'usqueda de hiperpar\'ametros del BiLSTM -- targets con valores faltantes
+reales (huecos de calendario en la cola de la serie) sin enmascarar divergiendo el entrenamiento a
+\texttt{NaN} desde el primer \emph{epoch} -- se corrigi\'o enmascarando esos targets, y qued\'o
+documentado en la Decisi\'on 043 junto con el resultado agregado de esa b\'usqueda: el BiLSTM
+supera a la persistencia (\emph{skill} $>0$) en 7 de los 8 horizontes evaluados en TEST, con
+\texttt{t+1} como excepci\'on documentada -- consistente con la alta autocorrelaci\'on d\'ia a
+d\'ia del caudal fluvial, donde la persistencia es dif\'icil de superar a un paso.
+
+Dos limitaciones de \texttt{mlflow-skinny} (el cliente de \emph{tracking} sin \texttt{pandas},
+Decisi\'on de dise\~no \#9 del plan) aparecieron al registrar el modelo en Unity Catalog: el
+\emph{flavor} \texttt{mlflow.pytorch.log\_model} importa \texttt{pandas} incondicionalmente
+(Decisi\'on 039, resuelto logueando el modelo como artefacto plano -- \texttt{state\_dict} +
+JSON, en vez del \emph{flavor} de alto nivel) y la validaci\'on de \texttt{signature} que exige el
+registro en Unity Catalog hace lo mismo (Decisi\'on 042, resuelto con un \texttt{MLmodel} m\'inimo
+y un \emph{stub} temporal). Ninguna de las dos rompe la regla de no usar \texttt{pandas} en
+\texttt{rio\_search/backend} (verificada por un test de entorno que falla si \texttt{pandas} se
+puede importar).
+
+\section{Selecci\'on temporal (\emph{splits})}
+
+Cada b\'usqueda define un \emph{split} \texttt{rolling\_365} (test = los \'ultimos 365 d\'ias con
+target observable) o \texttt{calendar\_year}, con un \emph{embargo} de 14 d\'ias entre splits para
+que ning\'un target de validaci\'on caiga dentro de la ventana de entrada de TEST. El escalador
+(est\'andar, robusto o \emph{min-max}) se ajusta \'unicamente con el conjunto de entrenamiento.
+Esta regla -- y su verificaci\'on autom\'atica contra un dataset sint\'etico -- es la que protege
+al proyecto de la fuga temporal, el riesgo m\'as citado en la literatura de predicci\'on
+hidrol\'ogica con aprendizaje autom\'atico.
+
+\section{Evaluaci\'on y selecci\'on del modelo campe\'on}
+\label{sec:evaluacion}
+
+Las m\'etricas se calculan por horizonte y por \emph{split} sobre los targets efectivamente
+observados (reportando la cobertura): RMSE, MAE, MAPE, NSE, KGE, PBIAS, R$^2$, error en picos y
+\emph{skill score} contra persistencia. El modelo campe\'on se selecciona por
+\texttt{val/kge/mean} -- nunca por TEST, que se reporta una \'unica vez, tal como exige la buena
+pr\'actica de evaluaci\'on fuera de muestra. El campe\'on provisorio de caudal, fijado en la
+versi\'on 9 de \texttt{weather.ml.rio\_search\_bilstm} (Decisi\'on 046), qued\'o expl\'icitamente
+pendiente de revisi\'on por el autor antes de la entrega final de esta tesis.
+
+\section{Trazabilidad: tiempos, procedencia y reproducibilidad}
+
+Cada corrida registra en MLflow, adem\'as de sus m\'etricas, el tiempo de cada etapa (descarga del
+dataset, preprocesamiento, entrenamiento total y por \emph{epoch}, evaluaci\'on, inferencia) junto
+con el hardware que lo produjo -- es un resultado de la tesis (el costo computacional de cada
+metodolog\'ia), no telemetr\'ia descartable. Cada corrida tambi\'en registra el \texttt{git\_sha}
+del c\'odigo que la produjo, la rama, el \emph{diff} no confirmado si el \'arbol estaba sucio, y
+un enlace a GitHub -- de modo que cualquier n\'umero de esta tesis se puede rastrear no solo al
+dataset y a la configuraci\'on exactos, sino tambi\'en al c\'odigo exacto que lo calcul\'o.
+
+\section{El puente entre MLflow y esta tesis}
+
+Las figuras y tablas de m\'etricas de esta tesis (Cap\'itulo~\ref{chap:resultados}) no se escriben
+a mano: se generan con \texttt{rio-search thesis export --run \textless run\_id\textgreater{}
+[--compare \textless run\_id\textgreater{} ...]}, que lee las m\'etricas ya logueadas del run
+pedido a trav\'es del mismo puerto de lectura de MLflow que usa la interfaz web de
+\emph{Rio\_Search} (\texttt{TrackingReadPort}), y escribe \texttt{thesis/figures/*.pdf} y
+\texttt{thesis/tables/*.tex} con el \texttt{run\_id} de origen documentado en un comentario LaTeX
+al inicio de cada archivo generado.

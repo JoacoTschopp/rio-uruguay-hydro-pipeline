@@ -1,0 +1,36 @@
+% Capitulo 4: Plan de trabajo y cronograma (Proyecto de Tesis -- Fase 8, docs/rio_search_plan.md S3.11)
+\chapter{Plan de trabajo}
+\label{sec:plan-trabajo}
+
+El plan de implementaci\'on completo -- fases, criterios de cierre y estado real de avance -- vive
+en \texttt{docs/rio\_search\_plan.md} (\S5, "Fases") y se actualiza a medida que cada fase cierra
+con su propio test y su propio \emph{commit}; se resume aqu\'i el estado al momento de escribir
+este proyecto.
+
+\begin{table}[H]
+\centering
+\caption{Fases de \emph{Rio\_Search} y su estado (\texttt{docs/rio\_search\_plan.md}, \S ``Estado
+de implementaci\'on'').}
+\begin{tabular}{clp{7.5cm}}
+\toprule
+Fase & Nombre & Entregable \\
+\midrule
+0 & Cimientos & Backend/frontend inicializados, snapshot del dataset, run \texttt{smoke} en MLflow. \\
+1 & Contexto Datasets & Cat\'alogo de \emph{features}, transforms, \emph{splits} temporales sin fuga. \\
+2 & Evaluaci\'on y baselines & M\'etricas hidrol\'ogicas, \emph{tracking} MLflow, baselines \emph{naive}. \\
+3 & BiLSTM & Modelo BiLSTM, b\'usqueda de hiperpar\'ametros, registro en Unity Catalog. \\
+4 & Backend API & FastAPI de lectura sobre MLflow, cola de \emph{jobs}. \\
+5 & UI React & Interfaz web: b\'usquedas, comparar, lanzar, \emph{datasets}. \\
+6 & Inferencia diaria & Pron\'ostico operativo del modelo campe\'on, tarea programada. \\
+7 & Research & Biblioteca de documentos, notas, exportaci\'on a BibTeX. \\
+8 & Tesis LaTeX & Este documento y el documento de tesis (\texttt{thesis/tesis/}). \\
+9 & Extensibilidad & Segundo modelo, promoci\'on de \emph{features} experimentales a Gold. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Al cierre de este cap\'itulo, las Fases 0 a 7 est\'an cerradas (test en verde + \emph{commit} +
+verificaci\'on real contra Databricks/MLflow, seg\'un el criterio de cada fase); este mismo
+documento y su contraparte \texttt{thesis/tesis/} son el entregable de la Fase 8. Quedan como
+trabajo restante: la revisi\'on del usuario sobre el modelo campe\'on registrado (Decisi\'on 046) y
+la Fase 9 (segundo modelo y promoci\'on de \emph{features} experimentales a Gold).
