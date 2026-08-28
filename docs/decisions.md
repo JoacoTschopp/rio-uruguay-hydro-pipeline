@@ -2447,10 +2447,51 @@ su propia telemetría y aun así siguió publicando el promedio de dos puntos. E
 `ana_rio_uruguai` da una media diaria **mejor que el producto oficial de ANA**, no sólo mejor que lo que
 teníamos antes.
 
+### Enmienda (2026-08-28, mismo día): el caudal también se recalculó
+
+La primera versión de esta decisión sólo re-corrió `ETL_Silver_Level_Daily` y Gold. Eso dejó el dataset
+**internamente inconsistente**: `river_levels_daily` pasó a la media de ~96 lecturas, pero
+`river_discharge_daily` —que también lee `ana_rio_uruguai` y también agrega con `F.avg('nivel_cm')`, pero
+no se había re-materializado desde antes de que la telemetría estuviera ingerida— seguía con la media de
+2 puntos. En la misma fila de Gold convivían `nivel = 455,36` y un `caudal` derivado de `356,0`:
+**2.233 días** afectados, diferencia media 12,4 cm, máxima 188,7 cm.
+
+Consultado el usuario con las tres alternativas (media de 96 / media de 2 puntos homogénea / media de 96
+con columna de régimen), **eligió la media de las ~96 lecturas**. Se re-corrió
+`ETL_Silver_River_Discharge_Daily` en `full` (run `530939817374483`, SUCCESS) y Gold otra vez
+(run `733725773347273`, SUCCESS). Verificado: **0 días inconsistentes** entre las dos tablas de Silver
+sobre 2.754 comparables, y **0 divergentes** en Gold.
+
+**Magnitud real del cambio en el target**, midiendo Gold antes y después:
+
+| Tramo | Días | Cambiaron | \|cambio\| mediano | p90 | máx |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2000-2018 (sin telemetría) | 6.947 | **0 (0%)** | — | — | — |
+| 2019-2026 (con telemetría) | 2.749 | **2.358 (85,8%)** | 77,3 m³/s | 354 m³/s | 3.361 m³/s |
+
+El cambio relativo mediano es **6,3%** en el tramo afectado. El tramo 2000-2018 quedó intacto, como
+correspondía: ahí no hay telemetría y la media de 1 lectura es la única disponible.
+
+### Por qué la media de ANA no sirve como referencia
+
+Medido sobre **2.059 días** con telemetría prácticamente completa (2019-01-11 → 2026-03-31): la media
+diaria que publica ANA coincide con la media real de las ~96 lecturas en apenas el **2,4% de los días**.
+Sesgo **−9,18 cm**, |error| mediano 10,82 cm, p90 32,4 cm, máximo 128,9 cm. Y el error **no es
+aleatorio: crece con el evento** —2,7 cm de error mediano en días tranquilos (sd < 10 cm) contra
+19,9 cm en días movidos (sd 40-80 cm)—, que es exactamente el peor perfil posible para un dataset cuyo
+objetivo es anticipar crecidas.
+
 ### Consecuencias
 
 * Se cierra el hallazgo #1 de la Decisión 036; `docs/gold_quality_report.md` §3 queda desactualizado en
   ese punto (dice 93 días divergentes; hoy son 0).
+* **Queda un quiebre de definición declarado en 2019-01-09**: antes de esa fecha el nivel diario es la
+  media que publica ANA (1 valor, que a su vez es `(07:00+17:00)/2` desde 1995); después es la media de
+  ~96 lecturas reales. Es una mejora de calidad, pero es un cambio de definición y hay que tratarlo como
+  tal en el modelado. La tarea pendiente de exponer `nivel_lecturas_dia` en Gold pasa de "conveniente" a
+  **recomendada** por este motivo.
+* Cualquier modelo o backtest entrenado contra el Gold anterior al 2026-08-28 usó valores de caudal
+  distintos para 2019-2026 y hay que re-entrenarlo/re-evaluarlo.
 * `weather.bronze.nivel_ana` queda **sin ningún consumidor**. No se borra en esta decisión, pero la
   tarea `Daily_Nivel_ANA` del job `Nivel_ANA_Target` está alimentando una tabla que ya nadie lee —
   candidata a retirar una vez confirmado que nada más depende de ella.
