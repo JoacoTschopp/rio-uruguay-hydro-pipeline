@@ -1,0 +1,81 @@
+# configs/experiments/ridge_baseline_v1.yaml (Fase 9, docs/rio_search_plan.md §3.3, §4.1, §5)
+# Segundo modelo enchufable (no-DL): Ridge con "lags" (infrastructure/models/sklearn/ridge.py).
+# Mismos features/split/train_window que bilstm_baseline_v1.yaml (Fase 3) a proposito: mismo
+# dataset, misma ventana, para que la comparacion en la UI (Buscar/Comparar) sea "manzanas con
+# manzanas" entre bilstm y ridge, no solo entre ridge y los naive.
+name: ridge_baseline_v1
+description: >
+  Baseline Ridge (L2) con lags, caudal, multi-output: aplana la ventana (lookback_days,
+  n_features) a un vector por fila y ajusta un sklearn.linear_model.Ridge por horizonte.
+  Segundo modelo de la Fase 9 (Extensibilidad, §5): agregado solo con un adaptador nuevo
+  (infrastructure/models/sklearn/ridge.py) + este YAML, sin tocar domain/ ni application/.
+
+dataset:
+  source: gold_training_dataset_v0
+  refresh: ensure_latest     # ensure_latest | volume_as_is | offline (Decision #10, §3.6)
+  version: latest
+  target: caudal             # caudal | nivel
+  horizons: [1, 2, 3, 4, 5, 6, 7, 14]
+
+provenance:
+  require_clean_git: false   # true para corridas que van a la tesis (Decision #11, §3.13)
+
+split:
+  policy: rolling_365        # rolling_365 | calendar_year
+  embargo_days: 14
+  train_window:
+    start: 2008-01-01        # mismo train_window que bilstm_baseline_v1.yaml
+
+features:
+  groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
+  # Mismas columnas excluidas que bilstm_baseline_v1.yaml (Decision 043): banderas casi
+  # constantes en TRAIN, no aportan a un modelo lineal y mantienen el feature set identico
+  # entre bilstm y ridge para la comparacion.
+  exclude: [caudal_registros_validos, nivel_registros_validos]
+  # Mismos transforms que bilstm_baseline_v1.yaml (Decision 041/043): ya validados end-to-end
+  # contra el dataset real (BuildFeatureMatrix resuelve la lista explicita, no un glob).
+  experimental_transforms:
+    - {name: clip, columns: [caudal_agregado_alta_frontera_m3s], max: 50000, version: 1}
+    - name: log1p
+      version: 1
+      columns:
+        - caudal_actual_m3s
+        - caudal_lag_1d
+        - caudal_lag_3d
+        - caudal_lag_7d
+        - caudal_media_3d
+        - caudal_media_7d
+        - caudal_agregado_alta_frontera_m3s
+        - caudal_agregado_alta_frontera_lag_1d
+        - caudal_agregado_alta_frontera_lag_2d
+        - caudal_agregado_alta_frontera_lag_3d
+    - {name: doy_cyclic, version: 1}
+  imputation: {method: ffill_median, max_ffill_days: 3}
+  scaling: standard
+
+sequence:
+  lookback_days: 60          # mismo lookback que bilstm_baseline_v1.yaml -- misma nocion de "lags"
+
+model:
+  name: ridge
+  horizon_strategy: multi_output   # multi_output | per_horizon (Ridge soporta ambos, §3.3)
+  params: {alpha: 1.0}
+
+training:
+  # Ridge se resuelve en forma cerrada (RidgeAdapter.fit(), sin bucle de epochs): estos campos
+  # existen solo porque TrainingSpec/ExperimentConfig los requiere para todo modelo (mismo VO
+  # que bilstm, §4.1); RidgeAdapter los ignora salvo `device` (resuelto por RunSearch, no por el
+  # adaptador -- Ridge corre en CPU via numpy/sklearn siempre).
+  max_epochs: 1
+  batch_size: 64
+  optimizer: {name: adam, lr: 0.001, weight_decay: 0.0}
+  loss: mse
+  early_stopping: {monitor: val/loss, patience: 1}
+  grad_clip: 0.0
+  seed: 42
+  device: auto
+
+tracking:
+  experiment: /Users/joaquintschopp@gmail.com/rio_search/ridge
+  tags: {thesis_chapter: extensibilidad, baseline: ridge}
+  register_model: false      # sin registrar en weather.ml (Fase 9 no toca el registro/campeon)

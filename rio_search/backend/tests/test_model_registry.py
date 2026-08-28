@@ -53,3 +53,12 @@ def test_naive_adapters_are_registered_after_importing_infrastructure_models() -
 
     registry = ModelRegistry()
     assert {"persistence", "climatology", "seasonal_naive"}.issubset(set(registry.names()))
+
+
+def test_ridge_adapter_is_registered_after_importing_infrastructure_models() -> None:
+    """Fase 9 (docs/rio_search_plan.md §3.3, §5): segundo modelo enchufable agregado solo con
+    `infrastructure/models/sklearn/ridge.py` + su import en `infrastructure/models/__init__.py`."""
+    import rio_search.infrastructure.models  # noqa: F401 - efecto secundario
+
+    registry = ModelRegistry()
+    assert "ridge" in registry.names()

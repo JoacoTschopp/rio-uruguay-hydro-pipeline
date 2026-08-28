@@ -3188,3 +3188,116 @@ documentos nuevos (`proyecto/`, `tesis/`) de la tesis de Río Uruguay, más un p
 * Queda pendiente, no bloqueante: escribir el contenido completo de ambos documentos (hoy son
   esqueletos reales pero parciales) y decidir, junto con el usuario, si la institución/carrera de
   la portada extraída del modelo aplica igual a esta tesis.
+
+## Decisión 051: Cierre de la Fase 9 (Extensibilidad y promoción a Gold) — segundo modelo
+(`ridge`) agregado sin tocar `domain/`/`application/`, verificado en UI real; propuesta de
+promoción a Gold de `caudal_agregado_alta_frontera_m3s` documentada y explícitamente **no
+aplicada**
+
+### Estado
+
+`Aceptada` (2026-08-27). Verificada de punta a punta contra Databricks/MLflow/UI real, con la
+restricción explícita de esta fase: **no se tocó `ETL_Gold_Training_Dataset_v0.ipynb`** (sólo se
+leyó, para citarlo con precisión en la propuesta de promoción); esa parte de la fase se resuelve
+sólo documentando la propuesta, no aplicándola.
+
+### Contexto
+
+El plan (§3.3, §3.6, §5, Fase 9) pide dos cosas: (1) probar en la práctica que "agregar un modelo
+= un archivo nuevo + un YAML de experimento" (criterio de cierre: "el modelo nuevo entra sin tocar
+`domain/` ni `application/`"), con un segundo modelo real, corrido contra Databricks/MLflow y
+visible en la UI junto a `persistence`/`climatology`/`seasonal_naive`/`bilstm`; y (2) evaluar 1-2
+transforms experimentales que hayan demostrado valor para promoción a `ETL_Gold_Training_Dataset_v0.ipynb`
+— en esta pasada, restringido por decisión explícita del usuario a **sólo documentar** la propuesta
+(notebook + cambio en PySpark + Decisión), sin ejecutarla.
+
+### Decisión
+
+1. **Segundo modelo: `ridge` (`sklearn.linear_model.Ridge` con lags)**, primer adaptador
+   `ModelFamily.SKLEARN` (el enum ya lo definía desde la Fase 2; hasta ahora sólo había `NAIVE`/
+   `TORCH`). Agregado con exactamente dos archivos nuevos —
+   `rio_search/backend/rio_search/infrastructure/models/sklearn/ridge.py` (adaptador) y
+   `rio_search/backend/configs/experiments/ridge_baseline_v1.yaml` (config, mismo
+   dataset/split/features/lookback que `bilstm_baseline_v1.yaml` a propósito, para comparación
+   "manzanas con manzanas") — más una línea de import en
+   `rio_search/backend/rio_search/infrastructure/models/__init__.py`. Verificado con
+   `git diff --stat -- rio_search/backend/rio_search/domain rio_search/backend/rio_search/application`:
+   **sin salida**, ninguna de las dos capas cambió. Detalle del "cómo" (pasos reales, no
+   abstractos) en `rio_search/docs/como_agregar_un_modelo.md`.
+   * Multi-output real (un `Ridge` por columna de horizonte, no `MultiOutputRegressor`): necesario
+     porque `Targets.y` trae `NaN` reales (huecos de calendario, §2.1, mismo problema que la
+     Decisión 043 para BiLSTM) y `Ridge.fit()` no acepta NaN en absoluto — se enmascara por fila,
+     por columna, antes de cada `.fit()`.
+     `FitResult` se reporta con `epochs=1` (no `epochs=0` como los naive): Ridge sí ajusta
+     parámetros reales, aunque en forma cerrada (sin iterar) — un único punto de `train/loss`+
+     `val/loss` con contenido real en vez de vacío.
+   * Serialización sin flavor de MLflow (mismo criterio pragmático que la Decisión 039 para
+     BiLSTM): `pickle.dump(list[Ridge])` + `architecture.json`, nunca `mlflow.sklearn.log_model` —
+     `sklearn`/`pickle` operan sobre `numpy.ndarray` puro en este adaptador (nunca un
+     `DataFrame`), no viola la Decisión #9 (`test_no_pandas_in_env` sigue en verde).
+2. **Corrida real contra Databricks/MLflow**: `rio-search search run
+   configs/experiments/ridge_baseline_v1.yaml` — `search__ridge_baseline_v1__20260828-0001` en
+   `/Users/joaquintschopp@gmail.com/rio_search/ridge`, 1 trial
+   (`ridge__caudal__multi_output__rolling_365__20260828-0002`), métricas completas por horizonte y
+   split, `test/skill_vs_persistence/h01=-0.085` (mismo patrón que BiLSTM: skill negativo en h01,
+   consistente con la Decisión 043). `register_model: false` a propósito — esta fase no registra
+   en `weather.ml` ni toca el campeón provisorio (Decisión 046).
+3. **Hallazgo real, no anticipado por el plan**:
+   `application/experiments/list_runs.py::DEFAULT_EXPERIMENT_FAMILIES` es una lista fija
+   (`baselines`, `bilstm`, `smoke`, `daily_forecast`) que `GET /api/searches`/`GET /api/runs` usan
+   sólo cuando no se pasa `families=` explícito — vive en `application/`, así que agregar
+   `"ridge"` ahí habría violado el criterio de cierre de esta fase. No hizo falta: la página
+   Búsquedas ya tenía un filtro de familias por texto libre desde la Fase 5
+   (`frontend/src/pages/SearchesPage.tsx`); se agregó `"ridge"` a `KNOWN_FAMILY_HINTS` (un array
+   de sugerencias del `<datalist>`, cosmético) — único cambio fuera de `backend/` de esta fase, y
+   no en `domain/`/`application/`. Verificado con navegador headless real contra el backend real:
+   filtrando por `baselines,bilstm,ridge` en `http://127.0.0.1:8010/`, la búsqueda de `ridge`
+   aparece en la lista junto a `persistence`/`climatology`/`seasonal_naive`/`bilstm` (con su tag
+   `rio_search.model=ridge`, tiempos y estado) y su página de detalle
+   (`/runs/fb7dd1cff51f4643b964f56af1d29f1c`) muestra config/tags/procedencia/hardware completos —
+   0 errores de consola, 0 requests fallidos.
+4. **Propuesta de promoción a Gold, documentada y NO aplicada**
+   (`rio_search/docs/propuesta_promocion_gold_caudal_agregado_alta_frontera.md`): se analizó
+   `caudal_agregado_alta_frontera_m3s` (§2.1 del plan) con el snapshot real de Rio_Search
+   (`data/gold_snapshot/training_dataset_v0.parquet`, delta 268) y con una consulta SQL read-only
+   contra `weather.silver.river_discharge_daily`/`estacion_subcuenca` (vía el mismo
+   `DatabricksStatementExecutor` que usa `GoldSnapshotSync`, **sin tocar ningún notebook**):
+   * El outlier de 823.897 m³/s del plan no es un único día: son **218 filas** contaminadas en 4
+     episodios (2023-01-17→08-01, 197 días; más 3 episodios cortos en 2024/2025), y **el 100 % de
+     esas 218 filas tiene `caudal_confiable=false`** en Silver, en 4 estaciones distintas — la
+     dominante (`73340000`, el episodio de 2023) con `caudal_metodo='extrapolado_superior'` (curva
+     fuera de rango calibrado) en todas sus filas.
+   * La serie sin esas 218 filas nunca supera **48.617 m³/s** en todo 2000-2026 — confirma que el
+     techo `max: 50000` que ya usa el transform experimental `clip` de
+     `bilstm_baseline_v1.yaml`/`ridge_baseline_v1.yaml` (elegido en la Fase 3, no revisado hasta
+     ahora) no recorta ningún valor legítimo observado.
+   * Se evaluó también la alternativa "filtrar por `caudal_confiable`" que sugería el plan (§2.1)
+     y se descartó **para esta promoción** (queda documentada como alternativa futura, no
+     descartada): cambia el valor de la columna en una fracción sustancial de **todo** el
+     histórico (confirmado con consulta real: incluso días sin ningún episodio extremo tienen
+     `confiable_pct` ≈ 0,83-0,86, con `caudal_confiable=false` disperso y frecuente en estaciones
+     que hoy contribuyen con valores no extremos), no sólo en los 218 días contaminados — alcance
+     mayor al pedido ("candidato más simple y seguro") para esta pasada.
+   * **Recomendación**: promover un `clip`/`winsor` (`F.least(col, F.lit(50000))`) sobre
+     `caudal_agregado_alta_frontera_m3s` en `notebooks/05_Gold/ETL_Gold_Training_Dataset_v0.ipynb`
+     (celda de código índice 3 — 4ª celda del notebook —, inmediatamente después del loop que arma
+     `subcuenca_wide`, líneas ~139-148 de esa celda). El documento incluye el snippet PySpark
+     exacto, por qué el `F.sum` actual (líneas 129-137 de la misma celda, bloque
+     `subcuenca_daily`) no filtra por `caudal_confiable` hoy, y los pasos que el usuario debe
+     seguir para aplicarlo (editar el notebook, correr `load_mode=full` para regenerar todo el
+     histórico, refrescar el snapshot local, quitar el transform `clip` ya innecesario de los YAML
+     — creando `_v2`, no editando los ya corridos — y re-evaluar el campeón provisorio, Decisión
+     046, antes de reemplazarlo).
+
+### Consecuencias
+
+* `ridge` queda disponible para cualquier búsqueda futura (`configs/experiments/ridge_baseline_v1.yaml`
+  como plantilla) sin más cambios de código — mismo patrón que BiLSTM para el próximo modelo.
+* La promoción a Gold de `caudal_agregado_alta_frontera_m3s` sigue **pendiente de que el usuario la
+  aplique**: ningún notebook de Databricks se tocó en esta fase; `weather.gold.training_dataset_v0`
+  sigue con el outlier sin corregir hasta que el usuario ejecute los pasos de
+  `rio_search/docs/propuesta_promocion_gold_caudal_agregado_alta_frontera.md`.
+* El filtro por `caudal_confiable` (alcance mayor) queda como hallazgo documentado para una
+  Decisión futura separada, con su propia re-evaluación de los baselines ya registrados.
+* 377 tests offline en verde (367 previos + 10 de `ridge`), 2 `integration` deseleccionados sin
+  cambios; `ruff check` limpio; `npm run build` (`tsc -b` + Vite) limpio.

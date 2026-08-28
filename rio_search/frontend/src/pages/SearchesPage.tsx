@@ -10,7 +10,12 @@ import styles from './SearchesPage.module.css'
 
 type SortKey = 'recent' | 'kge' | 'time' | 'name'
 
-const KNOWN_FAMILY_HINTS = ['baselines', 'bilstm', 'smoke']
+// Fase 9 (docs/rio_search_plan.md §5): "ridge" es la familia de tracking de un modelo agregado
+// solo con un adaptador nuevo (infrastructure/models/sklearn/ridge.py) + un YAML -- no requiere
+// tocar `application/experiments/list_runs.py::DEFAULT_EXPERIMENT_FAMILIES` (eso viviria en
+// application/, fuera de alcance de la Fase 9): el filtro de esta pagina ya soporta cualquier
+// familia por texto libre, esto solo agrega el atajo visible.
+const KNOWN_FAMILY_HINTS = ['baselines', 'bilstm', 'ridge', 'smoke']
 
 function keyMetric(run: RunOut): number | undefined {
   return run.metrics['test/kge/mean'] ?? run.metrics['val/kge/mean']
