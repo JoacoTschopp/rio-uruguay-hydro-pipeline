@@ -3301,3 +3301,83 @@ transforms experimentales que hayan demostrado valor para promoción a `ETL_Gold
   Decisión futura separada, con su propia re-evaluación de los baselines ya registrados.
 * 377 tests offline en verde (367 previos + 10 de `ridge`), 2 `integration` deseleccionados sin
   cambios; `ruff check` limpio; `npm run build` (`tsc -b` + Vite) limpio.
+
+---
+
+## Decisión 052: Botón "Predecir hoy" en la UI — dispara `IssueDailyForecast` por la misma cola/lock que "Lanzar", nunca reentrena; hallazgo real de contención con automatización externa
+
+### Estado
+
+`Aceptada` (2026-08-28). Implementado y probado con las 383 pruebas offline en verde; la
+verificación end-to-end contra Databricks/MLflow real expuso un hallazgo operativo (ver
+"Consecuencias") que quedó documentado, no resuelto en esta pasada.
+
+### Contexto
+
+Pedido explícito del usuario tras cerrar las 10 fases del plan: un botón en la página "Pronóstico
+de hoy" para emitir el pronóstico del día sin tener que abrir una terminal — **sin reentrenar**,
+usando el modelo campeón vigente tal como está fijado (`champions_db`, `PromoteChampion`) hasta
+que se corra una búsqueda nueva y se promueva otro campeón. El plan (Fase 6, docstring de
+`interfaces.container.build_api_dependencies`) había dejado esto deliberadamente afuera del
+criterio de cierre original: "exponer un endpoint que dispare inferencia agregaria una segunda
+cola paralela sin necesidad real para el criterio de cierre de esta fase". Con las 10 fases ya
+cerradas, la necesidad real ahora existe.
+
+### Decisión
+
+* **No se agrega una segunda cola.** `POST /api/forecasts/run` (`interfaces/api/main.py`) llama a
+  `job_runner.submit_predict(target, label)`, un método nuevo del mismo `JobRunner`
+  (`application/ports/job_runner.py`) que ya serializaba `POST /api/jobs` (Decision 044).
+  `SubprocessJobRunner.submit_predict` guarda `JobRecord.config_path = "predict:<target>"` (no es
+  una ruta real, es un descriptor) y en `_execute` despacha a `predict_command_builder` en vez de
+  `command_builder` cuando ve ese prefijo — mismo `ProcessLock` de archivo, mismo worker de un job
+  a la vez, mismo endpoint de log SSE (`GET /api/jobs/{id}/log`) que ya usaba "Lanzar".
+  `_extract_extra` ahora reconoce tanto `search_run_id=` como `forecast_run_id=` en el log para
+  poblar `JobRecord.extra` en ambos casos.
+* `container.py::_predict_run_command` es el análogo exacto de `_search_run_command`: invoca
+  `python -m rio_search.interfaces.cli.main predict run --target <target> --profile ... --warehouse-id ...`
+  con `sys.executable`, mismo patrón.
+* Frontend: hook `useJobLog` (SSE + limpieza de ANSI) extraído de `LaunchPage.tsx` a
+  `lib/useJobLog.ts` para reusarlo tal cual en `ForecastPage.tsx` — botón "Predecir hoy"
+  deshabilitado si no hay campeón promovido para el target; al terminar el job (`done`), invalida
+  las queries de TanStack Query de pronóstico vigente/historial/backtest (no la de campeón: este
+  botón nunca lo cambia).
+
+### Consecuencias
+
+* **Hallazgo real durante la verificación end-to-end**: el primer intento de `POST
+  /api/forecasts/run` quedó colgado **15 minutos** con **0 segundos de CPU acumulados** en el
+  subproceso `predict run` (verificado con `Get-Process`/`Get-CimInstance` — no es "lento", está
+  bloqueado). La causa más probable, coherente con el riesgo ya anticipado en la Decisión 044: la
+  automatización de otra sesión (`run_tigge_backfill.py`, backfill de TIGGE/GEFS, PID vivo
+  confirmado) usa el mismo perfil de CLI de Databricks (`joaquintschopp@gmail.com`) en background,
+  de forma continua — a diferencia del escenario ya documentado (dos corridas puntuales de
+  Rio_Search compitiendo, que fallan rápido con 401), acá el contendiente es un proceso de **larga
+  duración** ajeno a Rio_Search, así que la ventana de contención no es puntual sino permanente
+  mientras esa automatización corre. Un segundo intento también se colgó (CPU no avanzó entre dos
+  chequeos separados por 3 minutos). Ambos se resolvieron matando el subproceso hijo a mano
+  (`Stop-Process`); en los dos casos el `JobRunner` se autocorrigió correctamente: el job pasó a
+  `failed`, y el `ProcessLock` (archivo) se liberó solo via el `finally` de `_execute` — **no hizo
+  falta limpieza manual del lock**, sólo del proceso colgado.
+* **Gap real, no corregido en esta pasada**: ni el CLI (`predict run`, `search run`) ni
+  `ProcessLock.acquire_blocking` tienen un timeout acotado en la fase de autenticación/handshake
+  con Databricks — `acquire_blocking(timeout_seconds=None)` espera indefinidamente el lock del
+  *propio* Rio_Search (correcto, es su diseño), pero una vez adentro, la llamada real al SDK/CLI de
+  Databricks que se cuelga por contención externa no tiene ningún timeout propio que la corte y
+  reintente. Mitigación disponible hoy: matar el proceso hijo a mano (el `JobRunner` se
+  autocorrige, verificado arriba) y reintentar. Corrección real (no aplicada, pendiente): agregar
+  un timeout configurable alrededor de las llamadas de red de `sdk_client.py`/`mlflow_databricks.py`
+  y que `SubprocessJobRunner` mate el subproceso si supera un `predict_timeout_s`/`search_timeout_s`
+  en vez de esperar para siempre.
+* El mecanismo en sí (cola/lock/dispatch/parsing) está probado offline con procesos triviales
+  reales (no mockeados a nivel de subprocess): `test_submit_predict_runs_via_predict_command_builder_and_extracts_forecast_run_id`,
+  `test_predict_and_search_jobs_share_the_same_lock_never_concurrently` (ambos en
+  `tests/test_subprocess_job_runner.py`) y 3 tests de API en `tests/test_api.py`
+  (`test_run_forecast_*`) — el hallazgo de arriba es sobre la disponibilidad real de Databricks en
+  este momento del día compartido con otra automatización, no sobre la lógica de Rio_Search.
+* 383 tests offline en verde (377 previos + 6 nuevos), `ruff check` limpio, `npm run build`
+  (`tsc -b` + Vite) limpio.
+* Se encontraron y limpiaron dos procesos `rio-search api serve` huérfanos (puertos 8000 y 8010)
+  que habían sobrevivido más allá de la notificación "killed" del harness de la sesión — confirma
+  que esa notificación no garantiza que el proceso del sistema operativo terminó; conviene
+  verificar con `Get-Process`/`tasklist` antes de asumirlo en el futuro.

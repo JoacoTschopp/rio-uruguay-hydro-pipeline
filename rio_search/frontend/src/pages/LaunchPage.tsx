@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { fetchJobs, submitJob, type JobOut } from '../lib/api'
 import { formatDateTimeMs, jobStatusTone } from '../lib/format'
+import { useJobLog } from '../lib/useJobLog'
 import { Badge } from '../components/ui/Badge'
 import { Panel } from '../components/ui/Panel'
 import { GapNotice } from '../components/ui/GapNotice'
@@ -21,37 +22,6 @@ const KNOWN_CONFIGS = [
   { file: 'bilstm_baseline_v1.yaml', desc: 'BiLSTM, multi_output, caudal' },
   { file: 'bilstm_baseline_v1_per_horizon.yaml', desc: 'BiLSTM, per_horizon, caudal' },
 ]
-
-// El subproceso de `rio-search search run` imprime con color (MLflow usa ANSI para 🏃/🧪, ya
-// visto en la Decision 044) -- se limpia acá para que el <pre> del log muestre texto legible en
-// vez de codigos de escape crudos.
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = new RegExp(String.fromCharCode(27) + String.fromCharCode(91) + '[0-9;]*m', 'g')
-function stripAnsi(line: string): string {
-  return line.replace(ANSI_RE, '')
-}
-
-function useJobLog(jobId: string | undefined) {
-  const [lines, setLines] = useState<string[]>([])
-  const [done, setDone] = useState(false)
-  useEffect(() => {
-    setLines([])
-    setDone(false)
-    if (!jobId) return
-    const source = new EventSource(`/api/jobs/${jobId}/log`)
-    source.onmessage = (ev) => setLines((prev) => [...prev, stripAnsi(ev.data)])
-    source.addEventListener('done', () => {
-      setDone(true)
-      source.close()
-    })
-    source.onerror = () => {
-      setDone(true)
-      source.close()
-    }
-    return () => source.close()
-  }, [jobId])
-  return { lines, done }
-}
 
 export function LaunchPage() {
   const [configFile, setConfigFile] = useState(KNOWN_CONFIGS[0].file)

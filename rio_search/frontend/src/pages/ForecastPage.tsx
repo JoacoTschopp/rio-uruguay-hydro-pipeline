@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   CartesianGrid,
@@ -17,10 +17,12 @@ import {
   fetchForecastHistory,
   fetchLatestForecast,
   fetchRunDetail,
+  runForecast,
   type TargetVariable,
 } from '../lib/api'
 import { listTimeMetrics } from '../lib/metrics'
 import { formatNumber, formatTimingValue, truncateHash } from '../lib/format'
+import { useJobLog } from '../lib/useJobLog'
 import { Badge } from '../components/ui/Badge'
 import { Panel } from '../components/ui/Panel'
 import { GapNotice } from '../components/ui/GapNotice'
@@ -47,6 +49,11 @@ function formatIso(iso: string | null | undefined): string {
 
 export function ForecastPage() {
   const [target, setTarget] = useState<TargetVariable>('caudal')
+  const [predicting, setPredicting] = useState(false)
+  const [predictError, setPredictError] = useState<string | null>(null)
+  const [activeJobId, setActiveJobId] = useState<string | undefined>(undefined)
+  const logBoxRef = useRef<HTMLPreElement>(null)
+  const queryClient = useQueryClient()
 
   const champion = useQuery({ queryKey: ['champion', target], queryFn: () => fetchChampion(target) })
   const latest = useQuery({ queryKey: ['forecast-latest', target], queryFn: () => fetchLatestForecast(target) })
@@ -69,6 +76,36 @@ export function ForecastPage() {
   })
   const timeMetrics = forecastRun.data ? listTimeMetrics(forecastRun.data.run.metrics) : []
 
+  const { lines: logLines, done: logDone } = useJobLog(activeJobId)
+
+  useEffect(() => {
+    if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight
+  }, [logLines])
+
+  useEffect(() => {
+    if (!logDone) return
+    // El job termino (finished o failed, useJobLog no distingue) -- refresca lo que "Predecir
+    // hoy" pudo haber cambiado: el pronostico vigente, el historial y el backtest. El campeon no
+    // cambia (este boton nunca reentrena, §3.8) asi que esa query no hace falta invalidarla.
+    queryClient.invalidateQueries({ queryKey: ['forecast-latest', target] })
+    queryClient.invalidateQueries({ queryKey: ['forecast-history', target] })
+    queryClient.invalidateQueries({ queryKey: ['forecast-backtest', target] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logDone])
+
+  async function handlePredictToday() {
+    setPredicting(true)
+    setPredictError(null)
+    try {
+      const job = await runForecast(target)
+      setActiveJobId(job.job_id)
+    } catch (e) {
+      setPredictError((e as Error).message)
+    } finally {
+      setPredicting(false)
+    }
+  }
+
   const chartData = latest.data
     ? [...latest.data.points]
         .sort((a, b) => a.horizon - b.horizon)
@@ -89,12 +126,31 @@ export function ForecastPage() {
             ))}
           </select>
         </label>
+        <button
+          className={styles.predictBtn}
+          onClick={handlePredictToday}
+          disabled={predicting || champion.data == null}
+          title={champion.data == null ? 'Necesita un campeón promovido para este target' : undefined}
+        >
+          {predicting ? 'Lanzando…' : 'Predecir hoy'}
+        </button>
       </div>
       <p>
-        Abanico t+1…t+14 emitido por el campeón vigente (<code>IssueDailyForecast</code>, §3.8 del plan). Se emite
-        con <code>rio-search predict run</code> (CLI/Task Scheduler, 06:30 Montevideo) — esta página solo lee lo
-        ya emitido, nunca dispara una corrida nueva.
+        Abanico t+1…t+14 emitido por el campeón vigente (<code>IssueDailyForecast</code>, §3.8 del plan). El botón
+        &quot;Predecir hoy&quot; corre <code>rio-search predict run</code> con el campeón vigente — <strong>nunca
+        reentrena</strong>, usa el mejor modelo ya buscado hasta que se promueva un campeón nuevo. Se emite
+        también solo por CLI/Task Scheduler (06:30 Montevideo) si preferís no usar el botón.
       </p>
+      {predictError && <p className={styles.error}>{predictError}</p>}
+
+      {activeJobId && (
+        <Panel title={`Log en vivo — job ${activeJobId}`}>
+          <pre ref={logBoxRef} className={styles.log}>
+            {logLines.length === 0 ? '(esperando líneas…)' : logLines.join('\n')}
+          </pre>
+          {logDone && <Badge tone="neutral">stream cerrado — pronóstico actualizado abajo</Badge>}
+        </Panel>
+      )}
 
       <Panel title="Campeón vigente">
         {champion.isLoading && <p>Cargando…</p>}

@@ -356,20 +356,47 @@ def _search_run_command(profile: str, warehouse_id: str):
     return build
 
 
+def _predict_run_command(profile: str, warehouse_id: str):
+    """`predict_command_builder` de `SubprocessJobRunner` (botón "Predecir hoy", §3.9): el mismo
+    comando que un usuario correria a mano (`rio-search predict run --target <target>`), nunca
+    reentrena -- usa el campeon vigente tal como esta fijado (`champions_db`,
+    `PromoteChampion`). Mismo patron que `_search_run_command`: modulo via `sys.executable`."""
+    import sys
+
+    def build(target: str) -> list[str]:
+        return [
+            sys.executable,
+            "-m",
+            "rio_search.interfaces.cli.main",
+            "predict",
+            "run",
+            "--target",
+            target,
+            "--profile",
+            profile,
+            "--warehouse-id",
+            warehouse_id,
+        ]
+
+    return build
+
+
 def build_job_runner(
     profile: str = DEFAULT_PROFILE,
     warehouse_id: str = DEFAULT_WAREHOUSE_ID,
     jobs_dir: Path = DEFAULT_JOBS_DIR,
     lock_path: Path = DEFAULT_JOB_LOCK_PATH,
 ):
-    """`SubprocessJobRunner` (Fase 4, §5): un job (una búsqueda) a la vez, con el
-    `ProcessLock` portado de `ana_historic_backfill/lock.py` para que tampoco pise a un
-    `rio-search search run` corrido a mano en paralelo (aviso operativo de la Fase 3)."""
+    """`SubprocessJobRunner` (Fase 4, §5; `submit_predict` agregado post-Fase 9 para el boton
+    "Predecir hoy"): un job (una búsqueda o un `predict run`) a la vez, con el `ProcessLock`
+    portado de `ana_historic_backfill/lock.py` para que tampoco pise a un `rio-search search
+    run`/`predict run` corrido a mano en paralelo (aviso operativo de la Fase 3)."""
     from rio_search.infrastructure.jobs.process_lock import ProcessLock
     from rio_search.infrastructure.jobs.subprocess_job_runner import SubprocessJobRunner
 
     return SubprocessJobRunner(
         command_builder=_search_run_command(profile, warehouse_id),
+        predict_command_builder=_predict_run_command(profile, warehouse_id),
         log_dir=jobs_dir,
         lock=ProcessLock(lock_path),
         cwd=BACKEND_DIR,
@@ -468,11 +495,14 @@ def build_api_dependencies(
     Fase 6 (§3.9, "Pronostico de hoy"): agrega `promote_champion` (`POST /api/champions`),
     `champion_store`/`forecast_repository` (`GET /api/champions`, `GET /api/forecasts/*`) y
     `backtest_recent` (`GET /api/forecasts/backtest`) -- todos de solo lectura o de escritura
-    liviana (SQLite local + alias UC), nunca disparan `IssueDailyForecast` (esa corrida pesada
-    queda en el CLI/Task Scheduler, Decision 044: nunca dos procesos pegandole a Databricks/
-    MLflow a la vez con el mismo perfil, y la API ya tiene su propio `JobRunner` serializado
-    para eso -- exponer un endpoint que dispare inferencia agregaria una segunda cola paralela
-    sin necesidad real para el criterio de cierre de esta fase).
+    liviana (SQLite local + alias UC).
+
+    Post-Fase 9 (pedido del usuario, "boton Predecir hoy"): `POST /api/forecasts/run` dispara
+    `IssueDailyForecast` a traves del **mismo** `JobRunner`/`ProcessLock` que ya serializaba las
+    búsquedas de `POST /api/jobs` (Decision 044) -- no se agrega una segunda cola paralela, es el
+    mismo `job_runner.submit_predict(...)` sobre la cola existente. Nunca reentrena: usa el
+    campeon vigente tal como esta fijado en `champions_db` (`PromoteChampion`); si se quiere un
+    modelo distinto, hay que correr una busqueda nueva y promoverla como campeon primero.
 
     Fase 7 (§3.10, "Research"): agrega `document_store`/`add_document`/`update_note`/
     `tag_document`/`export_bibtex` -- sin Databricks/MLflow (Decision #3: biblioteca local, sin

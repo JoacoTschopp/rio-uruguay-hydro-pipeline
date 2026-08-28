@@ -45,6 +45,16 @@ class JobRunner(Protocol):
         real corre en un worker en background, un job a la vez (ver docstring del modulo)."""
         ...
 
+    def submit_predict(self, target: str, label: str) -> JobRecord:
+        """Encola `rio-search predict run --target <target>` (Fase 6, §3.8; UI "Pronóstico de
+        hoy" -- botón "Predecir hoy"). Misma cola/lock que `submit`: nunca corre en simultáneo
+        con una búsqueda, ni con otro `predict run` (aviso operativo de la Fase 3). No
+        reentrena -- usa el campeón vigente tal como está fijado en `champions_db`
+        (`PromoteChampion`); si se quiere un modelo distinto, se vuelve a correr una búsqueda y
+        se promueve un nuevo campeón. `JobRecord.config_path` queda como `f"predict:{target}"`
+        (no hay YAML de config para un predict, es un descriptor, no una ruta real)."""
+        ...
+
     def get(self, job_id: str) -> JobRecord | None:
         ...
 

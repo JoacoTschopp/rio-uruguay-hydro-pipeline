@@ -10,6 +10,10 @@ Ademas de la cola (que solo serializa jobs *de este proceso*), cada ejecucion to
 libera al terminar -- asi un `rio-search search run` corrido a mano desde otra terminal tambien
 queda serializado, no solo los jobs encolados por esta API.
 
+`submit_predict()` (botón "Predecir hoy" de la pagina "Pronostico de hoy", §3.9) encola
+`rio-search predict run --target <target>` por la misma cola/lock -- nunca reentrena, usa el
+campeon vigente (`champions_db`, `PromoteChampion`) tal cual esta fijado.
+
 **Nota de diseño (no persistente entre reinicios):** los `JobRecord` viven solo en memoria de
 este proceso; si el backend se reinicia, la lista de jobs se pierde (los logs en disco
 sobreviven, pero no quedan asociados a un job navegable por la API). Se acepta a proposito para
@@ -37,6 +41,9 @@ from rio_search.application.ports.job_runner import JobRecord, JobStatus
 from rio_search.infrastructure.jobs.process_lock import ProcessLock
 
 CommandBuilder = Callable[[Path], list[str]]
+PredictCommandBuilder = Callable[[str], list[str]]
+
+_PREDICT_PREFIX = "predict:"
 
 
 def _now_iso() -> str:
@@ -53,8 +60,10 @@ class SubprocessJobRunner:
         lock: ProcessLock,
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
+        predict_command_builder: PredictCommandBuilder | None = None,
     ) -> None:
         self._command_builder = command_builder
+        self._predict_command_builder = predict_command_builder
         self._log_dir = log_dir
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._lock = lock
@@ -75,6 +84,22 @@ class SubprocessJobRunner:
             job_id=job_id,
             label=label,
             config_path=str(config_path),
+            status=JobStatus.QUEUED,
+            created_at=_now_iso(),
+        )
+        with self._records_lock:
+            self._records[job_id] = record
+        self._queue.put(job_id)
+        return record
+
+    def submit_predict(self, target: str, label: str) -> JobRecord:
+        if self._predict_command_builder is None:
+            raise RuntimeError("SubprocessJobRunner sin predict_command_builder configurado")
+        job_id = uuid.uuid4().hex[:12]
+        record = JobRecord(
+            job_id=job_id,
+            label=label,
+            config_path=f"{_PREDICT_PREFIX}{target}",
             status=JobStatus.QUEUED,
             created_at=_now_iso(),
         )
@@ -138,8 +163,14 @@ class SubprocessJobRunner:
         self._lock.acquire_blocking(label=f"api_job:{job_id}", poll_seconds=2.0, timeout_seconds=None)
 
         log_path = self._log_path(job_id)
-        command = self._command_builder(Path(record.config_path))
         try:
+            if record.config_path.startswith(_PREDICT_PREFIX):
+                if self._predict_command_builder is None:
+                    raise RuntimeError("SubprocessJobRunner sin predict_command_builder configurado")
+                target = record.config_path[len(_PREDICT_PREFIX):]
+                command = self._predict_command_builder(target)
+            else:
+                command = self._command_builder(Path(record.config_path))
             with log_path.open("w", encoding="utf-8") as log_file:
                 # `encoding="utf-8"` explicito (Decision 044, verificado contra Databricks
                 # real): sin esto, `subprocess.Popen(text=True)` decodifica el stdout del hijo
@@ -178,9 +209,11 @@ class SubprocessJobRunner:
 
 
 def _extract_extra(log_path: Path) -> dict[str, str]:
-    """`search_run_id=<id> experiment=<path> trials=<n>` es exactamente lo que imprime
-    `rio-search search run` al terminar (`interfaces/cli/main.py::search_run`) -- se parsea del
-    log para que la API pueda devolver el `run_id` de MLflow sin que el `JobRunner` sepa nada de
+    """`search_run_id=<id> experiment=<path> trials=<n>` es lo que imprime `rio-search search
+    run` al terminar (`interfaces/cli/main.py::search_run`); `forecast_run_id=<id> as_of=...
+    data_lag_days=... device=... dataset_delta_version=... champion_run_id=...` es lo que
+    imprime `rio-search predict run` (`::predict_run`). Se parsea la que corresponda del log
+    para que la API pueda devolver el `run_id` de MLflow sin que el `JobRunner` sepa nada de
     MLflow."""
     extra: dict[str, str] = {}
     try:
@@ -188,7 +221,7 @@ def _extract_extra(log_path: Path) -> dict[str, str]:
     except OSError:
         return extra
     for line in text.splitlines():
-        if "search_run_id=" in line:
+        if "search_run_id=" in line or "forecast_run_id=" in line:
             for token in line.split():
                 if "=" in token:
                     key, _, value = token.partition("=")

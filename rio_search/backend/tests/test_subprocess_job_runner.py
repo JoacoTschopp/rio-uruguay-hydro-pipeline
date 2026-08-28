@@ -27,6 +27,14 @@ def _slow_command(config_path: Path) -> list[str]:
     return [sys.executable, "-c", "import time; print('start'); time.sleep(0.3); print('end')"]
 
 
+def _ok_predict_command(target: str) -> list[str]:
+    line = (
+        f"forecast_run_id=fake-forecast-{target} as_of=2026-08-23 data_lag_days=5 "
+        "device=cpu dataset_delta_version=270 champion_run_id=fake-champion"
+    )
+    return [sys.executable, "-c", f"print({line!r})"]
+
+
 def _wait_terminal(runner: SubprocessJobRunner, job_id: str, timeout: float = 10.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -37,9 +45,10 @@ def _wait_terminal(runner: SubprocessJobRunner, job_id: str, timeout: float = 10
     raise AssertionError(f"job {job_id} no termino a tiempo")
 
 
-def _runner(tmp_path: Path, command_builder) -> SubprocessJobRunner:
+def _runner(tmp_path: Path, command_builder, predict_command_builder=None) -> SubprocessJobRunner:
     return SubprocessJobRunner(
         command_builder=command_builder,
+        predict_command_builder=predict_command_builder,
         log_dir=tmp_path / "jobs",
         lock=ProcessLock(tmp_path / "job.lock"),
     )
@@ -130,3 +139,42 @@ def test_stream_log_yields_lines_and_stops_when_finished(tmp_path: Path) -> None
 def test_stream_log_of_unknown_job_yields_nothing(tmp_path: Path) -> None:
     runner = _runner(tmp_path, _ok_command)
     assert list(runner.stream_log("nope")) == []
+
+
+def test_submit_predict_runs_via_predict_command_builder_and_extracts_forecast_run_id(
+    tmp_path: Path,
+) -> None:
+    runner = _runner(tmp_path, _ok_command, predict_command_builder=_ok_predict_command)
+    record = runner.submit_predict(target="caudal", label="Predecir hoy (caudal)")
+
+    assert record.config_path == "predict:caudal"
+    final = _wait_terminal(runner, record.job_id)
+    assert final.status == JobStatus.FINISHED
+    assert final.extra.get("forecast_run_id") == "fake-forecast-caudal"
+    assert final.extra.get("as_of") == "2026-08-23"
+
+
+def test_submit_predict_without_builder_raises_immediately(tmp_path: Path) -> None:
+    runner = _runner(tmp_path, _ok_command)  # sin predict_command_builder
+    try:
+        runner.submit_predict(target="caudal", label="Predecir hoy (caudal)")
+        assert False, "se esperaba RuntimeError"
+    except RuntimeError:
+        pass
+
+
+def test_predict_and_search_jobs_share_the_same_lock_never_concurrently(tmp_path: Path) -> None:
+    predict_builder = lambda target: _slow_command(Path(target))  # noqa: E731
+    runner = _runner(tmp_path, _slow_command, predict_command_builder=predict_builder)
+    search_job = runner.submit(config_path=Path("a.yaml"), label="a")
+    predict_job = runner.submit_predict(target="caudal", label="Predecir hoy (caudal)")
+
+    time.sleep(0.1)
+    statuses = {
+        search_job.job_id: runner.get(search_job.job_id).status,
+        predict_job.job_id: runner.get(predict_job.job_id).status,
+    }
+    assert list(statuses.values()).count(JobStatus.RUNNING) <= 1
+
+    _wait_terminal(runner, search_job.job_id)
+    _wait_terminal(runner, predict_job.job_id)

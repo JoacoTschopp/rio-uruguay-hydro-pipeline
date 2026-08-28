@@ -257,6 +257,22 @@ export function fetchForecastHistory(target: TargetVariable, maxResults = 20): P
   return getJson(`/api/forecasts/history?target=${target}&max_results=${maxResults}`)
 }
 
+/** Boton "Predecir hoy": `IssueDailyForecast` con el campeon vigente, nunca reentrena -- por la
+ * misma cola/lock que `submitJob` (Decision 044, un solo `JobRunner`). Devuelve un `JobOut`
+ * como `submitJob`: se sigue con `fetchJob`/`GET /api/jobs/{id}/log` (useJobLog). */
+export async function runForecast(target: TargetVariable): Promise<JobOut> {
+  const res = await fetch('/api/forecasts/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`POST /api/forecasts/run -> ${res.status} ${res.statusText}${body ? `: ${body}` : ''}`)
+  }
+  return (await res.json()) as JobOut
+}
+
 export function fetchForecastBacktest(target: TargetVariable, maxForecasts = 30): Promise<BacktestOut> {
   return getJson(`/api/forecasts/backtest?target=${target}&max_forecasts=${maxForecasts}`)
 }

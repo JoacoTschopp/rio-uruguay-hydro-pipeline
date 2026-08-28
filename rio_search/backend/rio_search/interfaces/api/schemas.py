@@ -145,6 +145,15 @@ class PromoteChampionIn(BaseModel):
     note: str | None = None
 
 
+class PredictRunIn(BaseModel):
+    """`POST /api/forecasts/run` (boton "Predecir hoy"): dispara `rio-search predict run
+    --target <target>` con el campeon vigente, nunca reentrena. Devuelve un `JobOut` como
+    `POST /api/jobs` -- se sigue el mismo job por `GET /api/jobs/{id}` y su log por
+    `GET /api/jobs/{id}/log` (SSE)."""
+
+    target: str = "caudal"
+
+
 class ForecastPointOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

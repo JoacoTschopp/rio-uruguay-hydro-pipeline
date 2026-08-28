@@ -52,6 +52,7 @@ from rio_search.interfaces.api.schemas import (
     MetricSeriesOut,
     NoteOut,
     NoteUpdateIn,
+    PredictRunIn,
     PromoteChampionIn,
     RunComparisonOut,
     RunDetailOut,
@@ -222,9 +223,9 @@ def create_app(deps: ApiDependencies | None = None) -> FastAPI:
 
     # ------------------------------------------------------------------
     # Predicciones (§3.9, Fase 6): POST /api/champions, GET /api/champions, GET /api/forecasts/*.
-    # `IssueDailyForecast` no se dispara desde acá (ver docstring de
-    # `interfaces.container.build_api_dependencies`): estos endpoints solo leen/fijan el campeon
-    # vigente y leen pronosticos ya emitidos por `rio-search predict run` (CLI/Task Scheduler).
+    # POST /api/forecasts/run (post-Fase 9, boton "Predecir hoy") dispara `IssueDailyForecast`
+    # -- por el mismo `job_runner` que "Lanzar" (Decision 044: una sola cola/lock, nunca dos
+    # procesos pegandole a Databricks/MLflow a la vez). No reentrena: usa el campeon vigente.
     # ------------------------------------------------------------------
     @app.post("/api/champions", response_model=ChampionOut, status_code=201)
     def promote_champion(body: PromoteChampionIn) -> ChampionOut:
@@ -250,6 +251,17 @@ def create_app(deps: ApiDependencies | None = None) -> FastAPI:
         if champion is None:
             raise HTTPException(status_code=404, detail=f"sin campeon promovido para target={target!r}")
         return _champion_out(champion)
+
+    @app.post("/api/forecasts/run", response_model=JobOut, status_code=201)
+    def run_forecast(body: PredictRunIn) -> JobOut:
+        try:
+            target = TargetVariable(body.target)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"target invalido: {body.target!r}") from exc
+        record: JobRecord = deps.job_runner.submit_predict(
+            target=target.value, label=f"Predecir hoy ({target.value})"
+        )
+        return JobOut.model_validate(record)
 
     @app.get("/api/forecasts/latest", response_model=ForecastOut)
     def get_latest_forecast(target: str = Query("caudal")) -> ForecastOut:

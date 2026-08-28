@@ -32,6 +32,38 @@
   background: var(--bg);
 }
 
+.predictBtn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.predictBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--status-critical);
+  font-size: 12px;
+}
+
+.log {
+  background: #0d0d0d;
+  color: #d7d7d0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  max-height: 320px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

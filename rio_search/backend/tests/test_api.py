@@ -82,6 +82,7 @@ class FakeJobRunner:
     def __init__(self) -> None:
         self._jobs: dict[str, JobRecord] = {}
         self.submitted: list[tuple[Path, str]] = []
+        self.submitted_predicts: list[tuple[str, str]] = []
 
     def submit(self, config_path: Path, label: str) -> JobRecord:
         job_id = f"job-{len(self._jobs) + 1}"
@@ -99,6 +100,24 @@ class FakeJobRunner:
         )
         self._jobs[job_id] = record
         self.submitted.append((config_path, label))
+        return record
+
+    def submit_predict(self, target: str, label: str) -> JobRecord:
+        job_id = f"job-{len(self._jobs) + 1}"
+        record = JobRecord(
+            job_id=job_id,
+            label=label,
+            config_path=f"predict:{target}",
+            status=JobStatus.FINISHED,
+            created_at="2026-01-01T00:00:00+00:00",
+            started_at="2026-01-01T00:00:01+00:00",
+            ended_at="2026-01-01T00:00:02+00:00",
+            exit_code=0,
+            pid=4343,
+            extra={"forecast_run_id": "forecast-run-xyz"},
+        )
+        self._jobs[job_id] = record
+        self.submitted_predicts.append((target, label))
         return record
 
     def get(self, job_id: str) -> JobRecord | None:
@@ -269,6 +288,7 @@ def client(experiments_dir: Path) -> TestClient:
     champion_store = FakeChampionStore()
     forecast_repository = FakeForecastRepository()
     document_store = FakeDocumentStore()
+    job_runner = FakeJobRunner()
     references_bib_path = experiments_dir.parent.parent / "thesis" / "common" / "references.bib"
     deps = ApiDependencies(
         reader=reader,
@@ -276,7 +296,7 @@ def client(experiments_dir: Path) -> TestClient:
         list_searches=ListSearches(list_runs=list_runs),
         get_run_detail=GetRunDetail(reader=reader),
         compare_runs=CompareRuns(reader=reader),
-        job_runner=FakeJobRunner(),
+        job_runner=job_runner,
         experiments_dir=experiments_dir,
         snapshot_sync=FakeSnapshotSync(),
         feature_catalog=feature_catalog,
@@ -301,6 +321,7 @@ def client(experiments_dir: Path) -> TestClient:
     test_client.forecast_repository = forecast_repository  # type: ignore[attr-defined]
     test_client.champion_store = champion_store  # type: ignore[attr-defined]
     test_client.document_store = document_store  # type: ignore[attr-defined]
+    test_client.job_runner = job_runner  # type: ignore[attr-defined]
     return test_client
 
 
@@ -486,6 +507,33 @@ def test_promote_champion_rejects_run_without_metric(client: TestClient) -> None
 def test_get_champion_404_when_none_promoted(client: TestClient) -> None:
     response = client.get("/api/champions", params={"target": "nivel"})
     assert response.status_code == 404
+
+
+def test_run_forecast_submits_predict_job_via_the_shared_job_runner(client: TestClient) -> None:
+    response = client.post("/api/forecasts/run", json={"target": "caudal"})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["config_path"] == "predict:caudal"
+    assert body["extra"]["forecast_run_id"] == "forecast-run-xyz"
+
+    assert client.job_runner.submitted_predicts == [("caudal", "Predecir hoy (caudal)")]  # type: ignore[attr-defined]
+
+    # mismo job, seguible por los endpoints ya existentes de /api/jobs (log/estado, §3.9 Lanzar)
+    job_id = body["job_id"]
+    get_response = client.get(f"/api/jobs/{job_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["status"] == "finished"
+
+
+def test_run_forecast_defaults_target_to_caudal(client: TestClient) -> None:
+    response = client.post("/api/forecasts/run", json={})
+    assert response.status_code == 201
+    assert client.job_runner.submitted_predicts[-1][0] == "caudal"  # type: ignore[attr-defined]
+
+
+def test_run_forecast_rejects_invalid_target(client: TestClient) -> None:
+    response = client.post("/api/forecasts/run", json={"target": "no-existe"})
+    assert response.status_code == 400
 
 
 def _sample_forecast(as_of: date, issued_at: str) -> Forecast:
