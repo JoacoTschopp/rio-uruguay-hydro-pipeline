@@ -1,0 +1,966 @@
+<title>Función de ganancia por régimen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#eef2f5; --surface:#ffffff; --surface-2:#f5f8fa; --surface-3:#eaeff3;
+  --ink:#0e1f2b; --ink-2:#3a4b57; --ink-3:#647581; --line:#d6dfe6; --line-2:#c3cfd8;
+  --caudal:#0e7490; --caudal-soft:#d7edf2;
+  --seco:#a1620e;   --seco-bg:#f7ecd8;
+  --neutro:#5c6d79; --neutro-bg:#e8edf1;
+  --humedo:#2b57c4; --humedo-bg:#dde5fb;
+  --ok:#15803d; --ok-bg:#dcf3e4; --warn:#b45309; --warn-bg:#fbedd6; --crit:#b91c1c; --crit-bg:#f8dcdc;
+  --shadow:0 1px 2px rgba(14,31,43,.06),0 8px 24px -12px rgba(14,31,43,.18);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --caudal-soft:#103b46;
+  --seco:#dda94f;   --seco-bg:#38290f;
+  --neutro:#8b9ca9; --neutro-bg:#1a2831;
+  --humedo:#87a8ff; --humedo-bg:#18244a;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --caudal-soft:#103b46;
+  --seco:#dda94f;   --seco-bg:#38290f;
+  --neutro:#8b9ca9; --neutro-bg:#1a2831;
+  --humedo:#87a8ff; --humedo-bg:#18244a;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;text-wrap:balance;line-height:1.15;margin:0}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+code{font-size:.9em;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px}
+a{color:var(--caudal)}
+:focus-visible{outline:2px solid var(--caudal);outline-offset:2px;border-radius:4px}
+
+.mast{position:relative;overflow:hidden;border-bottom:1px solid var(--line);
+  background:linear-gradient(160deg,var(--surface) 0%,var(--surface-2) 60%,var(--surface-3) 100%);}
+.mast .wrap{padding:52px 24px 36px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--caudal);font-weight:600;margin:0 0 18px}
+.mast h1{font-size:clamp(1.9rem,4.6vw,3rem);font-weight:600;letter-spacing:-.015em}
+.mast h1 em{font-style:italic;color:var(--caudal)}
+.lede{margin:18px 0 0;max-width:68ch;font-size:1.06rem;color:var(--ink-2)}
+.metaline{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:24px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.chip b{color:var(--ink);font-weight:600}
+
+section{padding:40px 0}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--caudal);font-weight:600;
+  border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+.sec-head h2{font-size:1.5rem;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px 26px;
+  box-shadow:var(--shadow)}
+.card + .card{margin-top:16px}
+.card h3{font-size:1.06rem;font-weight:600;margin:28px 0 10px}
+.card h3:first-child{margin-top:0}
+p{margin:0 0 14px;color:var(--ink-2);max-width:74ch}
+p:last-child{margin-bottom:0}
+ul,ol{color:var(--ink-2);margin:0 0 14px;padding-left:22px;max-width:74ch}
+li{margin-bottom:7px}
+li:last-child{margin-bottom:0}
+strong,b{color:var(--ink);font-weight:600}
+
+.tbl{width:100%;overflow-x:auto;margin-top:6px}
+table{width:100%;border-collapse:collapse;font-size:14.5px;min-width:560px}
+th{text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr.hl td{background:var(--caudal-soft)}
+tr.hl td:first-child{font-weight:600;color:var(--ink)}
+td.bad{color:var(--crit);font-weight:600}
+td.good{color:var(--ok);font-weight:600}
+
+.formula{background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--caudal);
+  border-radius:0 10px 10px 0;padding:16px 20px;margin:16px 0;overflow-x:auto}
+.formula .eq{font-family:"IBM Plex Mono",monospace;font-size:15px;color:var(--ink);
+  line-height:1.9;display:block;white-space:nowrap}
+.formula .eq b{color:var(--caudal);font-weight:600}
+.formula .eq i{color:var(--ink-3);font-style:normal}
+.formula .where{margin:12px 0 0;font-size:13.5px;color:var(--ink-3);max-width:none}
+
+pre.code{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
+  padding:16px 18px;overflow-x:auto;margin:16px 0;
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.7;color:var(--ink-2)}
+pre.code b{color:var(--caudal);font-weight:500}
+pre.code i{color:var(--ink-3);font-style:normal}
+
+.callout{border-left:3px solid var(--warn);background:var(--warn-bg);border-radius:0 10px 10px 0;
+  padding:16px 18px;margin:18px 0}
+.callout h4{margin:0 0 6px;font-family:"IBM Plex Sans",sans-serif;font-size:14.5px;font-weight:600;color:var(--ink)}
+.callout p{color:var(--ink-2);margin:0}
+.callout.crit{border-left-color:var(--crit);background:var(--crit-bg)}
+.callout.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+
+.pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:500;
+  padding:2px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.pill.seco{color:var(--seco);background:var(--seco-bg)}
+.pill.neutro{color:var(--neutro);background:var(--neutro-bg)}
+.pill.humedo{color:var(--humedo);background:var(--humedo-bg)}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin:18px 0}
+.stat{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.stat .v{font-family:"IBM Plex Mono",monospace;font-size:1.45rem;font-weight:600;color:var(--caudal);
+  font-variant-numeric:tabular-nums}
+.stat .v.seco{color:var(--seco)} .stat .v.humedo{color:var(--humedo)} .stat .v.crit{color:var(--crit)}
+.stat .l{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+
+figure{margin:22px 0 0}
+figure svg{width:100%;height:auto;display:block;color:var(--ink-2)}
+figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
+.sv-seco{fill:var(--seco)} .sv-humedo{fill:var(--humedo)} .sv-neutro{fill:var(--neutro)}
+.sv-surf{fill:var(--surface-3)}
+.st-seco{stroke:var(--seco)} .st-humedo{stroke:var(--humedo)} .st-crit{stroke:var(--crit)}
+.sv-line{stroke:var(--line-2)} .fl-crit{fill:var(--crit)} .fl-humedo-bg{fill:var(--humedo-bg)}
+.g-seco{stop-color:var(--seco)} .g-neutro{stop-color:var(--neutro)} .g-humedo{stop-color:var(--humedo)}
+.svg-lbl{font-family:"IBM Plex Mono",monospace;font-size:11.5px;fill:var(--ink-3)}
+.svg-lbl-em{font-family:"IBM Plex Sans",sans-serif;font-size:12.5px;font-weight:600;fill:var(--ink)}
+.svg-num{font-family:"IBM Plex Mono",monospace;font-size:11.5px;fill:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.svg-axis{stroke:var(--line-2);stroke-width:1}
+/* despues de .svg-num/.svg-lbl a proposito: misma especificidad, gana el orden */
+.tx-crit{fill:var(--crit)} .tx-inv{fill:var(--surface)}
+.svg-box{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1}
+
+.foot{border-top:1px solid var(--line);padding:28px 0 46px;color:var(--ink-3);font-size:13px}
+.foot p{color:var(--ink-3);max-width:82ch}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="mast">
+  <div class="wrap">
+    <p class="eyebrow">Río Uruguay &middot; informe de decisión &middot; modelado</p>
+    <h1>Una función de ganancia que sepa <em>en qué río</em> está parada</h1>
+    <p class="lede">
+      Hoy el modelo se evalúa con RMSE, que trata igual un error de más y uno de menos.
+      Operativamente no son iguales: en crecida lo grave es subestimar, en estiaje lo grave es
+      sobrestimar. Este informe responde si eso se puede escribir como <b>una sola función</b>
+      &mdash; sí, y muestra cuál &mdash; y qué encontró la evidencia sobre la serie real que
+      obliga a corregir la formulación intuitiva en tres puntos.
+    </p>
+    <div class="metaline">
+      <span class="chip">Serie: <b>ana_74100000</b> &middot; caudal diario</span>
+      <span class="chip">Snapshot Gold <b>delta 263</b> &middot; 2000-01-01 &rarr; 2026-08-23</span>
+      <span class="chip">n = <b>9.696</b> días con caudal</span>
+      <span class="chip">Generado: <b>2026-08-28</b></span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>La respuesta corta</h2></div>
+  <div class="card">
+    <p>
+      <b>Sí, existe una función única.</b> No hace falta una métrica por situación: hace falta
+      <b>una métrica y una función que devuelva un número por día</b>. La familia es la
+      <b>pérdida expectil asimétrica</b>, gobernada por un solo parámetro <code>&tau;</code>:
+    </p>
+    <div class="formula">
+      <span class="eq">&psi;<b>&tau;</b>(e)  =  2 &middot; |<b>&tau;</b> &minus; 1{e &lt; 0}| &middot; e&sup2;</span>
+      <p class="where">
+        con <code>e = Q<sub>obs</sub> &minus; Q<sub>pred</sub></code>: <b>e &gt; 0 quiere decir que el
+        modelo subestimó</b>, <b>e &lt; 0 que sobrestimó</b>. <code>1{&middot;}</code> es el indicador,
+        vale 1 si la condición se cumple y 0 si no.
+      </p>
+    </div>
+    <p>El régimen no cambia la fórmula. Cambia el número <code>&tau;</code>:</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Situación</th><th class="num">&tau;</th><th>Qué hace la fórmula</th>
+        <th class="num">Costo relativo de subestimar</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill seco">estiaje / sequía</span></td><td class="num">0,20</td>
+            <td>castiga cuatro veces más la sobrestimación</td><td class="num">0,25&times;</td></tr>
+        <tr><td><span class="pill neutro">estable</span></td><td class="num">0,50</td>
+            <td><b>es exactamente el error cuadrático</b> &rarr; RMSE</td><td class="num">1,00&times;</td></tr>
+        <tr><td><span class="pill humedo">crecida / inundación</span></td><td class="num">0,80</td>
+            <td>castiga cuatro veces más la subestimación</td><td class="num">4,00&times;</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      La razón de penalización es exactamente <code>&tau; / (1 &minus; &tau;)</code>, y esa identidad da
+      la forma honesta de fijar el parámetro: si subestimar en crecida cuesta <i>k</i> veces más que
+      sobrestimar, entonces <code>&tau; = k / (k + 1)</code>. <b>&tau; no se ajusta a los datos</b>:
+      codifica una preferencia operativa, se declara, y se hace análisis de sensibilidad (&sect;07).
+    </p>
+
+    <h3>Pero con eso solo no alcanza &mdash; y ese es el hallazgo del informe</h3>
+    <p>
+      Al probar la métrica contra los 26 años de serie real aparecieron tres cosas que la formulación
+      intuitiva no anticipa. Las tres cambian el diseño:
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Lo que muestra la evidencia</th><th>Consecuencia sobre el diseño</th></tr></thead>
+      <tbody>
+        <tr><td>La regla de tres cajas (10 d atrás / 5 d adelante; 30 d atrás / 14 d adelante) deja
+            <b>80,7 % de los días sin régimen asignado</b>, y 117 días caen en dos cajas a la vez.</td>
+            <td>El portón no puede ser discreto: <b>&tau; tiene que ser continuo</b> y estar definido
+            todos los días (&sect;04).</td></tr>
+        <tr><td>Mirar &laquo;el río ya está alto&raquo; (Q &gt; p90) selecciona la <b>rama de bajada</b> de la onda:
+            ahí la persistencia subestima sólo el <b>17,8 %</b> de las veces. La <b>lluvia pronosticada</b>
+            a 5 días sí aísla el riesgo: subestima el <b>83,9 %</b>.</td>
+            <td>El portón se abre con el <b>pronóstico de lluvia</b>, no con el caudal actual. La
+            intuición de mirar hacia adelante era correcta; la de mirar el nivel de hoy, no (&sect;04).</td></tr>
+        <tr><td>El 25 % de días de menor caudal aporta <b>0,7 % del error cuadrático total</b>. Agregar
+            asimetría en unidades crudas <b>no cambió el ranking de ningún modelo candidato</b>.</td>
+            <td>Antes que la asimetría hay que arreglar <b>la escala</b>: sin transformar, la sequía es
+            invisible y ninguna ponderación la rescata (&sect;05).</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      La métrica que sale de ahí &mdash; una sola fórmula, con las tres correcciones adentro &mdash; está en
+      <b>&sect;06</b>. Conserva la propiedad que hace que todo esto sea defendible en la tesis:
+      <b>con &tau; = 0,5 en todos los días devuelve el RMSE, dígito por dígito.</b>
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>Qué mide RMSE hoy, y qué no</h2></div>
+  <div class="card">
+    <p>
+      Antes de reemplazar nada conviene saber qué está midiendo la métrica actual. Descomponiendo el
+      error cuadrático de un baseline de persistencia por banda de caudal observado, sobre los 26 años
+      de serie:
+    </p>
+    <figure>
+      <svg viewBox="0 0 640 252" role="img" aria-label="El diez por ciento de días de mayor caudal concentra entre el 61 y el 87 por ciento del error cuadrático total, mientras el 25 por ciento de días de menor caudal aporta alrededor del uno por ciento.">
+        <text class="svg-lbl" x="90" y="24">reparto del error cuadrático total (SSE) por banda de caudal observado</text>
+        <g>
+          <text class="svg-lbl" x="76" y="61" text-anchor="end">h = 1</text>
+          <rect class="sv-humedo" x="90" y="45" width="418.6" height="22" rx="2"/>
+          <rect class="sv-neutro" x="508.6" y="45" width="56.6" height="22" opacity=".5"/>
+          <rect class="sv-seco" x="565.2" y="45" width="4.8" height="22"/>
+          <text class="svg-num tx-inv" x="100" y="61">87,2 %</text>
+        </g>
+        <g>
+          <text class="svg-lbl" x="76" y="106" text-anchor="end">h = 3</text>
+          <rect class="sv-humedo" x="90" y="90" width="408.0" height="22" rx="2"/>
+          <rect class="sv-neutro" x="498.0" y="90" width="67.7" height="22" opacity=".5"/>
+          <rect class="sv-seco" x="565.7" y="90" width="4.3" height="22"/>
+          <text class="svg-num tx-inv" x="100" y="106">85,0 %</text>
+        </g>
+        <g>
+          <text class="svg-lbl" x="76" y="151" text-anchor="end">h = 7</text>
+          <rect class="sv-humedo" x="90" y="135" width="348.0" height="22" rx="2"/>
+          <rect class="sv-neutro" x="438.0" y="135" width="128.6" height="22" opacity=".5"/>
+          <rect class="sv-seco" x="566.6" y="135" width="3.4" height="22"/>
+          <text class="svg-num tx-inv" x="100" y="151">72,5 %</text>
+        </g>
+        <g>
+          <text class="svg-lbl" x="76" y="196" text-anchor="end">h = 14</text>
+          <rect class="sv-humedo" x="90" y="180" width="292.3" height="22" rx="2"/>
+          <rect class="sv-neutro" x="382.3" y="180" width="182.4" height="22" opacity=".5"/>
+          <rect class="sv-seco" x="564.7" y="180" width="5.3" height="22"/>
+          <text class="svg-num tx-inv" x="100" y="196">60,9 %</text>
+        </g>
+        <line class="svg-axis" x1="90" y1="214" x2="570" y2="214"/>
+        <g>
+          <rect class="sv-humedo" x="90" y="230" width="10" height="10" rx="2"/>
+          <text class="svg-lbl" x="106" y="239">10 % de mayor caudal</text>
+          <rect class="sv-neutro" x="262" y="230" width="10" height="10" rx="2" opacity=".5"/>
+          <text class="svg-lbl" x="278" y="239">bandas intermedias</text>
+          <rect class="sv-seco" x="420" y="230" width="10" height="10" rx="2"/>
+          <text class="svg-lbl" x="436" y="239">25 % de menor caudal (&asymp; 1 %)</text>
+        </g>
+      </svg>
+      <figcaption>
+        Baseline de persistencia sobre <code>caudal_actual_m3s</code>, 2000&ndash;2026. La franja ocre
+        de la derecha &mdash; el cuartil bajo, todo el estiaje &mdash; es el 0,7&ndash;1,1 % del error total.
+      </figcaption>
+    </figure>
+
+    <div class="callout">
+      <h4>El problema no es que RMSE ignore las crecidas. Es lo contrario.</h4>
+      <p>
+        RMSE <b>ya es</b> casi exclusivamente una métrica de crecidas: el 10 % de días de mayor caudal
+        explica entre el 61 % (h = 14) y el 87 % (h = 1) de todo el error cuadrático. Lo que RMSE no
+        puede hacer es <b>distinguir de qué lado</b> ocurrió ese error. Y en el otro extremo
+        <b>hace la sequía literalmente invisible</b>: optimizar RMSE hasta el último decimal no mejora
+        el estiaje, porque el estiaje no pesa.
+      </p>
+    </div>
+
+    <p>
+      Ese diagnóstico redefine el problema. No se trata de &laquo;darle más peso a las crecidas&raquo; &mdash;
+      ya lo tienen de sobra. Se trata de dos cosas distintas: <b>darle signo</b> al error donde el signo
+      importa, y <b>darle escala</b> al estiaje para que exista.
+    </p>
+
+    <h3>El error no tiene el mismo signo ni el mismo tamaño en cada régimen</h3>
+    <p>
+      Clasificando los días con la regla propuesta y midiendo el sesgo de la persistencia a 7 días
+      (<code>e = obs &minus; pred</code>, <code>e &gt; 0</code> = subestimó):
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Régimen</th><th class="num">días</th><th class="num">sesgo medio</th>
+        <th class="num">RMSE</th><th class="num">P(subestima)</th>
+        <th class="num">|e| mediano</th><th class="num">Q mediano</th><th class="num">|e| / Q</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill neutro">estable</span></td><td class="num">756</td><td class="num">&minus;88,7</td>
+            <td class="num">516,4</td><td class="num">35,7 %</td><td class="num">153,9</td>
+            <td class="num">864,7</td><td class="num">17,0 %</td></tr>
+        <tr><td><span class="pill humedo">inundación</span></td><td class="num">854</td><td class="num">&minus;2.292,1</td>
+            <td class="num">5.179,0</td><td class="num">19,0 %</td><td class="num">2.384,8</td>
+            <td class="num">4.912,2</td><td class="num">50,1 %</td></tr>
+        <tr><td><span class="pill seco">sequía</span></td><td class="num">380</td><td class="num">+7,2</td>
+            <td class="num">153,6</td><td class="num">42,1 %</td><td class="num">54,9</td>
+            <td class="num">469,7</td><td class="num">11,9 %</td></tr>
+        <tr class="hl"><td>todos</td><td class="num">9.675</td><td class="num">+1,2</td>
+            <td class="num">2.138,5</td><td class="num">45,2 %</td><td class="num">&mdash;</td>
+            <td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      Valores en m³/s. Dos lecturas importantes acá. La primera: el error típico va de
+      <b>55 m³/s en sequía a 2.385 m³/s en crecida</b>, un factor 43 &mdash; cualquier métrica en unidades
+      crudas está dominada por la crecida por construcción. La segunda: medido en <b>|e| / Q</b> el orden
+      casi se invierte (11,9 % / 17,0 % / 50,1 %), que es la primera pista de que la escala correcta
+      no es lineal.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>La familia: por qué expectil y no otra</h2></div>
+  <div class="card">
+    <p>
+      Hay cuatro candidatas razonables para expresar &laquo;este error duele más que aquel&raquo;. Se elige
+      el expectil por dos propiedades duras, no por gusto.
+    </p>
+    <figure>
+      <svg viewBox="0 0 640 348" role="img" aria-label="Tres parábolas sobre el mismo eje: con tau igual a 0,85 la rama derecha, la de subestimación, es empinada; con tau igual a 0,5 la parábola es simétrica y equivale al error cuadrático; con tau igual a 0,2 la rama empinada es la izquierda, la de sobrestimación.">
+        <line class="svg-axis" x1="70" y1="250" x2="620" y2="250"/>
+        <line class="svg-axis" x1="340" y1="40" x2="340" y2="262" stroke-dasharray="3 3"/>
+        <polyline class="st-humedo" fill="none" stroke-width="2.2" stroke-linejoin="round"
+          points="70,214.6 115,225.4 160,234.3 205,241.1 250,246.1 295,249.0 340,250 385,244.4 430,227.7 475,199.8 520,160.8 565,110.6 610,49.2"/>
+        <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" stroke-linejoin="round"
+          points="70,131.9 115,168.0 160,197.5 205,220.5 250,236.9 295,246.7 340,250 385,246.7 430,236.9 475,220.5 520,197.5 565,168.0 610,131.9"/>
+        <polyline class="st-seco" fill="none" stroke-width="2.2" stroke-linejoin="round"
+          points="70,61.0 115,118.8 160,166.0 205,202.8 250,229.0 295,244.8 340,250 385,248.7 430,244.8 475,238.2 520,229.0 565,217.2 610,202.8"/>
+        <text class="svg-lbl-em" x="70" y="278" text-anchor="start">&larr; sobrestima  (e &lt; 0)</text>
+        <text class="svg-lbl-em" x="620" y="278" text-anchor="end">subestima  (e &gt; 0) &rarr;</text>
+        <text class="svg-lbl" x="340" y="300" text-anchor="middle">error  e = Q observado &minus; Q predicho</text>
+        <text class="svg-lbl" x="62" y="46" text-anchor="end">&psi;(e)</text>
+        <g>
+          <line class="st-humedo" x1="60" y1="330" x2="84" y2="330" stroke-width="2.2"/>
+          <text class="svg-lbl" x="92" y="334">&tau; = 0,85 &middot; húmedo</text>
+          <line x1="240" y1="330" x2="264" y2="330" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"/>
+          <text class="svg-lbl" x="272" y="334">&tau; = 0,50 &middot; RMSE</text>
+          <line class="st-seco" x1="420" y1="330" x2="444" y2="330" stroke-width="2.2"/>
+          <text class="svg-lbl" x="452" y="334">&tau; = 0,20 &middot; seco</text>
+        </g>
+      </svg>
+      <figcaption>
+        Es siempre la misma parábola, inclinada por &tau;. La curva punteada &mdash; el RMSE de hoy &mdash;
+        es el caso &tau; = 0,5; las otras dos no la reemplazan, la continúan.
+      </figcaption>
+    </figure>
+
+    <h3>Las dos propiedades que deciden</h3>
+    <p>
+      <b>1. Reduce a RMSE de forma exacta.</b> Con &tau; = 0,5 el factor
+      <code>2&middot;|0,5 &minus; 1{e&lt;0}|</code> vale 1 en las dos ramas, así que
+      <code>&psi;(e) = e&sup2;</code>. Verificado numéricamente sobre la serie: la diferencia entre
+      RMSE y la métrica asimétrica con &tau; = 0,5 es <b>0,00e+00</b>. Eso importa para la tesis &mdash;
+      la métrica nueva no compite con la estándar, la <i>contiene</i> como caso particular, y todo lo
+      reportado antes sigue siendo comparable.
+    </p>
+    <p>
+      <b>2. Es derivable en todas partes.</b>
+      <code>&part;&psi;/&part;Q<sub>pred</sub> = &minus;4&middot;|&tau; &minus; 1{e&lt;0}|&middot;e</code>, que tiende
+      a 0 por los dos lados en <code>e = 0</code>. Sirve como función de pérdida de entrenamiento en
+      PyTorch sin el gradiente discontinuo de la pérdida pinball. Como Rio_Search entrena en PyTorch
+      (Decisión 038), poder usar <b>la misma función para entrenar y para evaluar</b> elimina el
+      desacople clásico entre lo que se optimiza y lo que se reporta.
+    </p>
+
+    <div class="tbl"><table>
+      <thead><tr><th>Candidata</th><th>Forma</th><th>Su mínimo estima</th><th>Por qué sí / por qué no</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>Expectil</td><td class="mono">2|&tau;&minus;1{e&lt;0}|&thinsp;e&sup2;</td>
+          <td>el &tau;-expectil</td>
+          <td>Contiene a RMSE exactamente en &tau; = 0,5; derivable en 0; una sola constante con lectura
+          operativa directa. <b>Elegida.</b></td></tr>
+        <tr><td>Pinball / cuantil</td><td class="mono">(&tau;&minus;1{e&lt;0})&thinsp;e</td>
+          <td>el &tau;-cuantil</td>
+          <td>Es el estándar probabilístico, pero en &tau; = 0,5 da MAE, no RMSE: rompe la continuidad
+          con lo ya reportado, y no es derivable en 0. Vuelve en &sect;09, donde sí corresponde.</td></tr>
+        <tr><td>LINEX</td><td class="mono">(2/a&sup2;)(exp(a&thinsp;e)&minus;a&thinsp;e&minus;1)</td>
+          <td>una media exponencial</td>
+          <td>Penalización exponencial de un lado &mdash; expresa muy bien &laquo;nunca subestimar&raquo;, pero
+          explota con errores de 20.000 m³/s y el parámetro <i>a</i> no tiene lectura operativa.</td></tr>
+        <tr><td>NSE / KGE ponderados</td><td class="mono">&mdash;</td><td>&mdash;</td>
+          <td>Son métricas normalizadas por la varianza observada, no funciones de pérdida: no admiten
+          asimetría sin dejar de ser interpretables. Se siguen reportando aparte (&sect;08).</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>El portón: qué mira, y cuándo</h2></div>
+  <div class="card">
+    <p>
+      Definida la fórmula, queda la parte que la propuesta original describe como &laquo;situación diaria&raquo;:
+      qué función produce <code>&tau;</code> cada día. Acá la evidencia obliga a dos correcciones.
+    </p>
+
+    <h3>Corrección 1 &mdash; tres cajas dejan afuera cuatro de cada cinco días</h3>
+    <p>
+      Implementando la regla tal como se planteó, con umbrales en el cuartil de cada acumulado de lluvia
+      (y usando la lluvia observada futura como <i>oráculo</i> de pronóstico perfecto, o sea el mejor caso
+      posible):
+    </p>
+    <div class="stat-grid">
+      <div class="stat"><div class="v neutro">7,8 %</div><div class="l">días <b>estables</b> (758)</div></div>
+      <div class="stat"><div class="v humedo">8,8 %</div><div class="l">días de <b>inundación</b> (858)</div></div>
+      <div class="stat"><div class="v seco">3,9 %</div><div class="l">días de <b>sequía</b> (380)</div></div>
+      <div class="stat"><div class="v crit">80,7 %</div><div class="l"><b>sin régimen asignado</b> (7.853)</div></div>
+    </div>
+    <p>
+      Además, 117 días entran a la vez en &laquo;estable&raquo; y en otra caja &mdash; las condiciones no son
+      excluyentes. Una métrica que sólo sabe qué hacer con el 20 % de los días no es una métrica de
+      evaluación: es un filtro. Y elegir un modelo con el 20 % de los datos tira a la basura casi toda
+      la evidencia disponible.
+    </p>
+    <figure>
+      <svg viewBox="0 0 640 268" role="img" aria-label="Comparación de dos portones: la regla de tres cajas cubre sólo el 20 por ciento de los días y deja 80,7 por ciento sin asignar; el índice continuo asigna un valor de tau a cada uno de los días.">
+        <defs>
+          <linearGradient id="ramp" x1="0" y1="0" x2="1" y2="0">
+            <stop class="g-seco" offset="0"/>
+            <stop class="g-neutro" offset="0.5"/>
+            <stop class="g-humedo" offset="1"/>
+          </linearGradient>
+          <pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+            <rect width="8" height="8" class="sv-surf"/>
+            <line x1="0" y1="0" x2="0" y2="8" class="svg-axis"/>
+          </pattern>
+        </defs>
+
+        <text class="svg-lbl-em" x="90" y="30">Opción A &mdash; regla de tres cajas</text>
+        <rect class="sv-seco"   x="90"    y="42" width="20.0"  height="30"/>
+        <rect class="sv-neutro" x="110.0" y="42" width="40.1"  height="30"/>
+        <rect class="sv-humedo" x="150.1" y="42" width="45.2"  height="30"/>
+        <rect fill="url(#hatch)" class="sv-line" x="195.3" y="42" width="414.6" height="30"/>
+        <text class="svg-num" x="402" y="62" text-anchor="middle">80,7 % sin régimen asignado</text>
+        <text class="svg-lbl" x="90"  y="92">sequía 3,9 %  &middot;  estable 7,8 %  &middot;  inundación 8,8 %   &mdash;   20,5 % de los días</text>
+        <text class="svg-lbl" x="90"  y="112">&tau; queda indefinido en el resto; 117 días caen en dos cajas a la vez</text>
+
+        <text class="svg-lbl-em" x="90" y="160">Opción B &mdash; índice de régimen continuo</text>
+        <rect fill="url(#ramp)" x="90" y="172" width="520" height="30" rx="2"/>
+        <line class="svg-axis" x1="269.9" y1="168" x2="269.9" y2="210" stroke-dasharray="3 3"/>
+        <line class="svg-axis" x1="423.3" y1="168" x2="423.3" y2="210" stroke-dasharray="3 3"/>
+        <text class="svg-num tx-inv" x="180" y="192" text-anchor="middle">34,6 %</text>
+        <text class="svg-num tx-inv" x="346" y="192" text-anchor="middle">29,5 %</text>
+        <text class="svg-num tx-inv" x="517" y="192" text-anchor="middle">34,5 %</text>
+        <text class="svg-lbl" x="90"  y="226">&tau; = 0,15</text>
+        <text class="svg-lbl" x="269.9" y="226" text-anchor="middle">0,35</text>
+        <text class="svg-lbl" x="350" y="226" text-anchor="middle">0,50</text>
+        <text class="svg-lbl" x="423.3" y="226" text-anchor="middle">0,65</text>
+        <text class="svg-lbl" x="610" y="226" text-anchor="end">0,85</text>
+        <text class="svg-lbl" x="90"  y="250">cada día tiene un &tau;; el reparto de días surge de la serie, no de un umbral</text>
+      </svg>
+      <figcaption>
+        El mismo eje &mdash; seco a la izquierda, húmedo a la derecha &mdash; con los dos portones sobre los
+        9.732 días de la serie. La diferencia no es de precisión sino de cobertura: B define &tau; para
+        el 100 % de los días y no tiene fronteras donde la métrica salte.
+      </figcaption>
+    </figure>
+
+    <h3>Corrección 2 &mdash; el caudal actual apunta al lado equivocado</h3>
+    <p>
+      La regla propuesta combina dos señales: cuánto llovió antes y cuánto se pronostica. Vale la pena
+      separarlas y ver cuál captura realmente el riesgo de subestimar. Probando distintos portones
+      contra los días donde la persistencia a 7 días efectivamente subestima:
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Portón candidato para &laquo;inundación&raquo;</th><th class="num">% de días</th>
+        <th class="num">P(subestima)</th><th class="num">sesgo medio</th>
+        <th class="num">captura del error de subestimación</th></tr></thead>
+      <tbody>
+        <tr><td>Q &gt; p90 &mdash; el río ya está alto</td><td class="num">10,0 %</td>
+            <td class="num bad">17,8 %</td><td class="num">&minus;2.268,5</td><td class="num">20,2 %</td></tr>
+        <tr><td>acum. 30 d &gt; p75 <b>y</b> Q &gt; p90</td><td class="num">8,4 %</td>
+            <td class="num bad">18,8 %</td><td class="num">&minus;2.361,5</td><td class="num">19,2 %</td></tr>
+        <tr><td>lluvia pronosticada 14 d &gt; p75</td><td class="num">25,0 %</td>
+            <td class="num good">66,8 %</td><td class="num">+929,1</td><td class="num good">93,0 %</td></tr>
+        <tr class="hl"><td>lluvia pronosticada 5 d &gt; p90</td><td class="num">10,0 %</td>
+            <td class="num good">83,9 %</td><td class="num">+1.983,2</td><td class="num good">68,2 %</td></tr>
+        <tr><td>pronóstico 5 d &gt; p90 <b>y</b> acum. 30 d &gt; p50</td><td class="num">6,2 %</td>
+            <td class="num">78,7 %</td><td class="num">+2.013,9</td><td class="num">50,7 %</td></tr>
+        <tr><td>pronóstico 5 d &gt; p90 <b>y</b> Q &gt; p75</td><td class="num">3,7 %</td>
+            <td class="num">68,1 %</td><td class="num">+1.691,8</td><td class="num">33,4 %</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout crit">
+      <h4>Condicionar en &laquo;el río está alto&raquo; invierte la señal que se quiere capturar</h4>
+      <p>
+        Cuando Q ya superó el p90, lo más probable en los 7 días siguientes es que <b>baje</b>: el portón
+        está seleccionando la rama de recesión de la onda, no la de ascenso. Por eso ahí la persistencia
+        <b>sobrestima</b> el 82 % de las veces (sesgo &minus;2.268 m³/s) y sólo captura el 20 % del error de
+        subestimación. Poner &tau; = 0,8 sobre esos días premiaría precisamente al modelo que exagera la
+        crecida ya instalada. El pronóstico de lluvia es lo que anticipa el ascenso &mdash; con el mismo
+        10 % de días, sube P(subestima) de 17,8 % a 83,9 % y la captura del riesgo de 20 % a 68 %.
+      </p>
+    </div>
+
+    <h3>El portón continuo que sale de eso</h3>
+    <div class="formula">
+      <span class="eq">A(t)  =  rank&thinsp;%<sub>serie</sub> ( &Sigma;<sub>i=1..30</sub>  P&#772;(t &minus; i) )                <i>humedad antecedente observada</i></span>
+      <span class="eq">F(t)  =  rank&thinsp;%<sub>serie</sub> ( &Sigma;<sub>k=1..14</sub>  &gamma;<sup>k</sup> &middot; P&#770;(t + k) )        <i>lluvia pronosticada, ponderada por lead</i></span>
+      <span class="eq">W(t)  =  0,35 &middot; A(t)  +  0,65 &middot; F(t)</span>
+      <span class="eq">r(t)  =  tanh( &kappa; &middot; (2&middot;W(t) &minus; 1) )                        <i>índice de régimen, en [&minus;1, +1]</i></span>
+      <span class="eq"><b>&tau;(t)</b>  =  clip( 0,5 + (&tau;<sub>max</sub> &minus; 0,5) &middot; r(t) ,  1&minus;&tau;<sub>max</sub> ,  &tau;<sub>max</sub> )</span>
+      <p class="where">
+        <code>P&#772;</code> = lluvia media por estación observada, <code>P&#770;</code> = lluvia pronosticada
+        (GEFS / ECMWF). Con <code>&gamma; = 0,85</code>, <code>&kappa; = 2,2</code>,
+        <code>&tau;<sub>max</sub> = 0,85</code>: <code>r = &minus;1</code> &rarr; estiaje pleno,
+        <code>r = 0</code> &rarr; &tau; = 0,5 &rarr; RMSE, <code>r = +1</code> &rarr; crecida.
+      </p>
+    </div>
+    <p>
+      El peso 0,35 / 0,65 no es arbitrario: sale de la tabla de arriba, donde la señal de pronóstico
+      resultó ser la que aísla el riesgo. La humedad antecedente entra igual porque condiciona la
+      respuesta del suelo &mdash; los mismos 50 mm producen una onda muy distinta sobre suelo saturado
+      que sobre suelo seco &mdash; pero entra como modulador, no como disparador.
+    </p>
+
+    <h3>La propiedad que hace que esta métrica no sea manipulable</h3>
+    <p>
+      Hay una tentación evidente y hay que nombrarla para descartarla: definir el régimen mirando
+      <b>el caudal observado del día que se quiere predecir</b> (&laquo;esto fue una crecida, entonces
+      evalúo con &tau; = 0,8&raquo;). Eso rompe la métrica. Es el <i>dilema del pronosticador</i>: cuando la
+      verificación se condiciona sobre el resultado observado, el score deja de ser propio y premia
+      sistemáticamente al modelo sesgado hacia el extremo &mdash; un modelo que siempre pronostica crecida
+      queda bien evaluado en los días de crecida, que son los únicos donde se lo mira.
+    </p>
+    <figure>
+      <svg viewBox="0 0 660 262" role="img" aria-label="Línea de tiempo: la ventana de 30 días de lluvia observada y la ventana de 14 días de lluvia pronosticada alimentan el portón que fija tau; el caudal observado del día objetivo no puede alimentarlo.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="fl-crit"/>
+          </marker>
+        </defs>
+
+        <text class="svg-lbl-em" x="340" y="26" text-anchor="middle">t&#8320;  &mdash;  emisión del pronóstico</text>
+        <line class="svg-axis" x1="340" y1="34" x2="340" y2="130" stroke-dasharray="4 3"/>
+
+        <rect class="svg-box" x="60" y="46" width="280" height="28" rx="3"/>
+        <text class="svg-lbl" x="200" y="64" text-anchor="middle">lluvia y caudal observados &middot; 30 d</text>
+        <rect x="340" y="46" width="210" height="28" rx="3" class="st-humedo fl-humedo-bg"/>
+        <text class="svg-lbl" x="445" y="64" text-anchor="middle">lluvia pronosticada &middot; 14 d</text>
+
+        <line class="svg-axis" x1="40" y1="90" x2="620" y2="90"/>
+        <circle class="sv-neutro" cx="445" cy="90" r="5"/>
+        <text class="svg-lbl" x="60"  y="108" text-anchor="middle">t&#8320;&minus;30</text>
+        <text class="svg-lbl" x="340" y="108" text-anchor="middle">t&#8320;</text>
+        <text class="svg-lbl" x="445" y="108" text-anchor="middle">t&#8320;+7  &middot;  target</text>
+        <text class="svg-lbl" x="550" y="108" text-anchor="middle">t&#8320;+14</text>
+
+        <line x1="200" y1="76" x2="200" y2="126" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
+        <line x1="390" y1="76" x2="390" y2="126" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
+
+        <rect class="svg-box" x="60" y="132" width="490" height="48" rx="8"/>
+        <text class="svg-lbl-em" x="305" y="152" text-anchor="middle">Portón de régimen  &middot;  &tau;(t&#8320;),  w(t&#8320;)</text>
+        <text class="svg-lbl" x="305" y="170" text-anchor="middle">toda su entrada está disponible en el momento de emitir</text>
+
+        <path d="M 452 96 L 604 96 L 604 156 L 562 156" fill="none" class="st-crit" stroke-width="1.6"
+              stroke-dasharray="5 4" marker-end="url(#ahc)"/>
+        <line x1="597" y1="119" x2="611" y2="133" class="st-crit" stroke-width="2"/>
+        <line x1="611" y1="119" x2="597" y2="133" class="st-crit" stroke-width="2"/>
+        <text class="svg-lbl tx-crit" x="589" y="130" text-anchor="end">prohibido</text>
+        <text class="svg-lbl" x="60" y="204">el caudal observado en t&#8320;+7 se conoce recién 7 días después:</text>
+        <text class="svg-lbl" x="60" y="222">si entrara al portón, un modelo sesgado a crecida podría inflar su propio puntaje</text>
+      </svg>
+      <figcaption>
+        El portón consume sólo información disponible al emitir: 30 días de observación y 14 de
+        pronóstico. La flecha tachada es la única que hay que evitar &mdash; y la formulación original
+        ya la evitaba, porque nunca propuso mirar el caudal futuro.
+      </figcaption>
+    </figure>
+    <div class="callout ok">
+      <h4>La formulación original ya tenía esto bien</h4>
+      <p>
+        Mirar &laquo;los últimos 10 (o 30) días&raquo; y &laquo;lo pronosticado para los próximos 5 (o 14)&raquo; es
+        exactamente la condición que hace que el score siga siendo propio: las dos señales existen en
+        <code>t&#8320;</code>. Vale la pena dejarlo escrito como <b>invariante de diseño</b>, porque es
+        fácil de romper sin darse cuenta al implementar la evaluación sobre un dataframe que ya tiene
+        las columnas <code>caudal_t_mas_&lt;h&gt;d</code> a mano.
+      </p>
+    </div>
+
+    <div class="callout">
+      <h4>Detalle de dato: la serie de lluvia del portón tiene que ser estacionaria</h4>
+      <p>
+        <code>lluvia_acumulada_mm</code> en Gold es la <b>suma</b> sobre las estaciones que reportaron
+        ese día, y <code>station_count</code> va de 0 a 177 según la época &mdash; usarla directamente haría
+        que el régimen dependa de cuántos pluviómetros había, no de cuánto llovió. El portón debe
+        alimentarse de <b>lluvia media por estación</b> (<code>lluvia_acumulada_mm / station_count</code>,
+        que es la transform <code>ratio</code> ya prevista en el plan de Rio_Search) o, mejor, de la
+        <b>grilla MERGE de CPTEC</b> (<code>lluvia_merge_*</code>, media areal real, disponible desde 1998
+        por la Decisión 033). Todos los números de este informe se calcularon con la media por estación.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>El ingrediente que faltaba: la escala</h2></div>
+  <div class="card">
+    <p>
+      Con la fórmula y el portón definidos se puede hacer la prueba que decide todo: <b>¿cambia algo?</b>
+      Se evaluaron cinco modelos de referencia a 7 días sobre los mismos 9.593 días, con cuatro
+      métricas: RMSE, la versión asimétrica con portón discreto, la versión con &tau; continuo, y la
+      versión continua aplicada sobre el error en logaritmo.
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Modelo de referencia</th><th class="num">RMSE</th><th class="num">asim. discreta</th>
+        <th class="num">asim. continua</th><th class="num">asim. sobre log</th></tr></thead>
+      <tbody>
+        <tr><td>climatología 30 d</td><td class="num">1.838,1</td><td class="num">1.980,0</td>
+            <td class="num">2.208,3</td><td class="num">0,727</td></tr>
+        <tr><td>persistencia &times; 0,90</td><td class="num">2.051,9</td><td class="num">2.158,9</td>
+            <td class="num">2.325,2</td><td class="num">0,691</td></tr>
+        <tr><td>persistencia</td><td class="num">2.145,0</td><td class="num">2.229,8</td>
+            <td class="num">2.353,1</td><td class="num">0,674</td></tr>
+        <tr><td>persistencia &times; 1,10</td><td class="num">2.264,7</td><td class="num">2.327,1</td>
+            <td class="num">2.405,0</td><td class="num">0,675</td></tr>
+        <tr><td>persistencia + 0,5&middot;tendencia&middot;h</td><td class="num">4.718,1</td><td class="num">4.640,4</td>
+            <td class="num">4.399,9</td><td class="num">3,188</td></tr>
+        <tr class="hl"><td>¿el ranking cambia respecto de RMSE?</td><td class="num">&mdash;</td>
+            <td class="num">no</td><td class="num">no</td><td class="num">sí</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      Las tres primeras columnas producen <b>exactamente el mismo orden</b>. Cambiar &tau; mueve el valor
+      de la métrica pero no mueve el ranking, y una métrica que no reordena no sirve para elegir
+      campeón. La razón es la de &sect;02: en unidades crudas los errores de crecida son 43 veces más
+      grandes que los de estiaje, así que la suma de cuadrados la decide la crecida sin importar de qué
+      lado esté el error.
+    </p>
+    <div class="callout crit">
+      <h4>El problema de escala pesa más que el problema de asimetría</h4>
+      <p>
+        Es contraintuitivo respecto del planteo inicial, pero es lo que dicen los datos: <b>la asimetría
+        sola no hace nada</b> mientras la métrica siga en m³/s. Recién al estabilizar la varianza &mdash;
+        pasar el error a logaritmo, que es lo que iguala el peso de un error del 20 % en 500 m³/s con
+        uno del 20 % en 5.000 m³/s &mdash; los días de estiaje empiezan a existir para la métrica, y
+        entonces la asimetría tiene sobre qué actuar.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>La métrica propuesta</h2></div>
+  <div class="card">
+    <p>
+      Juntando las tres correcciones en una sola expresión. Se le puede llamar <b>G-RAL</b>
+      (ganancia regime-asimétrica en logaritmo):
+    </p>
+    <div class="formula">
+      <span class="eq">&epsilon;(t, h)  =  ln&thinsp;max(Q<sub>obs</sub>(t+h), Q<sub>0</sub>)  &minus;  ln&thinsp;max(Q<sub>pred</sub>(t+h), Q<sub>0</sub>)</span>
+      <span class="eq">&psi;<b>&tau;</b>(&epsilon;)  =  2 &middot; |<b>&tau;</b> &minus; 1{&epsilon; &lt; 0}| &middot; &epsilon;&sup2;</span>
+      <span class="eq"><b>G-RAL</b>(h)  =  &radic;&thinsp;(  &Sigma;<sub>t</sub> w(t)&middot;&psi;<sub>&tau;(t)</sub>(&epsilon;(t,h))  /  &Sigma;<sub>t</sub> w(t)  )</span>
+      <p class="where">
+        <code>&tau;(t)</code> del portón continuo de &sect;04; <code>Q<sub>0</sub> = 100 m³/s</code>, piso
+        por debajo del p1 observado (204 m³/s), que sólo evita el log de un valor no físico;
+        <code>w(t) = 1</code> por defecto &mdash; queda como gancho por si más adelante se quiere ponderar
+        por criticidad operativa, pero <b>no se usa en la versión propuesta</b>: dos mecanismos de
+        ponderación simultáneos son imposibles de interpretar.
+      </p>
+    </div>
+
+    <h3>Qué hace, sobre los mismos modelos</h3>
+    <div class="tbl"><table>
+      <thead><tr><th>Modelo</th><th class="num">RMSE (m³/s)</th><th class="num">G-RAL</th>
+        <th class="num">subestima en días húmedos</th><th class="num">sobrestima en días secos</th>
+        <th class="num">falsa alarma (sobrestima en húmedo)</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>persistencia</td><td class="num">2.145,0</td><td class="num">0,674</td>
+            <td class="num">62,0 %</td><td class="num">65,7 %</td><td class="num">37,6 %</td></tr>
+        <tr><td>persistencia &times; 1,10</td><td class="num">2.264,7</td><td class="num">0,675</td>
+            <td class="num good">54,7 %</td><td class="num bad">79,5 %</td><td class="num">45,3 %</td></tr>
+        <tr><td>persistencia &times; 0,90</td><td class="num">2.051,9</td><td class="num">0,691</td>
+            <td class="num bad">69,5 %</td><td class="num good">50,5 %</td><td class="num">30,5 %</td></tr>
+        <tr><td>climatología 30 d</td><td class="num">1.838,1</td><td class="num">0,727</td>
+            <td class="num">60,3 %</td><td class="num bad">79,2 %</td><td class="num">39,7 %</td></tr>
+        <tr><td>persistencia + 0,5&middot;tendencia&middot;h</td><td class="num">4.718,1</td><td class="num">3,188</td>
+            <td class="num">64,3 %</td><td class="num">50,1 %</td><td class="num">&mdash;</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      n = 9.593 días; 3.359 húmedos (&tau; &gt; 0,65), 2.868 neutros, 3.366 secos (&tau; &lt; 0,35).
+      La lectura es directa: <b>RMSE elige la climatología de 30 días</b> &mdash; un modelo que suaviza todo,
+      que subestima el 60 % de los días húmedos y sobrestima el 79 % de los secos, o sea que comete
+      los dos errores prohibidos casi siempre. G-RAL lo manda al cuarto puesto. Y
+      <code>persistencia &times; 0,90</code>, el que más subestima en régimen húmedo (69,5 %), baja del
+      segundo al tercero.
+    </p>
+
+    <h3>Las tres métricas acompañantes, que no son opcionales</h3>
+    <p>
+      Un escalar agregado nunca va a expresar &laquo;nunca subestimar&raquo;. Puede expresar &laquo;subestimar cuesta
+      caro&raquo;, que es otra cosa. La restricción dura se reporta aparte, y son las columnas que en la
+      tabla de arriba discriminan mucho mejor que el propio G-RAL:
+    </p>
+    <div class="formula">
+      <span class="eq">V&#8314;(h)  =  P( e &gt; 0  |  &tau;(t) &gt; 0,65 )      <i>subestimación en régimen húmedo &mdash; debe bajar</i></span>
+      <span class="eq">V&#8315;(h)  =  P( e &lt; 0  |  &tau;(t) &lt; 0,35 )      <i>sobrestimación en régimen seco &mdash; debe bajar</i></span>
+      <span class="eq">FA(h)  =  P( e &lt; 0  |  &tau;(t) &gt; 0,65 )      <i>falsa alarma &mdash; no debe subir sin control</i></span>
+    </div>
+    <p>
+      <code>FA</code> es el contrapeso indispensable: sin ella, la forma trivial de bajar
+      <code>V&#8314;</code> es pronosticar siempre de más, y eso tiene su propio costo operativo
+      (evacuaciones innecesarias, vertidos anticipados en Salto Grande). El criterio de campeón
+      propuesto es <b>minimizar G-RAL sujeto a que V&#8314; y V&#8315; no empeoren respecto del
+      baseline de persistencia</b>, no minimizar G-RAL a secas.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Calibración: qué se declara y qué se ajusta</h2></div>
+  <div class="card">
+    <p>
+      La distinción más importante de todo el diseño: <b>&tau; codifica un costo, no un dato</b>. No se
+      estima de la serie, se declara y se defiende. Los demás parámetros son de forma y sí admiten
+      sensibilidad.
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Parámetro</th><th class="num">Propuesto</th><th>Cómo se justifica</th><th>¿Se ajusta?</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td><code>&tau;<sub>max</sub></code></td><td class="num">0,85</td>
+          <td>Equivale a decir que subestimar en crecida plena cuesta <b>5,7&times;</b> lo que sobrestimar.
+          La identidad <code>&tau; = k/(k+1)</code> permite discutirlo con un operador en términos de
+          costo, no de estadística.</td><td><b>No.</b> Se declara + sensibilidad.</td></tr>
+        <tr><td><code>&kappa;</code> (nitidez del tanh)</td><td class="num">2,2</td>
+          <td>Produce un reparto de días de 34,6 / 29,5 / 34,5 % &mdash; ni tres cajas disfrazadas ni un
+          &tau; casi constante en 0,5.</td><td>Sensibilidad</td></tr>
+        <tr><td>peso antecedente / pronóstico</td><td class="num">0,35 / 0,65</td>
+          <td>Del hallazgo de &sect;04: la señal de pronóstico es la que aísla el riesgo de subestimar.</td>
+          <td>Sensibilidad</td></tr>
+        <tr><td><code>&gamma;</code> (decaimiento por lead)</td><td class="num">0,85</td>
+          <td>Los leads cortos son más confiables; con 0,85 el día +1 pesa 4,3 veces más que el +14.</td>
+          <td>Sensibilidad</td></tr>
+        <tr><td>ventana antecedente</td><td class="num">30 d</td>
+          <td>Memoria de humedad del suelo; es la ventana de la propuesta original.</td><td>Fijo</td></tr>
+        <tr><td>ventana de pronóstico</td><td class="num">14 d</td>
+          <td>Horizonte máximo del target, no hay decisión que tomar acá.</td><td>Fijo</td></tr>
+        <tr><td><code>Q<sub>0</sub></code> (piso del log)</td><td class="num">100 m³/s</td>
+          <td>Por debajo del p1 observado (204 m³/s): nunca se activa con datos reales, sólo protege
+          de una predicción negativa.</td><td>Fijo</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      <b>Protocolo de sensibilidad para la tesis:</b> reportar G-RAL del campeón y de sus dos
+      competidores más cercanos para <code>&tau;<sub>max</sub> &isin; {0,70 &middot; 0,80 &middot; 0,85 &middot; 0,90}</code>.
+      Si el campeón no cambia, el resultado es robusto y se dice. Si cambia, el resultado depende del
+      parámetro y también hay que decirlo &mdash; ese es el hallazgo, no un problema a esconder.
+    </p>
+    <p>
+      Un valor de referencia útil: la curva de duración de caudales de <code>ana_74100000</code>
+      (2000&ndash;2026) da p10 = 454, p25 = 644, p50 = 1.277, p75 = 1.980, p90 = 3.182 y p99 = 10.548 m³/s.
+      Sirve para traducir cualquier umbral operativo declarado por el operador a un percentil de la serie.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Tres usos distintos, tres requisitos distintos</h2></div>
+  <div class="card">
+    <p>
+      La misma función se puede usar en tres lugares, y conviene no mezclarlos porque las condiciones
+      de validez son distintas en cada uno.
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Uso</th><th>Qué exige</th><th>Recomendación</th></tr></thead>
+      <tbody>
+        <tr><td><b>Reportar</b><br>(tabla de resultados)</td>
+          <td>Que se pueda comparar con la literatura hidrológica.</td>
+          <td><b>Sí, ya.</b> G-RAL se agrega a la tabla de &sect;3.7 del plan
+          (<code>test/gral/h01</code>&hellip;<code>h14</code>), <b>junto a</b> RMSE, NSE y KGE &mdash;
+          nunca en lugar de ellas.</td></tr>
+        <tr><td><b>Seleccionar campeón</b></td>
+          <td>Que la métrica reordene modelos de forma estable y con el criterio operativo correcto.</td>
+          <td><b>Sí, con la restricción de &sect;06</b>: minimizar <code>val/gral/mean</code> sujeto a
+          que V&#8314; y V&#8315; no superen al baseline. Mantener <code>val/kge/mean</code> como
+          criterio secundario reportado.</td></tr>
+        <tr><td><b>Entrenar</b><br>(loss de PyTorch)</td>
+          <td>Aceptar que el modelo resultante va a ser <b>deliberadamente sesgado</b>.</td>
+          <td><b>Sí, pero como experimento explícito.</b> Un trial con <code>loss: gral</code> contra
+          el mismo modelo con <code>loss: mse</code>, comparados con las dos métricas. Esa comparación
+          es en sí misma un resultado de tesis.</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout">
+      <h4>Lo que hay que decir en la tesis sin rodeos</h4>
+      <p>
+        Un predictor que minimiza una pérdida asimétrica <b>no estima la media condicional</b>: estima
+        el &tau;-expectil. Va a tener sesgo positivo en régimen húmedo <i>por diseño</i>, y eso hará
+        subir su RMSE. No es un defecto del modelo ni un error de calibración &mdash; es la decisión
+        operativa hecha explícita. Por eso RMSE, NSE y KGE se siguen reportando: son las que responden
+        &laquo;¿qué tan preciso es?&raquo;, mientras G-RAL responde &laquo;¿qué tan caro sale equivocarse así?&raquo;.
+        Son preguntas distintas y las dos van en la tabla.
+      </p>
+    </div>
+
+    <h3>Implementación</h3>
+    <p>
+      Dos funciones puras, con los mismos tests de valores conocidos que el resto de las métricas
+      (&sect;3.7 del plan de Rio_Search). El portón se calcula una sola vez sobre el dataset, con Polars,
+      y viaja como una columna más:
+    </p>
+<pre class="code"><i># --- portón: una columna tau por fecha, sólo con datos disponibles en t0 ---</i>
+GAMMA, KAPPA, TAU_MAX = 0.85, 2.2, 0.85
+
+lead_w = [GAMMA**k for k in range(1, 15)]
+lead_w = [w / sum(lead_w) for w in lead_w]
+
+def pct_rank(expr):                       <i># percentil dentro de la serie, en [0, 1]</i>
+    return expr.rank(method="average") / expr.is_not_null().sum()
+
+antecedente = <b>pl.col("lluvia_media_est_mm").rolling_sum(30)</b>          <i># 30 d observados</i>
+pronostico  = <b>sum(w * pl.col(f"precip_fc_d{k}") for k, w in enumerate(lead_w, 1))</b>
+
+df = df.with_columns(
+    pct_rank(antecedente).alias("A"),
+    pct_rank(pronostico).alias("F"),
+).with_columns(
+    ((0.35 * pl.col("A") + 0.65 * pl.col("F")) * 2 - 1).mul(KAPPA).tanh().alias("r")
+).with_columns(
+    (0.5 + (TAU_MAX - 0.5) * pl.col("r"))
+    .clip(1 - TAU_MAX, TAU_MAX).alias("<b>tau</b>")
+)
+
+<i># --- pérdida: idéntica para evaluar (numpy) y para entrenar (torch) ---</i>
+def <b>expectile_se</b>(e, tau):
+    <i>"""psi_tau(e) = 2*|tau - 1{e&lt;0}|*e^2.  tau=0.5 devuelve e^2 exacto."""</i>
+    w = torch.where(e &lt; 0, 1.0 - tau, tau)
+    return 2.0 * w * e.pow(2)
+
+def <b>g_ral</b>(q_obs, q_pred, tau, q_floor=100.0):
+    eps = torch.log(q_obs.clamp(min=q_floor)) - torch.log(q_pred.clamp(min=q_floor))
+    return expectile_se(eps, tau).mean().sqrt()
+
+<i># test obligatorio: con tau=0.5 y sin log, g_ral == rmse hasta precisión de máquina</i></pre>
+    <p>
+      <code>tau</code> se ventanea junto con las features pero <b>no entra como feature</b>: es una
+      propiedad de la evaluación, no un insumo del modelo. Si entrara, el modelo aprendería a
+      reconocer cuándo lo están midiendo con qué vara.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Lo que corresponde cuando el pronóstico sea probabilístico</h2></div>
+  <div class="card">
+    <p>
+      Todo lo anterior asume un pronóstico determinístico: un número por día y horizonte. El proyecto
+      ya tiene el ensemble GEFS ingestado (Decisiones 034 y 035), y en cuanto el modelo emita una
+      distribución en vez de un punto, la respuesta correcta a esta misma pregunta cambia de familia
+      &mdash; conviene dejarlo anotado ahora para no rehacer el diseño después:
+    </p>
+    <ul>
+      <li><b>CRPS</b> reemplaza a RMSE como métrica base. Tiene la propiedad elegante de ser la
+        integral de la pérdida pinball sobre todos los cuantiles &mdash; o sea que el expectil de este
+        informe es, en cierto sentido, su versión determinística de un solo cuantil.</li>
+      <li><b>twCRPS</b> (<i>threshold-weighted CRPS</i>) es la generalización directa de lo que se
+        buscó acá: una función de peso <code>v(x)</code> sobre el eje del caudal concentra el score en
+        el rango que importa &mdash; por encima del nivel de alerta, por debajo del caudal de estiaje &mdash;
+        <b>sin dejar de ser un score propio</b>. Es la herramienta correcta para &laquo;me importan los
+        extremos&raquo; y evita tener que inventar la ponderación a mano.</li>
+      <li>El portón <code>&tau;(t)</code> de &sect;04 <b>se reutiliza tal cual</b>: pasa de modular la
+        asimetría a modular la función de peso. Ese es el argumento para construirlo bien ahora.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">10</span><h2>Decisión propuesta</h2></div>
+  <div class="card">
+    <p>
+      Redactada para entrar como <b>Decisión 039</b> en <code>decisions.md</code>, con el formato del log:
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Campo</th><th>Contenido</th></tr></thead>
+      <tbody>
+        <tr><td><b>Decisión</b></td><td>Se adopta <b>G-RAL</b> &mdash; pérdida expectil asimétrica sobre el
+          error en logaritmo, con &tau; continuo por día &mdash; como métrica de evaluación complementaria y
+          criterio primario de selección de campeón, acompañada de las tasas de violación V&#8314;,
+          V&#8315; y FA. RMSE, MAE, NSE, KGE y PBIAS se siguen reportando sin cambios.</td></tr>
+        <tr><td><b>Alcance</b></td><td>Target <code>caudal</code>, horizontes 1&ndash;14 d, estación
+          <code>ana_74100000</code>. Se implementa en <code>rio_search</code> como función pura con tests,
+          igual que el resto de las métricas de &sect;3.7 del plan.</td></tr>
+        <tr><td><b>Invariante</b></td><td>El portón se calcula <b>sólo</b> con información disponible en
+          <code>t&#8320;</code> (30 d de observación + 14 d de pronóstico). Ninguna columna
+          <code>*_t_mas_*d</code> puede entrar en el cálculo de &tau;. Test de regresión obligatorio.</td></tr>
+        <tr><td><b>Verificación de partida</b></td><td>Con &tau; = 0,5 en todos los días y sin transformar,
+          G-RAL debe igualar al RMSE hasta precisión de máquina. Ya verificado sobre el snapshot delta 263:
+          diferencia 0,00e+00.</td></tr>
+        <tr><td><b>Insumo de dato</b></td><td>El portón consume lluvia <b>media por estación</b> o la
+          grilla MERGE de CPTEC, nunca <code>lluvia_acumulada_mm</code> crudo (suma sobre un número
+          variable de estaciones).</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Lo que queda abierto</h3>
+    <ul>
+      <li><b>El valor de <code>&tau;<sub>max</sub></code>.</b> 0,85 es una propuesta razonable, no un
+        resultado. Sale bien de una conversación con quien opera: &laquo;¿cuántas veces peor es quedarse
+        corto en una crecida que pasarse?&raquo;. Mientras tanto, sensibilidad sobre cuatro valores.</li>
+      <li><b>Todo se midió con baselines, no con el modelo.</b> Persistencia y climatología alcanzan para
+        mostrar que la métrica reordena y por qué, pero la prueba definitiva es correr el BiLSTM con
+        <code>loss: mse</code> y con <code>loss: gral</code> y comparar. Es el primer experimento de la
+        Fase 3 de Rio_Search.</li>
+      <li><b>El pronóstico usado en el portón fue un oráculo.</b> Los porcentajes de &sect;04 usan lluvia
+        observada futura como sustituto del pronóstico. Con GEFS/ECMWF real, la señal se degrada &mdash;
+        hay que recalcular esa tabla cuando las columnas de <code>forecast</code> entren a Gold
+        (Fase 4 del roadmap) y verificar que el portón sigue separando.</li>
+      <li><b>Un solo punto de predicción.</b> Todo es <code>ana_74100000</code>. Salto Grande aguas abajo
+        tiene régimen regulado y la asimetría ahí probablemente sea distinta &mdash; en un embalse operado,
+        sobrestimar también tiene costo de vertido.</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot"><div class="wrap">
+  <p>
+    Todos los números salen del snapshot local de <code>weather.gold.training_dataset_v0</code>
+    (delta 263, sha256 <code>e2ff0ee6&hellip;</code>, 9.732 filas, 2000-01-01 &rarr; 2026-08-23) y son
+    reproducibles sobre ese archivo. Los baselines son persistencia sobre
+    <code>caudal_actual_m3s</code> y media móvil de 30 días; los targets, las columnas
+    <code>caudal_t_mas_&lt;h&gt;d</code> ya verificadas sin fuga en <code>gold_quality_report.md</code> &sect;4.
+    Las series de lluvia se normalizaron por <code>station_count</code>.
+  </p>
+  <p style="margin-bottom:0">
+    Documento de decisión &mdash; Río Uruguay Hydro Pipeline &middot; 2026-08-28.
+  </p>
+</div></footer>

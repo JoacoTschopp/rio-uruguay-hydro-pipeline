@@ -1,0 +1,231 @@
+<title>Frecuencia y variabilidad intradía &mdash; nivel del target</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#eef2f5; --surface:#ffffff; --surface-2:#f5f8fa; --surface-3:#eaeff3;
+  --ink:#0e1f2b; --ink-2:#3a4b57; --ink-3:#647581; --line:#d6dfe6; --line-2:#c3cfd8;
+  --caudal:#0e7490; --caudal-soft:#cdeaf0; --rio:#1d4ed8; --rio-soft:#dbe4ff;
+  --ok:#15803d; --ok-bg:#dcf3e4; --warn:#b45309; --warn-bg:#fbedd6; --crit:#b91c1c; --crit-bg:#f8dcdc;
+  --out:#71818c; --out-bg:#e7ecf0;
+  --shadow:0 1px 2px rgba(14,31,43,.06),0 8px 24px -12px rgba(14,31,43,.18);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --caudal-soft:#0d3742; --rio:#7aa0ff; --rio-soft:#1a2c52;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --out:#7e91a0; --out-bg:#182731;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --caudal-soft:#0d3742; --rio:#7aa0ff; --rio-soft:#1a2c52;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --out:#7e91a0; --out-bg:#182731;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;text-wrap:balance;line-height:1.15;margin:0}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+a{color:var(--caudal)}
+
+.mast{position:relative;overflow:hidden;border-bottom:1px solid var(--line);
+  background:linear-gradient(160deg,var(--surface) 0%,var(--surface-2) 60%,var(--surface-3) 100%);}
+.mast .wrap{padding:52px 24px 36px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--caudal);font-weight:600;margin:0 0 18px}
+.mast h1{font-size:clamp(1.9rem,4.6vw,3rem);font-weight:600;letter-spacing:-.015em}
+.mast h1 em{font-style:italic;color:var(--caudal)}
+.lede{margin:18px 0 0;max-width:68ch;font-size:1.06rem;color:var(--ink-2)}
+.metaline{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:24px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.chip b{color:var(--ink);font-weight:600}
+
+section{padding:40px 0}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--caudal);font-weight:600;
+  border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+.sec-head h2{font-size:1.5rem;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px 26px;
+  box-shadow:var(--shadow)}
+.card + .card{margin-top:16px}
+p{margin:0 0 14px;color:var(--ink-2)}
+p:last-child{margin-bottom:0}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
+.stat{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.stat .v{font-family:"IBM Plex Mono",monospace;font-size:1.5rem;font-weight:600;color:var(--caudal)}
+.stat .l{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:6px}
+th{text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);color:var(--ink-2)}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace}
+tr:last-child td{border-bottom:none}
+.callout{border-left:3px solid var(--warn);background:var(--warn-bg);border-radius:0 10px 10px 0;
+  padding:16px 18px;margin:18px 0}
+.callout h4{margin:0 0 6px;font-family:"IBM Plex Sans",sans-serif;font-size:14.5px;font-weight:600;color:var(--ink)}
+.callout p{color:var(--ink-2);margin:0}
+.hist-svg{width:100%;height:auto;display:block;margin-top:8px}
+.bar{fill:var(--caudal);opacity:.88;transition:opacity .15s}
+.bar:hover{opacity:1}
+.bar-overflow{fill:var(--warn)}
+.bar-daily{fill:var(--out)}
+.bar-hf{fill:var(--caudal)}
+.bar-val{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--ink-2)}
+.axis-lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;fill:var(--ink-3)}
+.axis-lbl-rot{}
+.axis-title{font-family:"IBM Plex Sans",sans-serif;font-size:12px;fill:var(--ink-3)}
+.legend{display:flex;gap:18px;margin-top:10px;font-size:12.5px;color:var(--ink-3)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.foot{border-top:1px solid var(--line);padding:28px 0;color:var(--ink-3);font-size:13px}
+</style>
+
+<header class="mast">
+  <div class="wrap">
+    <p class="eyebrow">Rio Uruguay &middot; datos del punto de predicción</p>
+    <h1>Frecuencia de medición y variabilidad <em>intradía</em> del nivel</h1>
+    <p class="lede">
+      Estación objetivo <code>ana_74100000</code> (Iraí, frontera Brasil/Argentina) &mdash;
+      análisis de <code>weather.bronze.nivel_ana</code> (dato crudo, sin agregar a diario) para
+      responder cuándo cambió la frecuencia de medición y qué tan grande es la variación
+      dentro de un mismo día en los tramos de alta frecuencia.
+    </p>
+    <div class="metaline">
+      <span class="chip">Fuente: <b>weather.bronze.nivel_ana</b></span>
+      <span class="chip">Rango real: <b>1941-07-02 &rarr; 2026-08-23</b></span>
+      <span class="chip">Generado: <b>2026-08-28</b></span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>Cuándo cambió la frecuencia</h2></div>
+  <div class="card">
+    <p>
+      Durante casi toda la historia de la estación &mdash; <b>1941-07-02 a 2026-01-30</b>
+      (30.512 días con dato) &mdash; hubo exactamente <b>1 medición por día</b>, sin excepciones.
+      No hay ningún tramo anterior de alta frecuencia: la lectura histórica siempre fue diaria.
+    </p>
+    <p>
+      El cambio ocurre recién el <b>2026-01-31</b>: a partir de esa fecha la estación empieza a
+      reportar cada ~15 minutos (96 lecturas teóricas por día), un salto de telemetría real,
+      sostenido hasta el último dato disponible (<b>2026-08-23</b>, coincide con el corte por el
+      apagón actual de la API de ANA). Ningún mes previo, ni siquiera 2025, muestra más de
+      1 lectura/día &mdash; el quiebre es abrupto, no gradual.
+    </p>
+    <svg viewBox="0 0 860 220" class="hist-svg" role="img" aria-label="Lecturas promedio por día, por mes, desde enero 2024"><line x1="44" y1="16" x2="844" y2="16" stroke="var(--line)" stroke-width="1"/><text x="36" y="20" text-anchor="end" class="axis-lbl">97</text><line x1="44" y1="180.0" x2="844" y2="180.0" stroke="var(--line-2)" stroke-width="1.5"/><rect class="bar bar-daily" x="44.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Jan 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="70.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Feb 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="97.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Mar 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="124.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Apr 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="151.2" y="178.3" width="22.8" height="1.7" rx="2"><title>May 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="178.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Jun 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="204.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Jul 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="231.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Aug 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="258.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Sep 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="285.2" y="178.3" width="22.8" height="1.7" rx="2"><title>Oct 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="312.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Nov 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="338.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Dec 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="365.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Jan 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="392.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Feb 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="419.2" y="178.3" width="22.8" height="1.7" rx="2"><title>Mar 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="446.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Apr 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="472.8" y="178.3" width="22.8" height="1.7" rx="2"><title>May 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="499.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Jun 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="526.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Jul 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="553.2" y="178.3" width="22.8" height="1.7" rx="2"><title>Aug 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="580.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Sep 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="606.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Oct 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="633.6" y="151.4" width="22.8" height="28.6" rx="2"><title>Jan 2026: 17 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="660.4" y="16.0" width="22.8" height="164.0" rx="2"><title>Feb 2026: 97.43 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="687.2" y="18.2" width="22.8" height="161.8" rx="2"><title>Mar 2026: 96.1 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="714.0" y="18.4" width="22.8" height="161.6" rx="2"><title>Apr 2026: 96 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="740.8" y="18.4" width="22.8" height="161.6" rx="2"><title>May 2026: 96 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="767.6" y="18.4" width="22.8" height="161.6" rx="2"><title>Jun 2026: 96 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="794.4" y="22.3" width="22.8" height="157.7" rx="2"><title>Jul 2026: 93.71 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="821.2" y="18.4" width="22.8" height="161.6" rx="2"><title>Aug 2026: 96 lecturas/día en promedio</title></rect><text x="55.4" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jan 2024</text><text x="109.0" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Mar 2024</text><text x="162.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">May 2024</text><text x="216.2" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jul 2024</text><text x="269.8" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Sep 2024</text><text x="323.4" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Nov 2024</text><text x="377.0" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jan 2025</text><text x="430.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Mar 2025</text><text x="484.2" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">May 2025</text><text x="537.8" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jul 2025</text><text x="591.4" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Sep 2025</text><text x="645.0" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jan 2026</text><text x="698.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Mar 2026</text><text x="752.2" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">May 2026</text><text x="805.8" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jul 2026</text><text x="832.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Aug 2026</text></svg>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--out)"></span>1 lectura/día (diaria)</span>
+      <span><span class="swatch" style="background:var(--caudal)"></span>Alta frecuencia (~15 min)</span>
+    </div>
+    <p style="margin-top:14px;font-size:13.5px">
+      Nota aparte: <b>noviembre y diciembre de 2025 no tienen ningún dato</b> en esta tabla (por eso
+      el gráfico salta de oct-2025 a ene-2026) &mdash; es un hueco real de la fuente, no un filtro
+      aplicado acá; queda para investigar si corresponde a otro corte de la API de ANA.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>Variabilidad dentro del día (tramo de alta frecuencia)</h2></div>
+  <div class="card">
+    <p>
+      Sobre los <b>178 días</b> con más de una lectura (2026-01-31 &rarr; 2026-08-23), se calculó
+      el desvío estándar poblacional de <code>Cota_Adotada</code> (cm) dentro de cada día. Se
+      excluyó <b>1 día</b> del cálculo por tener <code>Data_Hora_Medicao</code> sin fecha válida
+      (5 lecturas, timestamp roto) &mdash; queda como hallazgo de calidad de datos, no como variabilidad real.
+      Quedan <b>177 días</b> analizados.
+    </p>
+    <div class="stat-grid">
+      <div class="stat"><div class="v">30.8 cm</div><div class="l">Desvío estándar mediano/día</div></div>
+      <div class="stat"><div class="v">33.0 cm</div><div class="l">Desvío estándar promedio/día</div></div>
+      <div class="stat"><div class="v">48.8 cm</div><div class="l">Percentil 90</div></div>
+      <div class="stat"><div class="v">247 cm</div><div class="l">Máximo observado</div></div>
+      <div class="stat"><div class="v">102 cm</div><div class="l">Rango (máx&minus;mín) mediano/día</div></div>
+      <div class="stat"><div class="v">93</div><div class="l">Lecturas promedio/día</div></div>
+    </div>
+    <p>
+      La mayoría de los días de alta frecuencia tienen una oscilación intradía moderada
+      (mediana ~31 cm de desvío estándar, equivalente a un rango típico de ~1 metro entre el
+      máximo y el mínimo del día) &mdash; consistente con un ciclo diario suave, no con ruido de
+      instrumento. Un grupo chico de días (6 de 177) se despega fuerte de esa mediana; se detallan abajo.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Histograma del desvío estándar intradía</h2></div>
+  <div class="card">
+    <svg viewBox="0 0 860 300" class="hist-svg" role="img" aria-label="Histograma del desvío estándar intradía de Cota_Adotada, en centimetros"><line x1="44" y1="254.0" x2="844" y2="254.0" stroke="var(--line)" stroke-width="1"/><text x="36" y="258.0" text-anchor="end" class="axis-lbl">0</text><line x1="44" y1="194.5" x2="844" y2="194.5" stroke="var(--line)" stroke-width="1"/><text x="36" y="198.5" text-anchor="end" class="axis-lbl">8</text><line x1="44" y1="135.0" x2="844" y2="135.0" stroke="var(--line)" stroke-width="1"/><text x="36" y="139.0" text-anchor="end" class="axis-lbl">16</text><line x1="44" y1="75.5" x2="844" y2="75.5" stroke="var(--line)" stroke-width="1"/><text x="36" y="79.5" text-anchor="end" class="axis-lbl">25</text><line x1="44" y1="16.0" x2="844" y2="16.0" stroke="var(--line)" stroke-width="1"/><text x="36" y="20.0" text-anchor="end" class="axis-lbl">33</text><line x1="44" y1="254.0" x2="844" y2="254.0" stroke="var(--line-2)" stroke-width="1.5"/><rect class="bar" x="44.0" y="232.4" width="56.0" height="21.6" rx="3"><title>0–5 cm: 3 días</title></rect><text x="72.0" y="226.4" text-anchor="middle" class="bar-val">3</text><rect class="bar" x="106.0" y="203.5" width="56.0" height="50.5" rx="3"><title>5–10 cm: 7 días</title></rect><text x="134.0" y="197.5" text-anchor="middle" class="bar-val">7</text><rect class="bar" x="168.0" y="196.3" width="56.0" height="57.7" rx="3"><title>10–15 cm: 8 días</title></rect><text x="196.0" y="190.3" text-anchor="middle" class="bar-val">8</text><rect class="bar" x="230.0" y="160.2" width="56.0" height="93.8" rx="3"><title>15–20 cm: 13 días</title></rect><text x="258.0" y="154.2" text-anchor="middle" class="bar-val">13</text><rect class="bar" x="292.0" y="95.3" width="56.0" height="158.7" rx="3"><title>20–25 cm: 22 días</title></rect><text x="320.0" y="89.3" text-anchor="middle" class="bar-val">22</text><rect class="bar" x="354.0" y="30.4" width="56.0" height="223.6" rx="3"><title>25–30 cm: 31 días</title></rect><text x="382.0" y="24.4" text-anchor="middle" class="bar-val">31</text><rect class="bar" x="416.0" y="16.0" width="56.0" height="238.0" rx="3"><title>30–35 cm: 33 días</title></rect><text x="444.0" y="10.0" text-anchor="middle" class="bar-val">33</text><rect class="bar" x="478.0" y="117.0" width="56.0" height="137.0" rx="3"><title>35–40 cm: 19 días</title></rect><text x="506.0" y="111.0" text-anchor="middle" class="bar-val">19</text><rect class="bar" x="540.0" y="138.6" width="56.0" height="115.4" rx="3"><title>40–45 cm: 16 días</title></rect><text x="568.0" y="132.6" text-anchor="middle" class="bar-val">16</text><rect class="bar" x="602.0" y="174.7" width="56.0" height="79.3" rx="3"><title>45–50 cm: 11 días</title></rect><text x="630.0" y="168.7" text-anchor="middle" class="bar-val">11</text><rect class="bar" x="664.0" y="225.2" width="56.0" height="28.8" rx="3"><title>50–55 cm: 4 días</title></rect><text x="692.0" y="219.2" text-anchor="middle" class="bar-val">4</text><rect class="bar" x="726.0" y="225.2" width="56.0" height="28.8" rx="3"><title>55–60 cm: 4 días</title></rect><text x="754.0" y="219.2" text-anchor="middle" class="bar-val">4</text><rect class="bar bar-overflow" x="788.0" y="210.7" width="56.0" height="43.3" rx="3"><title>60+ cm: 6 días</title></rect><text x="816.0" y="204.7" text-anchor="middle" class="bar-val">6</text><text x="72.0" y="272.0" text-anchor="middle" class="axis-lbl">0–5</text><text x="134.0" y="272.0" text-anchor="middle" class="axis-lbl">5–10</text><text x="196.0" y="272.0" text-anchor="middle" class="axis-lbl">10–15</text><text x="258.0" y="272.0" text-anchor="middle" class="axis-lbl">15–20</text><text x="320.0" y="272.0" text-anchor="middle" class="axis-lbl">20–25</text><text x="382.0" y="272.0" text-anchor="middle" class="axis-lbl">25–30</text><text x="444.0" y="272.0" text-anchor="middle" class="axis-lbl">30–35</text><text x="506.0" y="272.0" text-anchor="middle" class="axis-lbl">35–40</text><text x="568.0" y="272.0" text-anchor="middle" class="axis-lbl">40–45</text><text x="630.0" y="272.0" text-anchor="middle" class="axis-lbl">45–50</text><text x="692.0" y="272.0" text-anchor="middle" class="axis-lbl">50–55</text><text x="754.0" y="272.0" text-anchor="middle" class="axis-lbl">55–60</text><text x="816.0" y="272.0" text-anchor="middle" class="axis-lbl">60+</text><text x="444.0" y="294.0" text-anchor="middle" class="axis-title">Desvío estándar intradía (cm)</text></svg>
+    <p style="margin-top:10px;font-size:13.5px">
+      177 días, bins de 5 cm; la última barra agrupa los 6 días por encima de 60 cm de desvío
+      estándar (pasar el mouse sobre cada barra muestra el conteo exacto).
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Los días más volátiles</h2></div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Fecha</th><th class="num">Lecturas</th><th class="num">Desv. est. (cm)</th>
+        <th class="num">Rango (cm)</th><th class="num">Mín (cm)</th><th class="num">Máx (cm)</th>
+        <th class="num">Promedio (cm)</th></tr></thead>
+      <tbody><tr><td class="mono">22/07/2026</td><td class="num">96</td><td class="num">247.1</td><td class="num">787</td><td class="num">297</td><td class="num">1084</td><td class="num">673</td></tr>
+<tr><td class="mono">23/07/2026</td><td class="num">96</td><td class="num">102.9</td><td class="num">341</td><td class="num">822</td><td class="num">1163</td><td class="num">1063</td></tr>
+<tr><td class="mono">29/07/2026</td><td class="num">96</td><td class="num">91.0</td><td class="num">236</td><td class="num">330</td><td class="num">566</td><td class="num">468</td></tr>
+<tr><td class="mono">02/07/2026</td><td class="num">96</td><td class="num">90.2</td><td class="num">277</td><td class="num">421</td><td class="num">698</td><td class="num">612</td></tr>
+<tr><td class="mono">31/07/2026</td><td class="num">96</td><td class="num">69.0</td><td class="num">206</td><td class="num">507</td><td class="num">713</td><td class="num">649</td></tr>
+<tr><td class="mono">13/08/2026</td><td class="num">96</td><td class="num">62.7</td><td class="num">190</td><td class="num">289</td><td class="num">479</td><td class="num">361</td></tr></tbody>
+    </table>
+    <div class="callout">
+      <h4>Hallazgo: 22&ndash;23 de julio de 2026 parece una crecida real, no un error de sensor</h4>
+      <p>
+        El día con mayor desvío (247 cm) es el <b>2026-07-22</b>: el nivel pasa de ~3 m a
+        ~10,8 m dentro del mismo día. Aislado sería sospechoso, pero el día siguiente
+        (2026-07-23) también queda con un promedio muy alto (~10,6 m) y desvío elevado (103 cm),
+        y otros días de julio (02, 29, 31) muestran promedios igualmente elevados (4,7&ndash;6,7 m)
+        frente a la línea de base típica del resto del año (~1&ndash;4 m). La consistencia entre
+        varios días consecutivos de julio apunta a una <b>crecida real capturada por primera vez</b>
+        gracias a la telemetría de alta frecuencia &mdash; con datos diarios (1 lectura/día) este
+        pulso se habría visto mucho más suave o directamente perdido. Vale la pena confirmarlo
+        contra crónicas de crecidas antes de usarlo en modelado (mismo criterio que las fechas
+        extrapoladas de la Decisión 019).
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Qué implica para el dataset</h2></div>
+  <div class="card">
+    <p>
+      Gold hoy consume <code>weather.silver.river_levels_daily</code>, que ya agrega a diario &mdash;
+      este análisis corre sobre el Bronze crudo y no cambia ninguna columna existente. Lo que sí
+      deja abierto: si en algún momento se quiere una feature de <b>volatilidad intradía</b>
+      (desvío o rango del día) como señal adicional, sólo hay historia real para eso desde
+      <b>2026-01-31</b> en adelante &mdash; antes de esa fecha la fuente simplemente no tiene la
+      resolución para calcularlo, no es un problema de calidad, es un límite real de la serie.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot"><div class="wrap">
+  Generado a partir de <code>weather.bronze.nivel_ana</code> (estación <code>74100000</code>) vía
+  SQL ad hoc contra el warehouse serverless, 2026-08-28. No requiere refresco automático &mdash;
+  volver a correr las mismas queries si se necesita una versión actualizada.
+</div></footer>
