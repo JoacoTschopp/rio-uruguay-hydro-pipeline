@@ -113,17 +113,29 @@ tr:last-child td{border-bottom:none}
 <section>
   <div class="sec-head"><span class="sec-num">01</span><h2>Cuándo cambió la frecuencia</h2></div>
   <div class="card">
+    <div style="border-left:3px solid var(--crit);background:var(--crit-bg);border-radius:0 10px 10px 0;padding:16px 18px;margin:0 0 18px">
+      <h4 style="margin:0 0 6px;font-family:'IBM Plex Sans',sans-serif;font-size:14.5px;font-weight:600;color:var(--ink)">
+        Corregido el 2026-08-28: este apartado estaba equivocado</h4>
+      <p style="margin:0;color:var(--ink-2)">
+        Lo que sigue describe <code>weather.bronze.nivel_ana</code>, que es sólo el landing dedicado del
+        target. Contrastado después contra <code>weather.bronze.ana_rio_uruguai</code> (la tabla de todas
+        las estaciones), <b>la telemetría de 15 minutos para esta estación arranca el 2019-01-09</b>,
+        no el 2026-01-31 &mdash; son <b>2.752 días</b> de alta frecuencia disponibles, no 178. La
+        limitación era de nuestro landing, no de la fuente. El análisis corregido y completo está en
+        <a href="ana_export_csv_analisis.html">ana_export_csv_analisis.html</a>; las secciones 02-05 de
+        abajo siguen siendo válidas pero se calcularon sobre una muestra 13 veces más chica de lo
+        necesario.
+      </p>
+    </div>
     <p>
-      Durante casi toda la historia de la estación &mdash; <b>1941-07-02 a 2026-01-30</b>
-      (30.512 días con dato) &mdash; hubo exactamente <b>1 medición por día</b>, sin excepciones.
-      No hay ningún tramo anterior de alta frecuencia: la lectura histórica siempre fue diaria.
+      En <code>weather.bronze.nivel_ana</code>, durante casi toda la serie &mdash; <b>1941-07-02 a
+      2026-01-30</b> (30.512 días con dato) &mdash; hay exactamente <b>1 medición por día</b>.
     </p>
     <p>
-      El cambio ocurre recién el <b>2026-01-31</b>: a partir de esa fecha la estación empieza a
-      reportar cada ~15 minutos (96 lecturas teóricas por día), un salto de telemetría real,
-      sostenido hasta el último dato disponible (<b>2026-08-23</b>, coincide con el corte por el
-      apagón actual de la API de ANA). Ningún mes previo, ni siquiera 2025, muestra más de
-      1 lectura/día &mdash; el quiebre es abrupto, no gradual.
+      En <b>esa tabla</b> el cambio aparece el <b>2026-01-31</b>, cuando empieza a llegar el dato cada
+      ~15 minutos (96 lecturas por día), sostenido hasta el último dato disponible
+      (<b>2026-08-23</b>, corte por el apagón de la API de ANA). Como se aclara arriba, ese quiebre es
+      de nuestro pipeline de ingesta, no de la estación: la telemetría real existe desde 2019.
     </p>
     <svg viewBox="0 0 860 220" class="hist-svg" role="img" aria-label="Lecturas promedio por día, por mes, desde enero 2024"><line x1="44" y1="16" x2="844" y2="16" stroke="var(--line)" stroke-width="1"/><text x="36" y="20" text-anchor="end" class="axis-lbl">97</text><line x1="44" y1="180.0" x2="844" y2="180.0" stroke="var(--line-2)" stroke-width="1.5"/><rect class="bar bar-daily" x="44.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Jan 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="70.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Feb 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="97.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Mar 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="124.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Apr 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="151.2" y="178.3" width="22.8" height="1.7" rx="2"><title>May 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="178.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Jun 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="204.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Jul 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="231.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Aug 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="258.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Sep 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="285.2" y="178.3" width="22.8" height="1.7" rx="2"><title>Oct 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="312.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Nov 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="338.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Dec 2024: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="365.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Jan 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="392.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Feb 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="419.2" y="178.3" width="22.8" height="1.7" rx="2"><title>Mar 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="446.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Apr 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="472.8" y="178.3" width="22.8" height="1.7" rx="2"><title>May 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="499.6" y="178.3" width="22.8" height="1.7" rx="2"><title>Jun 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="526.4" y="178.3" width="22.8" height="1.7" rx="2"><title>Jul 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="553.2" y="178.3" width="22.8" height="1.7" rx="2"><title>Aug 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="580.0" y="178.3" width="22.8" height="1.7" rx="2"><title>Sep 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-daily" x="606.8" y="178.3" width="22.8" height="1.7" rx="2"><title>Oct 2025: 1 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="633.6" y="151.4" width="22.8" height="28.6" rx="2"><title>Jan 2026: 17 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="660.4" y="16.0" width="22.8" height="164.0" rx="2"><title>Feb 2026: 97.43 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="687.2" y="18.2" width="22.8" height="161.8" rx="2"><title>Mar 2026: 96.1 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="714.0" y="18.4" width="22.8" height="161.6" rx="2"><title>Apr 2026: 96 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="740.8" y="18.4" width="22.8" height="161.6" rx="2"><title>May 2026: 96 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="767.6" y="18.4" width="22.8" height="161.6" rx="2"><title>Jun 2026: 96 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="794.4" y="22.3" width="22.8" height="157.7" rx="2"><title>Jul 2026: 93.71 lecturas/día en promedio</title></rect><rect class="bar bar-hf" x="821.2" y="18.4" width="22.8" height="161.6" rx="2"><title>Aug 2026: 96 lecturas/día en promedio</title></rect><text x="55.4" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jan 2024</text><text x="109.0" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Mar 2024</text><text x="162.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">May 2024</text><text x="216.2" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jul 2024</text><text x="269.8" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Sep 2024</text><text x="323.4" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Nov 2024</text><text x="377.0" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jan 2025</text><text x="430.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Mar 2025</text><text x="484.2" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">May 2025</text><text x="537.8" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jul 2025</text><text x="591.4" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Sep 2025</text><text x="645.0" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jan 2026</text><text x="698.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Mar 2026</text><text x="752.2" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">May 2026</text><text x="805.8" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Jul 2026</text><text x="832.6" y="196.0" text-anchor="middle" class="axis-lbl axis-lbl-rot">Aug 2026</text></svg>
     <div class="legend">
@@ -131,9 +143,10 @@ tr:last-child td{border-bottom:none}
       <span><span class="swatch" style="background:var(--caudal)"></span>Alta frecuencia (~15 min)</span>
     </div>
     <p style="margin-top:14px;font-size:13.5px">
-      Nota aparte: <b>noviembre y diciembre de 2025 no tienen ningún dato</b> en esta tabla (por eso
-      el gráfico salta de oct-2025 a ene-2026) &mdash; es un hueco real de la fuente, no un filtro
-      aplicado acá; queda para investigar si corresponde a otro corte de la API de ANA.
+      Nota aparte, <b>también corregida</b>: <b>noviembre y diciembre de 2025 no tienen ningún dato</b>
+      en <code>nivel_ana</code> (por eso el gráfico salta de oct-2025 a ene-2026). Escribí acá que era
+      "un hueco real de la fuente" &mdash; <b>no lo es</b>: <code>ana_rio_uruguai</code> tiene 2.902 y
+      3.003 filas para esos meses. El dato siempre estuvo; el hueco es de esta tabla.
     </p>
   </div>
 </section>

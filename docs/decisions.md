@@ -2370,3 +2370,89 @@ estructura de fases:
 Se formaliza además el vocabulario **búsqueda → trial**: la búsqueda es el run padre de MLflow (pinea un
 dataset, registra `time/search_*`), el trial es una configuración entrenada (run hijo); un experimento
 simple es una búsqueda de un solo trial.
+
+---
+
+## Decisión 039: `ETL_Silver_Level_Daily` pasa a leer `ana_rio_uruguai` — se cierra el hallazgo #1 de la Decisión 036 y aparecen 7 años de telemetría que estaban ocultos
+
+### Estado
+
+`Aceptada` (2026-08-28), implementada y **verificada contra Databricks real** (Silver full + Gold full,
+ambos SUCCESS; `nivel_rio_actual_cm` NULL con `caudal_actual_m3s` presente pasó de 93 filas a **0**).
+
+### Contexto
+
+La Decisión 036 dejó abierto como hallazgo #1 una divergencia sin causa raíz: 93 días
+(2025-11-01→2026-03-27) con `nivel_rio_actual_cm` en `NULL` pero `caudal_actual_m3s` con dato. En su
+momento se describió como "dos pipelines Silver independientes sobre el mismo Bronze"; la causa real es
+más simple y más grave: **eran dos tablas Bronze distintas**.
+
+* `weather.bronze.nivel_ana` — landing dedicado del target. **1 sola estación**, 47.402 filas,
+  huecos reales (nov y dic 2025 completamente vacíos) y, sobre todo, **sin la telemetría de 15 minutos
+  antes de 2026-01-31**.
+* `weather.bronze.ana_rio_uruguai` — landing de todas las estaciones. **522 estaciones**, 26,3M filas,
+  y para el target: 30.778 días, cobertura completa de nov/dic 2025 (2.902 y 3.003 filas) y
+  **telemetría cada 15 minutos desde 2019-01-09** (2.752 días con ~97 lecturas/día).
+
+Relevado notebook por notebook: **`ETL_Silver_Level_Daily` era el único de todo Silver que leía
+`nivel_ana`**. `ETL_Silver_Rainfall_Daily` y `ETL_Silver_River_Discharge_Daily` ya leían
+`ana_rio_uruguai` — por eso el caudal tenía dato donde el nivel no.
+
+### Decisión
+
+Cambiar `BRONZE_TABLE` en `notebooks/04_Silver/ETL_Silver_Level_Daily.ipynb` de
+`weather.bronze.nivel_ana` a `weather.bronze.ana_rio_uruguai`. El notebook ya filtraba por
+`codigoestacao = TARGET_STATION` y ya agregaba con `F.avg('nivel_cm')` agrupando por fecha, con
+`registros_validos` como conteo — **no hizo falta tocar nada más**: la lógica de agregación diaria ya
+era la correcta, sólo estaba leyendo la tabla incompleta.
+
+Se eligió cambiar la fuente en vez de rellenar `nivel_ana` desde `ana_rio_uruguai` porque elimina la
+clase entera de bug (dos tablas para la misma estación divergiendo) en lugar de esta instancia.
+
+### Verificación contra Databricks real
+
+`ETL_Silver_Level_Daily` en `load_mode=full` (run `184470430093079`, SUCCESS) y a continuación
+`ETL_Gold_Training_Dataset_v0` en `load_mode=full` (run `24151868096559`, SUCCESS):
+
+| Métrica | Antes | Después |
+| --- | ---: | ---: |
+| `river_levels_daily` días (target) | 30.689 | **30.784** |
+| ...con más de 1 lectura/día | 178 | **2.758** |
+| Último día | 2026-08-23 | 2026-08-25 |
+| Gold: nivel NULL con caudal presente | 93 | **0** |
+| Gold: nov/dic 2025 con nivel | 0 / 0 | **30 / 31** |
+
+`weather.silver.estacion_subcuenca` cruzado contra `ana_rio_uruguai`: de las estaciones de
+`alta_frontera` con nivel, **237 siguen activas** (dato hasta agosto 2026), 15 cortaron en 2026 y 1
+entre 2020-2025 — no hay un problema de cobertura extendido; el hueco era exclusivo de `nivel_ana`.
+
+### Consecuencia no buscada: cambia la definición del nivel diario en el tramo 2019+
+
+Antes de este cambio, `nivel_media_cm` para 2019-2026 era el promedio de **1 lectura** (la media diaria
+que publica ANA). Ahora es el promedio de **~96 lecturas reales**. No es un refinamiento cosmético:
+medido sobre los 58 días que se solapaban, la media de 2 puntos tiene un **sesgo de −18,6 cm** contra la
+media de 96 (|error| mediano 18,0 cm, máximo 60,9 cm). Los valores históricos de Gold para 2019-2026
+**cambian**, y cambian para mejor, pero cambian.
+
+Queda pendiente (no bloqueante) exponer `registros_validos` como columna en Gold —
+`nivel_lecturas_dia`— para que el modelado pueda distinguir el tramo de 1 lectura/día (pre-2019) del de
+96, mismo criterio que `caudal_confiable` y las columnas `_cobertura_pct` de la regla R8.
+
+### Hallazgo lateral: la "media diaria" que publica ANA no usa su propia telemetría
+
+Verificado sobre el export CSV de Hidroweb (`docs/ana_export_csv_analisis.html`): la columna de media
+diaria de ANA es **exactamente `(07:00 + 17:00) / 2`** en el 100% de los 9.264 días donde se puede
+comprobar — incluidos los **2.643 días de 2019 en adelante**, donde ANA ya tenía 96 lecturas por día de
+su propia telemetría y aun así siguió publicando el promedio de dos puntos. Es decir: la telemetría de
+`ana_rio_uruguai` da una media diaria **mejor que el producto oficial de ANA**, no sólo mejor que lo que
+teníamos antes.
+
+### Consecuencias
+
+* Se cierra el hallazgo #1 de la Decisión 036; `docs/gold_quality_report.md` §3 queda desactualizado en
+  ese punto (dice 93 días divergentes; hoy son 0).
+* `weather.bronze.nivel_ana` queda **sin ningún consumidor**. No se borra en esta decisión, pero la
+  tarea `Daily_Nivel_ANA` del job `Nivel_ANA_Target` está alimentando una tabla que ya nadie lee —
+  candidata a retirar una vez confirmado que nada más depende de ella.
+* Los 27 días que siguen sin nivel en Gold son días con nivel **y** caudal ausentes (2014-12-31 y
+  2026-04-07→05-04): faltante genuino de la fuente, no un bug de ruteo.
