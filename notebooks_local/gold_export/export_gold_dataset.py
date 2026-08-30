@@ -40,6 +40,10 @@ VOLUME_DIR = "dbfs:/Volumes/weather/raw/gold_export_volume"
 VOLUME_PARQUET = f"{VOLUME_DIR}/training_dataset_v0.parquet"
 VOLUME_MANIFEST = f"{VOLUME_DIR}/manifest.json"
 
+# Para el chequeo de frescura del snapshot (ver warn_if_snapshot_stale).
+GOLD_TABLE = "weather.gold.training_dataset_v0"
+WAREHOUSE_ID = "d8aaafcf1fdb6645"  # Serverless Starter Warehouse
+
 DEFAULT_PROFILE = "joaquintschopp@gmail.com"
 
 # Horizontes que el roadmap fija como objetivo final (Decision 019). Hoy Gold solo
@@ -95,7 +99,48 @@ def sync(profile: str, refresh: bool, log=print) -> dict:
     else:
         log(f"Version Delta sin cambios ({remote_manifest.get('delta_version')}); usando cache local.")
 
+    warn_if_snapshot_stale(profile, remote_manifest, log)
     return remote_manifest
+
+
+def warn_if_snapshot_stale(profile: str, remote_manifest: dict, log=print) -> Optional[int]:
+    """Avisa si el snapshot del Volume quedo atras respecto de la tabla Gold.
+
+    El manifiesto guarda la `delta_version` del momento en que se exporto, asi que un snapshot
+    viejo se ve internamente consistente: nada delata el desfasaje salvo comparar contra la
+    version viva de la tabla. Paso real: el 2026-08-30 el Volume quedo 8 versiones atras porque
+    Gold se habia corrido ad hoc sin encadenar `Export_Gold_Snapshot` -- quien consumia el
+    snapshot leia el dataset viejo (con columnas ya eliminadas y caudales sin corregir) sin
+    enterarse. Ver Decision 042.
+
+    Es un aviso, no un error: puede que no haya permisos de SQL, o que la diferencia sea
+    intencional. Devuelve la version viva de Gold, o None si no se pudo determinar.
+    """
+    result = _run([
+        "databricks", "-p", profile, "api", "post", "/api/2.0/sql/statements",
+        "--json", json.dumps({
+            "warehouse_id": WAREHOUSE_ID,
+            "statement": f"DESCRIBE HISTORY {GOLD_TABLE} LIMIT 1",
+            "wait_timeout": "30s",
+        }),
+    ])
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout)
+        live_version = int(payload["result"]["data_array"][0][0])
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None
+
+    snapshot_version = remote_manifest.get("delta_version")
+    if isinstance(snapshot_version, int) and live_version > snapshot_version:
+        log(
+            f"\n  AVISO: el snapshot del Volume esta {live_version - snapshot_version} version(es) "
+            f"atras de Gold (snapshot={snapshot_version}, tabla={live_version}).\n"
+            f"  Los datos que siguen NO reflejan el estado actual de la tabla. Para actualizarlo,\n"
+            f"  correr la tarea Export_Gold_Snapshot y volver a ejecutar con --refresh.\n"
+        )
+    return live_version
 
 
 def needs_download(local_manifest: Optional[dict], remote_manifest: dict, refresh: bool, cache_exists: bool) -> bool:

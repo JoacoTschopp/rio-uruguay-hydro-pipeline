@@ -91,8 +91,26 @@ def raw_filename(tipo: str, run_date: date, run_time: str, ext: str) -> str:
     return f"ECMWF_{tipo.upper()}_{run_date:%Y_%m_%d}_t{run_time}.{ext}"
 
 
+# Archivos ya subidos al Volume que se movieron fuera del disco principal para liberar espacio
+# (Decision 042). La resumibilidad de TIGGE se apoya en la PRESENCIA del JSON en disco -- no hay
+# archivo de estado como en GEFS -- asi que mover un JSON sin avisar aca hace que el orquestador
+# lo crea pendiente y lo vuelva a pedir a ECDS. Cada entrada mapea el directorio de trabajo a su
+# archivo externo; `already_landed` da por aterrizado el dia que aparezca en cualquiera de los dos.
+# El sync sigue mirando SOLO el directorio de trabajo, asi que nada de lo archivado se re-sube.
+ARCHIVE_DIRS: dict[Path, Path] = {}
+
+
+def register_archive_dir(json_dir: Path, archive_dir: Path) -> None:
+    """Declara donde quedaron los JSON movidos de `json_dir`."""
+    ARCHIVE_DIRS[Path(json_dir).resolve()] = Path(archive_dir)
+
+
 def already_landed(tipo: str, run_date: date, run_time: str, json_dir: Path) -> bool:
-    return (json_dir / raw_filename(tipo, run_date, run_time, "json")).exists()
+    nombre = raw_filename(tipo, run_date, run_time, "json")
+    if (json_dir / nombre).exists():
+        return True
+    archivo = ARCHIVE_DIRS.get(Path(json_dir).resolve())
+    return archivo is not None and (archivo / nombre).exists()
 
 
 def flatten_forecast(

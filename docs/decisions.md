@@ -2571,3 +2571,75 @@ no una re-ingesta.
   visible como columna, pero **sigue existiendo dentro del caudal**, que se deriva de ese nivel. La
   tarea pendiente de exponer `nivel_lecturas_dia` cambia de nombre pero no de sentido: hace falta una
   columna que declare cuántas lecturas respaldan el caudal de cada día.
+
+---
+
+## Decisión 042: el disco se llenó con los JSON de `pf` — archivo externo, resumibilidad consciente del archivo, y chequeo de frescura del snapshot
+
+### Estado
+
+`Aceptada` (2026-08-30). Incidente resuelto y las tres correcciones implementadas y verificadas.
+
+### El incidente
+
+El 2026-08-30 a las ~07:21 el backfill de `pf` empezó a fallar en bucle con
+`[Errno 28] No space left on device`. El disco `C:` estaba al **100%** (614 MB libres de 953 GB).
+
+Causa: `notebooks_local/ecmwf/sync_to_databricks.py` **nunca borra los JSON después de subirlos**.
+Un día de `pf` pesa ~272 MB (50 miembros × 16 pasos, aplanado); a 1.674 días acumulados eso da
+**438 GB** en `pf_tigge/json`. El backfill de GEFS sí limpia lo confirmado (`sync_and_clean`, Decisión
+030); el de TIGGE nunca tuvo ese paso.
+
+### La trampa que casi convierte el arreglo en algo peor
+
+La reacción obvia —borrar o mover los JSON ya subidos— **habría disparado la re-descarga de los
+438 GB desde ECDS**. TIGGE no tiene archivo de estado: `run_tigge_backfill._pending_batches()` decide
+qué falta con `batch_fully_landed()`, que a su vez llama a `already_landed()`, que es literalmente
+`(json_dir / nombre).exists()`. Sacar el archivo del directorio equivale a declarar el lote pendiente.
+
+Se detectó a tiempo, con 31 archivos ya movidos y la tarea programada deshabilitada, así que no llegó
+a pedirse nada de nuevo.
+
+### Las tres correcciones
+
+**1. Archivo externo con resumibilidad consciente de él.** Los JSON confirmados en el Volume se mueven
+a `W:\Instaladores\swap\tschopp\pf_tigge_json`. Para que eso no rompa la resumibilidad,
+`common_ecmwf.py` suma `ARCHIVE_DIRS` + `register_archive_dir()`, y `already_landed()` da por
+aterrizado el día que aparezca **en el directorio de trabajo o en el archivo externo**.
+`historic_pf_tigge.py` registra el suyo si existe. El sync sigue mirando sólo el directorio de
+trabajo, así que nada de lo archivado se re-sube.
+
+Verificado antes de re-habilitar: `already_landed()` devuelve `True` para un día que ya sólo está en
+`W:`, y el orquestador cuenta **184 lotes pendientes** — consistente con los 239 totales menos los
+~55 ya bajados, es decir sin re-pedir nada.
+
+El movimiento se hace con verificación de tamaño en destino antes de borrar el origen, y se detiene
+si `W:` baja de 25 GB libres. **`W:` tiene 417 GB y hay que mover 438**, así que un remanente de
+~20 GB queda en `C:`; no es un problema porque el disco ya quedó holgado.
+
+**2. Antes de mover, se verificó que todo estuviera a salvo.** Los 1.674 archivos se compararon
+**nombre por nombre** contra el listado del Volume: 1.674 de 1.674 presentes, **0 archivos que
+existieran sólo en local**. El movimiento es un respaldo, no la única copia.
+
+**3. Chequeo de frescura del snapshot** (`export_gold_dataset.warn_if_snapshot_stale`). Detectado por
+la sesión de Rio_Search el mismo día: tras correr Gold de forma ad hoc para las Decisiones 039/040,
+`Export_Gold_Snapshot` nunca se ejecutó —es una tarea aparte, encadenada sólo dentro de los jobs
+completos— y el Parquet del Volume quedó **8 versiones atrás** (270 contra 278). Quien consumiera el
+snapshot leía el dataset viejo, con las columnas de nivel todavía presentes y los caudales sin
+corregir.
+
+Lo insidioso: el manifiesto guarda la `delta_version` **del momento del export**, así que un snapshot
+viejo se ve internamente consistente y nada delata el desfasaje salvo comparar contra
+`DESCRIBE HISTORY`. Ahora `sync()` hace esa comparación y avisa. Es un aviso, no un error: puede no
+haber permisos de SQL, o la diferencia puede ser intencional.
+
+### Consecuencias
+
+* **Regla nueva:** toda corrida ad hoc de `ETL_Gold_Training_Dataset_v0` tiene que encadenar
+  `Export_Gold_Snapshot` detrás, o el snapshot queda desactualizado en silencio.
+* Queda pendiente extender el archivo externo a `cf` (21 GB, hoy no molesta) y, mejor todavía,
+  reemplazar la resumibilidad por presencia-de-archivo por un archivo de estado como el de GEFS
+  (`gefs_backfill_state.json`). Mientras el estado sea el payload de 272 MB, cualquier movimiento de
+  archivos es una trampa.
+* El sync de TIGGE sigue sin borrar lo subido — **a propósito**: borrar rompería la resumibilidad por
+  el mismo motivo. El archivo externo es la vía correcta hasta que exista el archivo de estado.

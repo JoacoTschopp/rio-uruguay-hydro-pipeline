@@ -30,6 +30,7 @@ from common_ecmwf import (  # noqa: E402
     iter_batches_backward,
     iter_ensemble_forecast_batch_by_day,
     raw_filename,
+    register_archive_dir,
     write_json,
 )
 
@@ -39,6 +40,14 @@ GEOJSON_PATH = REPO_ROOT / "SIG" / "subcuencas_modelo.geojson"
 OUT_DIR = Path(__file__).resolve().parent / "local_data" / "ecmwf_volume" / "pf_tigge"
 RAW_DIR = OUT_DIR / "raw" / "historic"
 JSON_DIR = OUT_DIR / "json"  # mismo folder que el job diario: Bronze lee toda la carpeta
+
+# Un dia de pf pesa ~272 MB en JSON (50 miembros x 16 pasos); a 1.674 dias eso llego a llenar
+# los 953 GB del disco C: y corto el backfill con "No space left on device" (Decision 042). Los
+# JSON ya subidos al Volume se archivan afuera, pero la resumibilidad se apoya en la presencia
+# del archivo en disco, asi que hay que declarar donde quedaron o el orquestador los re-pide.
+ARCHIVE_JSON_DIR = Path(r"W:\Instaladores\swap\tschopp\pf_tigge_json")
+if ARCHIVE_JSON_DIR.exists():
+    register_archive_dir(JSON_DIR, ARCHIVE_JSON_DIR)
 
 DATASET = "tigge-forecasts"
 ORIGIN = "ecmf"
