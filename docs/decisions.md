@@ -2643,3 +2643,73 @@ haber permisos de SQL, o la diferencia puede ser intencional.
   archivos es una trampa.
 * El sync de TIGGE sigue sin borrar lo subido — **a propósito**: borrar rompería la resumibilidad por
   el mismo motivo. El archivo externo es la vía correcta hasta que exista el archivo de estado.
+
+---
+
+## Decisión 043: guarda permanente de fuga en `Validate_Training_Dataset_v0` — nada puede predecir el río mejor que el río
+
+### Estado
+
+`Aceptada` (2026-08-30), implementada y **verificada contra Databricks real** (run `634217152733566`,
+SUCCESS) más una prueba negativa local que confirma que la guarda efectivamente dispara.
+
+### Contexto
+
+La Decisión 040 sacó de Gold las 17 columnas de nivel del target, entre ellas las 8
+`nivel_rio_t_mas_*d` que eran el target en otras unidades vía curva de aforo. Eso resolvió *esa*
+fuga, pero como revisión de una sola vez: nada impedía que un cambio futuro de esquema
+reintrodujera otra por un camino distinto.
+
+Auditadas las 66 columnas que quedaron, con tres pruebas de menor a mayor sutileza:
+
+| Prueba | Qué busca | Resultado |
+| --- | --- | ---: |
+| A | una feature idéntica a un target en la misma fila | ninguna |
+| B | una feature en `t` igual a `caudal_actual` en `t+h` (h = 1, 2, 3, 7, 14) | ninguna |
+| C | una feature que prediga el target mejor que el caudal de hoy | ninguna |
+
+### Por qué la prueba C es la que vale, y por qué se vuelve permanente
+
+A y B comparan **valores**: encuentran duplicación literal. La fuga de la Decisión 040 las habría
+pasado a las dos si el nivel se hubiera publicado en metros con otro redondeo — no era idéntica a
+nada, era la misma señal transformada. C mide **capacidad predictiva**, así que agarra cualquier
+proxy sin importar la unidad, la escala o el nombre.
+
+El umbral tiene sentido físico y no es arbitrario: **la autocorrelación del río es el mejor
+predictor legítimo que existe**. Nada debería anticipar el caudal de mañana mejor que el caudal de
+hoy. Medido sobre Gold 278: `|corr(caudal_actual_m3s, caudal_t_mas_1d)| = 0,8565`, y el orden que
+sigue es hidrológicamente coherente — media 3d (0,762), lag 1d (0,688), media 7d (0,673), lluvia
+MERGE acumulada 7d (0,598).
+
+La guarda vive en `Validate_Training_Dataset_v0`, o sea que corre en cada materialización de Gold
+dentro de los dos jobs. Falla duro con `ValueError`.
+
+### Prueba negativa: la guarda dispara de verdad
+
+Una guarda que no puede fallar no protege. Verificado contra el snapshot real:
+
+| Caso | \|r\| | Resultado |
+| --- | ---: | --- |
+| El nivel futuro (la fuga de la Decisión 040, reconstruida) | 1,0000 | **dispara** |
+| Ese mismo futuro con 25% de ruido (proxy imperfecto) | 0,9498 | **dispara** |
+| `caudal_media_3d` (feature legítima) | 0,7617 | pasa |
+
+El segundo caso es el importante: la guarda no depende de que la fuga sea exacta. Un proxy
+degradado sigue superando la autocorrelación del río y queda detectado.
+
+### Consecuencia a tener en cuenta cuando llegue la Fase 4
+
+Las features de pronóstico son **legítimamente** información sobre el futuro emitida en `t`
+(precipitación pronosticada para `t+h`, conocida hoy). Si alguna supera el umbral, será un
+verdadero positivo del test pero no una fuga. El mensaje del error lo dice explícitamente y pide
+documentarlas y excluirlas de la guarda, en vez de bajar el umbral — que sería perder la
+protección entera para acomodar un caso previsto.
+
+### Complemento del lado del modelado
+
+La sesión de Rio_Search extendió esta misma prueba a su capa de features derivadas (26 features,
+línea base 0,8563, ninguna la supera) y agregó `test_leakage.py` con cinco tests sobre superficies
+que esta guarda no alcanza: que el preprocesamiento se ajuste sólo con TRAIN, que las ventanas de
+lluvia acumulada no registren lluvia antes de que ocurra, y que el τ del portón en modo oráculo
+llegue sólo a la función de pérdida y nunca a la matriz de entrada. Las dos capas son
+complementarias: ésta protege el dataset publicado, la otra protege lo que se construye encima.
