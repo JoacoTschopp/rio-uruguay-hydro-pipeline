@@ -2497,3 +2497,77 @@ objetivo es anticipar crecidas.
   candidata a retirar una vez confirmado que nada más depende de ella.
 * Los 27 días que siguen sin nivel en Gold son días con nivel **y** caudal ausentes (2014-12-31 y
   2026-04-07→05-04): faltante genuino de la fuente, no un bug de ruteo.
+
+---
+
+## Decisión 040: el nivel del target sale de Gold — un solo target, el caudal
+
+### Estado
+
+`Aceptada` (2026-08-30), implementada y **verificada contra Databricks real**: DDL + Gold `full` +
+`Validate_Training_Dataset_v0`, los tres SUCCESS (run `219288127815867`). Gold pasa de 83 a **66
+columnas**, con **0 columnas de nivel**.
+
+### Contexto
+
+La Decisión 017·D2 fijó el caudal como target principal y conservó el nivel como target secundario.
+Con la telemetría ya conectada (Decisión 039) quedó a la vista que esa convivencia genera dos
+problemas concretos:
+
+* **Redundancia total.** El caudal es una función determinista del nivel vía curva de aforo
+  (`ETL_Silver_River_Discharge_Daily`). El nivel no aporta ninguna información que el caudal no
+  tenga; son la misma señal en dos unidades.
+* **Riesgo de fuga.** `nivel_rio_t_mas_{1..7,14}d` son valores futuros del nivel. Como el caudal
+  futuro se deriva de ellos por una curva monótona, cualquiera de esas 8 columnas usada como feature
+  determina el target casi exactamente. Un pipeline de modelado que tome "todas las columnas menos
+  las de caudal" se lleva la respuesta puesta.
+
+### Decisión
+
+Sacar de `weather.gold.training_dataset_v0` las **17 columnas** de nivel del punto de predicción:
+
+| Grupo | Columnas |
+| --- | --- |
+| Estado actual | `nivel_rio_actual_cm`, `nivel_rio_actual_m`, `nivel_registros_validos` |
+| Derivadas del pasado | `nivel_rio_lag_{1,3,7}d`, `nivel_rio_media_{3,7}d`, `nivel_rio_delta_1d` |
+| Futuras (target duplicado) | `nivel_rio_t_mas_{1,2,3,4,5,6,7,14}d` |
+
+Gold queda con **un único target**: `caudal_t_mas_{1,2,3,4,5,6,7,14}d`, siempre derivado de la media
+diaria del nivel, con la misma regla para toda la serie 2000-2026.
+
+**`weather.silver.river_levels_daily` no se toca.** El nivel sigue existiendo, con su serie completa
+desde 1941 y su telemetría; lo que cambia es que deja de publicarse en Gold. Recuperarlo es un `JOIN`,
+no una re-ingesta.
+
+### Implementación
+
+* `notebooks/04_Silver/DDL_Silver_Gold.ipynb`: 13 columnas fuera del `CREATE TABLE` y 4 del diccionario
+  de `ALTER TABLE ADD COLUMNS`, más una celda nueva que las **dropea de la tabla ya existente**. Hizo
+  falta porque el ETL escribe con `DELETE`+`INSERT` sobre una ventana, no con `overwriteSchema`: sacar
+  las columnas del `select` no las elimina del esquema físico. La celda habilita
+  `delta.columnMapping.mode = 'name'` si no estaba (requisito de `DROP COLUMNS` en Delta) y es
+  idempotente: si ya no están, no hace nada.
+* `notebooks/05_Gold/ETL_Gold_Training_Dataset_v0.ipynb`: se eliminan los tres alias del `select` de
+  nivel, los seis `withColumn` de lag/media/delta, el `F.lead` de nivel del loop de horizontes y las
+  entradas correspondientes de `output_columns`. **`LEVEL_TABLE` se sigue leyendo**: es la espina del
+  calendario (`build_calendar(levels)` define qué fechas existen en el dataset).
+* `notebooks/06_Quality/Validate_Training_Dataset_v0.ipynb`: `assert_future_target` pasa a validar
+  contra `caudal_actual_m3s` en vez de `nivel_rio_actual_m` —antes verificaba el target secundario y no
+  el principal— y se extiende de 4 a **los 8 horizontes** de la Decisión 019. El chequeo de calidad de
+  `nivel_media_cm` sobre Silver se conserva: valida la fuente, no Gold.
+* `notebooks_local/gold_export/export_gold_dataset.py`: la regla R9 deja de aceptar el horizonte por la
+  columna de nivel. 20/20 tests en verde.
+
+### Consecuencias
+
+* **Rompe `rio_search/`** (el banco de modelado, Decisión 038), que usaba estas columnas de dos formas:
+  el grupo de features `nivel_estado` y el target alternativo `target="nivel"`. Ambos dejan de existir.
+  Avisado a esa sesión; hay que adaptar `data.py` y `tests/test_gate.py`.
+* El diccionario de columnas de `docs/gold_quality_report.md` (Decisión 036) queda desactualizado:
+  documenta 83 columnas, hoy son 66.
+* `docs/roadmap.md` §1 dice «Caudal en m³/s (el nivel se conserva como target secundario)» — esa
+  aclaración ya no aplica y hay que corregirla.
+* Con el nivel afuera, el quiebre de definición de 2019 que documentó la Decisión 039 deja de ser
+  visible como columna, pero **sigue existiendo dentro del caudal**, que se deriva de ese nivel. La
+  tarea pendiente de exponer `nivel_lecturas_dia` cambia de nombre pero no de sentido: hace falta una
+  columna que declare cuántas lecturas respaldan el caudal de cada día.

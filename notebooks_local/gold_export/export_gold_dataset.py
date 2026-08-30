@@ -134,9 +134,10 @@ def trim_horizon_tail(df: pd.DataFrame, horizonte: int) -> pd.DataFrame:
     """Regla R9: recorta la cola de dias sin target observable para ese horizonte
     (Decision 019, enmienda). Recorta por fecha, no por NULL: un NULL en medio de la
     serie es dato faltante real y se conserva."""
+    # Solo caudal: desde la Decision 040 el nivel del target no se publica en Gold, asi que
+    # `caudal_t_mas_*` es el unico target y la unica columna contra la que verificar.
     caudal_col = f"caudal_t_mas_{horizonte}d"
-    nivel_col = f"nivel_rio_t_mas_{horizonte}d"
-    if caudal_col not in df.columns and nivel_col not in df.columns:
+    if caudal_col not in df.columns:
         disponibles = sorted(
             int(c.removeprefix("caudal_t_mas_").removesuffix("d"))
             for c in df.columns
