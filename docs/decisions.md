@@ -2646,21 +2646,16 @@ haber permisos de SQL, o la diferencia puede ser intencional.
 
 ---
 
-## Decisión 043: guarda permanente de fuga en `Validate_Training_Dataset_v0` — nada puede predecir el río mejor que el río
+## Decisión 043: la verificación de fuga es responsabilidad del pipeline de entrenamiento, no de la capa medallón
 
 ### Estado
 
-`Aceptada` (2026-08-30), implementada y **verificada contra Databricks real** (run `634217152733566`,
-SUCCESS) más una prueba negativa local que confirma que la guarda efectivamente dispara.
+`Aceptada` (2026-08-30). Se hizo la auditoría, se implementó una guarda en
+`Validate_Training_Dataset_v0`, y **se revirtió**: el lugar estaba mal.
 
-### Contexto
+### Qué se auditó y qué dio
 
-La Decisión 040 sacó de Gold las 17 columnas de nivel del target, entre ellas las 8
-`nivel_rio_t_mas_*d` que eran el target en otras unidades vía curva de aforo. Eso resolvió *esa*
-fuga, pero como revisión de una sola vez: nada impedía que un cambio futuro de esquema
-reintrodujera otra por un camino distinto.
-
-Auditadas las 66 columnas que quedaron, con tres pruebas de menor a mayor sutileza:
+Tras la Decisión 040 se revisaron las 66 columnas que quedaron en Gold, con tres pruebas:
 
 | Prueba | Qué busca | Resultado |
 | --- | --- | ---: |
@@ -2668,87 +2663,37 @@ Auditadas las 66 columnas que quedaron, con tres pruebas de menor a mayor sutile
 | B | una feature en `t` igual a `caudal_actual` en `t+h` (h = 1, 2, 3, 7, 14) | ninguna |
 | C | una feature que prediga el target mejor que el caudal de hoy | ninguna |
 
-### Por qué la prueba C es la que vale, y por qué se vuelve permanente
+Línea base medida sobre Gold 278: `|corr(caudal_actual_m3s, caudal_t_mas_1d)| = 0,8565`, y el orden
+que sigue es hidrológicamente coherente — media 3d (0,762), lag 1d (0,688), lluvia MERGE acumulada
+7d (0,598). **El dataset publicado está limpio.**
 
-A y B comparan **valores**: encuentran duplicación literal. La fuga de la Decisión 040 las habría
-pasado a las dos si el nivel se hubiera publicado en metros con otro redondeo — no era idéntica a
-nada, era la misma señal transformada. C mide **capacidad predictiva**, así que agarra cualquier
-proxy sin importar la unidad, la escala o el nombre.
+### Por qué la guarda no va en la capa medallón
 
-El umbral tiene sentido físico y no es arbitrario: **la autocorrelación del río es el mejor
-predictor legítimo que existe**. Nada debería anticipar el caudal de mañana mejor que el caudal de
-hoy. Medido sobre Gold 278: `|corr(caudal_actual_m3s, caudal_t_mas_1d)| = 0,8565`, y el orden que
-sigue es hidrológicamente coherente — media 3d (0,762), lag 1d (0,688), media 7d (0,673), lluvia
-MERGE acumulada 7d (0,598).
+Se implementó la prueba C como assert en `Validate_Training_Dataset_v0` y se revirtió por decisión
+del usuario, con un argumento que corresponde registrar porque es de arquitectura y no de
+implementación:
 
-La guarda vive en `Validate_Training_Dataset_v0`, o sea que corre en cada materialización de Gold
-dentro de los dos jobs. Falla duro con `ValueError`.
+**Un notebook de la capa medallón valida integridad del dato; no valida decisiones de modelado.**
+La fuga no es una propiedad de la tabla, es una propiedad de **cómo se arma la matriz de features**
+— qué columnas entran, cuáles se derivan, cómo se parten los splits. Eso lo decide el pipeline de
+entrenamiento, que es el único que conoce esa construcción. Gold publica columnas; qué se usa como
+feature y qué no, no es asunto suyo.
 
-### Prueba negativa: la guarda dispara de verdad
+Consecuencias prácticas de haberlo puesto en el lugar equivocado, que confirman el diagnóstico:
 
-Una guarda que no puede fallar no protege. Verificado contra el snapshot real:
+* Un falso positivo hacía **fallar el job de Gold entero** por una cuestión de modelado.
+* La guarda no podía ver la capa que más importa: las features derivadas, el preprocesamiento y los
+  splits, que no existen en la tabla.
+* Las features de pronóstico de la Fase 4 son legítimamente informativas sobre el futuro y habrían
+  disparado la guarda, obligando a mantener una lista de excepciones en un notebook de calidad de
+  datos, que no es donde vive ese conocimiento.
 
-| Caso | \|r\| | Resultado |
-| --- | ---: | --- |
-| El nivel futuro (la fuga de la Decisión 040, reconstruida) | 1,0000 | **dispara** |
-| Ese mismo futuro con 25% de ruido (proxy imperfecto) | 0,9498 | **dispara** |
-| `caudal_media_3d` (feature legítima) | 0,7617 | pasa |
+### Lo que sí queda del ejercicio
 
-El segundo caso es el importante: la guarda no depende de que la fuga sea exacta. Un proxy
-degradado sigue superando la autocorrelación del río y queda detectado.
-
-### Consecuencia a tener en cuenta cuando llegue la Fase 4
-
-Las features de pronóstico son **legítimamente** información sobre el futuro emitida en `t`
-(precipitación pronosticada para `t+h`, conocida hoy). Si alguna supera el umbral, será un
-verdadero positivo del test pero no una fuga. El mensaje del error lo dice explícitamente y pide
-documentarlas y excluirlas de la guarda, en vez de bajar el umbral — que sería perder la
-protección entera para acomodar un caso previsto.
-
-### Enmienda (2026-08-30): alcance medido de la guarda, y por qué no se refuerza
-
-Puesto a prueba el límite, con un proxy del futuro degradado con ruido creciente:
-
-| Ruido inyectado | \|r\| marginal | ¿Pasa la guarda? | RMSE del modelo | Mejora vs. legítimo |
-| --- | ---: | :---: | ---: | ---: |
-| 0% (copia exacta) | 1,0000 | no | 0,0 | — |
-| 25% | 0,9517 | no | 514 | — |
-| **50%** | **0,8338** | **sí** | **773** | **+227 m³/s** |
-| 60% | 0,7729 | sí | 860 | +140 m³/s |
-| 100% | 0,5710 | sí | 942 | +57 m³/s |
-| 150% | 0,4742 | sí | 967 | +32 m³/s |
-
-(Modelo legítimo de referencia: `caudal_actual + caudal_media_3d`, RMSE 999,8.)
-
-**Un proxy con 50% de ruido pasa la guarda y aun así baja el RMSE un 23%.** O sea que la guarda
-no detecta toda fuga: detecta la fuga *fuerte*.
-
-Se evaluó reforzarla con **correlación parcial** (controlando por `caudal_actual_m3s`), que es el
-diagnóstico teóricamente correcto — mide lo que la feature agrega *más allá* del caudal de hoy, y
-por eso no confunde información marginal con incremental. Medido sobre las 41 features reales:
-
-* máximo legítimo: **0,4302** (`lluvia_merge_alta_frontera_mm` — la lluvia de hoy sí anticipa el
-  caudal de mañana más allá del caudal de hoy; es hidrología real, no fuga)
-* proxy con 100% de ruido: 0,3374 · con 150%: 0,2527
-
-**Los rangos se superponen**: una fuga bastante degradada aporta *menos* que una feature legítima
-buena. No existe umbral de correlación —marginal ni parcial— que separe fuga de señal legítima, y
-agregar el chequeo parcial daría precisión falsa sin cobertura nueva. Por eso la guarda queda como
-está.
-
-Lo que sí queda establecido es **qué protege y qué no**:
-
-* **Cubre el accidente realista**: una columna futura que quedó en el esquema por descuido —
-  exactamente la fuga de la Decisión 040— es una copia exacta o casi. Nadie le agrega ruido a una
-  fuga por accidente. En ese régimen la guarda dispara siempre.
-* **No cubre** un proxy fuertemente degradado. Contra eso la defensa no es estadística sino
-  estructural: saber cómo se construye cada columna, que es lo que documenta el propio ETL.
-
-### Complemento del lado del modelado
-
-La sesión de Rio_Search extendió esta misma prueba a su capa de features derivadas (26 features,
-línea base 0,8563, ninguna la supera) y agregó `test_leakage.py` con cinco tests sobre superficies
-que esta guarda no alcanza: que el preprocesamiento se ajuste sólo con TRAIN, que las ventanas de
-lluvia acumulada no registren lluvia antes de que ocurra, y que el τ del portón en modo oráculo
-llegue sólo a la función de pérdida y nunca a la matriz de entrada. Las dos capas son
-complementarias: ésta protege el dataset publicado, la otra protege lo que se construye encima.
+* La auditoría, como verificación puntual de que Gold quedó limpio tras la Decisión 040.
+* Un límite medido, útil para quien implemente la verificación donde corresponde: un umbral de
+  correlación marginal detecta la fuga hasta ~40% de ruido inyectado; uno de correlación parcial
+  (controlando por el caudal de hoy) llega hasta ~70%. Ninguno separa fuga de señal legítima en todo
+  el rango, porque una fuga muy degradada aporta menos que una feature legítima buena — el máximo
+  parcial legítimo es 0,4302 (`lluvia_merge_alta_frontera_mm`). Contra un proxy degradado la defensa
+  no es estadística sino estructural: saber cómo se construye cada columna.
