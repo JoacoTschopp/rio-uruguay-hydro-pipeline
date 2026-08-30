@@ -2705,6 +2705,45 @@ verdadero positivo del test pero no una fuga. El mensaje del error lo dice expl�
 documentarlas y excluirlas de la guarda, en vez de bajar el umbral — que sería perder la
 protección entera para acomodar un caso previsto.
 
+### Enmienda (2026-08-30): alcance medido de la guarda, y por qué no se refuerza
+
+Puesto a prueba el límite, con un proxy del futuro degradado con ruido creciente:
+
+| Ruido inyectado | \|r\| marginal | ¿Pasa la guarda? | RMSE del modelo | Mejora vs. legítimo |
+| --- | ---: | :---: | ---: | ---: |
+| 0% (copia exacta) | 1,0000 | no | 0,0 | — |
+| 25% | 0,9517 | no | 514 | — |
+| **50%** | **0,8338** | **sí** | **773** | **+227 m³/s** |
+| 60% | 0,7729 | sí | 860 | +140 m³/s |
+| 100% | 0,5710 | sí | 942 | +57 m³/s |
+| 150% | 0,4742 | sí | 967 | +32 m³/s |
+
+(Modelo legítimo de referencia: `caudal_actual + caudal_media_3d`, RMSE 999,8.)
+
+**Un proxy con 50% de ruido pasa la guarda y aun así baja el RMSE un 23%.** O sea que la guarda
+no detecta toda fuga: detecta la fuga *fuerte*.
+
+Se evaluó reforzarla con **correlación parcial** (controlando por `caudal_actual_m3s`), que es el
+diagnóstico teóricamente correcto — mide lo que la feature agrega *más allá* del caudal de hoy, y
+por eso no confunde información marginal con incremental. Medido sobre las 41 features reales:
+
+* máximo legítimo: **0,4302** (`lluvia_merge_alta_frontera_mm` — la lluvia de hoy sí anticipa el
+  caudal de mañana más allá del caudal de hoy; es hidrología real, no fuga)
+* proxy con 100% de ruido: 0,3374 · con 150%: 0,2527
+
+**Los rangos se superponen**: una fuga bastante degradada aporta *menos* que una feature legítima
+buena. No existe umbral de correlación —marginal ni parcial— que separe fuga de señal legítima, y
+agregar el chequeo parcial daría precisión falsa sin cobertura nueva. Por eso la guarda queda como
+está.
+
+Lo que sí queda establecido es **qué protege y qué no**:
+
+* **Cubre el accidente realista**: una columna futura que quedó en el esquema por descuido —
+  exactamente la fuga de la Decisión 040— es una copia exacta o casi. Nadie le agrega ruido a una
+  fuga por accidente. En ese régimen la guarda dispara siempre.
+* **No cubre** un proxy fuertemente degradado. Contra eso la defensa no es estadística sino
+  estructural: saber cómo se construye cada columna, que es lo que documenta el propio ETL.
+
 ### Complemento del lado del modelado
 
 La sesión de Rio_Search extendió esta misma prueba a su capa de features derivadas (26 features,
