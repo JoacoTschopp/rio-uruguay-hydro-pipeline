@@ -38,8 +38,13 @@ from common_ecmwf import (  # noqa: E402
     compute_download_area,
     date_range_str,
     flatten_forecast_batch,
-    iter_batches_backward,
+    iter_batches_calendar_backward,
+    missing_span,
     raw_filename,
+    register_catalogo_fuente,
+    load_unavailable_days,
+    record_unavailable_day,
+    retrieve_bisecting,
     write_json,
 )
 
@@ -49,6 +54,7 @@ GEOJSON_PATH = REPO_ROOT / "SIG" / "subcuencas_modelo.geojson"
 OUT_DIR = Path(__file__).resolve().parent / "local_data" / "ecmwf_volume" / "cf_tigge"
 RAW_DIR = OUT_DIR / "raw" / "historic"
 JSON_DIR = OUT_DIR / "json"  # mismo folder que el job diario: Bronze lee toda la carpeta
+register_catalogo_fuente(JSON_DIR, "ecmwf_cf")  # Decision 046
 
 DATASET = "tigge-forecasts"
 ORIGIN = "ecmf"
@@ -116,13 +122,14 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
     el orquestador lo reintenta en un loop apretado, exactamente el anti-patron "reintentos
     en bucle" que este modulo dice evitar (ver Decision 030, incidente de rate-limit)."""
     latest = date.today() - timedelta(days=TIGGE_LAG_DAYS)
-    batches = iter_batches_backward(EARLIEST_TIGGE_DATE, latest, BATCH_MONTHS)
+    batches = iter_batches_calendar_backward(EARLIEST_TIGGE_DATE, latest, BATCH_MONTHS)
+    no_disponibles = load_unavailable_days("cf")
 
     print(f"Rango objetivo: {EARLIEST_TIGGE_DATE.isoformat()} .. {latest.isoformat()} ({len(batches)} lotes anuales totales)")
 
     if dry_run:
         for start, end in batches:
-            pending = not batch_fully_landed("cf", start, end, RUN_TIME, JSON_DIR)
+            pending = not (missing_span("cf", start, end, RUN_TIME, JSON_DIR, no_disponibles) is None)
             print(f"  {start.isoformat()} .. {end.isoformat()}  {'PENDIENTE' if pending else 'completo'}")
         return {"processed": 0, "failed": False}
 
@@ -142,7 +149,8 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
             print(f"Limite de {max_batches_per_run} lotes por corrida alcanzado, se corta aca. Volver a correr para continuar.")
             break
 
-        if not force_reload and batch_fully_landed("cf", start, end, RUN_TIME, JSON_DIR):
+        span = None if force_reload else missing_span("cf", start, end, RUN_TIME, JSON_DIR, no_disponibles)
+        if not force_reload and span is None:
             print(f"Lote {start.isoformat()}..{end.isoformat()} ya completo, skip")
             continue
 
@@ -151,19 +159,42 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
             print(f"Lote {start.isoformat()}..{end.isoformat()} saltado (dato no disponible en origen): {unavailable_reason}")
             continue
 
-        print(f"Pidiendo lote {start.isoformat()}..{end.isoformat()} ({(end - start).days + 1} dias)...")
-        raw_path = _batch_raw_path(start, end)
-        if not _retrieve_batch(client, start, end, area, raw_path):
+        # Se pide solo el tramo faltante, no el lote entero (Decision 044).
+        req_start, req_end = (start, end) if force_reload else span
+        if (req_start, req_end) != (start, end):
+            print(f"Lote {start.isoformat()}..{end.isoformat()} parcial: se pide solo {req_start.isoformat()}..{req_end.isoformat()}")
+
+        print(f"Pidiendo lote {req_start.isoformat()}..{req_end.isoformat()} ({(req_end - req_start).days + 1} dias)...")
+        piezas, tramos_fallidos = retrieve_bisecting(
+            lambda s, e, dst: _retrieve_batch(client, s, e, area, dst),
+            _batch_raw_path, req_start, req_end,
+        )
+        if not piezas:
+            # Ninguna pieza bajo: el bloqueo es global (rate limit, credenciales, red), no un
+            # dia puntual. Se corta como siempre -- Decision 030.
             print("Se corta la ejecucion por el fallo anterior (no se reintenta en bucle).")
             failed = True
             break
+        for s_bad, e_bad in tramos_fallidos:
+            if s_bad == e_bad:
+                record_unavailable_day("cf", s_bad, "ECDS devuelve 400 para un request de un solo dia")
+                no_disponibles.add(s_bad)
+        if tramos_fallidos:
+            dias_malos = sum((e - s).days + 1 for s, e in tramos_fallidos)
+            print(f"  la fuente no entrega {dias_malos} dia(s) de este lote: "
+                  + ", ".join(f"{s.isoformat()}..{e.isoformat()}" for s, e in tramos_fallidos))
 
-        ds = xr.open_dataset(raw_path, engine="netcdf4", decode_timedelta=False)
-        by_day = flatten_forecast_batch(ds, tipo="cf", source_api="ecmwf_tigge_cdsapi_historic", unit_to_mm_factor=UNIT_TO_MM_FACTOR, area=None)
-        for run_date_iso, records in by_day.items():
-            json_path = JSON_DIR / raw_filename("cf", date.fromisoformat(run_date_iso), RUN_TIME, "json")
-            write_json(records, json_path)
-        print(f"OK lote {start.isoformat()}..{end.isoformat()}: {len(by_day)} dias, {sum(len(r) for r in by_day.values())} registros")
+        n_dias = n_records = 0
+        for pieza_start, pieza_end, raw_path in piezas:
+            ds = xr.open_dataset(raw_path, engine="netcdf4", decode_timedelta=False)
+            by_day = flatten_forecast_batch(ds, tipo="cf", source_api="ecmwf_tigge_cdsapi_historic", unit_to_mm_factor=UNIT_TO_MM_FACTOR, area=None)
+            for run_date_iso, records in by_day.items():
+                json_path = JSON_DIR / raw_filename("cf", date.fromisoformat(run_date_iso), RUN_TIME, "json")
+                write_json(records, json_path)
+            n_dias += len(by_day)
+            n_records += sum(len(r) for r in by_day.values())
+            ds.close()
+        print(f"OK lote {req_start.isoformat()}..{req_end.isoformat()}: {n_dias} dias, {n_records} registros")
 
         processed += 1
         time.sleep(PAUSE_BETWEEN_REQUESTS_SECONDS)

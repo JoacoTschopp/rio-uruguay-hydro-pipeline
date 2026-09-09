@@ -26,23 +26,30 @@ import historic_cf_tigge  # noqa: E402
 import historic_pf_tigge  # noqa: E402
 import sync_to_databricks  # noqa: E402
 import tigge_lock as lock  # noqa: E402  (lock dedicado, no el compartido de ana_historic_backfill -- ver tigge_lock.py)
-from common_ecmwf import batch_fully_landed, iter_batches_backward  # noqa: E402
+from common_ecmwf import (  # noqa: E402
+    iter_batches_calendar_backward,
+    load_unavailable_days,
+    missing_span,
+)
 
 
 def _pending_batches(module) -> int:
     from datetime import date, timedelta
 
     latest = date.today() - timedelta(days=module.TIGGE_LAG_DAYS)
-    batches = iter_batches_backward(module.EARLIEST_TIGGE_DATE, latest, module.BATCH_MONTHS)
+    batches = iter_batches_calendar_backward(module.EARLIEST_TIGGE_DATE, latest, module.BATCH_MONTHS)
     tipo = "cf" if module is historic_cf_tigge else "pf"
     # Un lote marcado como permanentemente no disponible en el modulo (ver
     # KNOWN_UNAVAILABLE_RANGES en historic_cf_tigge.py, Decision 031) nunca va a aterrizar --
     # sin excluirlo aca, este conteo nunca llega a 0 y el while True de run_source() de mas
     # arriba queda en loop infinito llamando a module.run() sin ningun progreso posible.
     known_unavailable = getattr(module, "_known_unavailable_reason", lambda s, e: None)
+    # Los dias que la fuente demostro no poder servir tampoco cuentan como pendientes: si no,
+    # este conteo nunca llega a 0 por el mismo motivo (Decision 045).
+    no_disponibles = load_unavailable_days(tipo)
     return sum(
         1 for start, end in batches
-        if not batch_fully_landed(tipo, start, end, module.RUN_TIME, module.JSON_DIR)
+        if missing_span(tipo, start, end, module.RUN_TIME, module.JSON_DIR, no_disponibles) is not None
         and not known_unavailable(start, end)
     )
 

@@ -2697,3 +2697,210 @@ Consecuencias prácticas de haberlo puesto en el lugar equivocado, que confirman
   el rango, porque una fuga muy degradada aporta menos que una feature legítima buena — el máximo
   parcial legítimo es 0,4302 (`lluvia_merge_alta_frontera_mm`). Contra un proxy degradado la defensa
   no es estadística sino estructural: saber cómo se construye cada columna.
+
+## Decisión 044: la grilla de lotes de TIGGE se ancla al calendario y cada pedido se recorta a los días faltantes
+
+**Problema.** `iter_batches_backward(earliest, latest, step_months)` calculaba **todas** las
+fronteras de lote a partir de `latest`, y `latest = date.today() - TIGGE_LAG_DAYS`. Como la
+tarea programada recalcula la grilla en cada corrida, el ancla se corría un día por día:
+
+```
+OK lote 2026-07-25..2026-08-24    OK lote 2026-07-28..2026-08-27
+OK lote 2026-07-26..2026-08-25    OK lote 2026-08-01..2026-08-31
+OK lote 2026-07-27..2026-08-26    OK lote 2026-08-02..2026-09-01
+```
+
+Seis descargas del mismo mes en días consecutivos. Sumado a que `batch_fully_landed` es
+todo-o-nada, el lote del borde quedaba "incompleto" por 1 o 2 días nuevos y se volvía a pedir
+**el mes entero**: 31 días re-bajados para ganar 1. Costo medido: ~8,9 GB de JSON y una request
+de MARS (2-12 h) **por día de reloj**, además de los duplicados que presionaron el disco hasta
+dejarlo en 63 GB libres.
+
+**Decisión.** Dos cambios, ambos en el camino de decisión de qué pedir:
+
+1. **`iter_batches_calendar_backward`** reemplaza a `iter_batches_backward`: las fronteras se
+   alinean al calendario (mes con `step_months=1`, año con `12`) vía `period_start`. Mover
+   `latest` un día ya solo agranda el último lote; ninguna otra frontera se mueve.
+2. **`missing_span`** reemplaza a `batch_fully_landed` en el loop de descarga: se pide el tramo
+   `min(faltantes)..max(faltantes)` en vez del lote completo. Con esto, aunque el borde crezca,
+   el request cubre solo los días que realmente faltan.
+
+`iter_batches_backward` queda marcada como obsoleta pero no se borra, para no romper importadores.
+
+**Verificación** (5/9/2026, contra el estado real de disco):
+
+| | días pedidos en los próximos 3 lotes |
+|---|---|
+| antes | 92 (el primero: mes completo para ganar 2 días) |
+| después | 34 (el borde pide exactamente los 2 días faltantes) |
+
+La grilla nueva es contigua, sin huecos ni solapes, y llega exacto a `2006-10-01` tanto en
+mensual (240 lotes) como en anual (21 lotes).
+
+**Por qué no lotes más grandes.** Un pedido anual de `pf` sería 365 × 50 × 16 = **292.000
+fields**, 12× el request más grande que demostró funcionar (mensual `pf`, 24.800). La descarga
+en sí es chica (2,31 MB/día → 0,84 GB/año), pero el JSON expandido son **104 GB/año**, y un
+lote más grande empeora el todo-o-nada: los tres `400 Client Error` observados cayeron
+justamente en los lotes anuales de `cf`. Se mantiene `BATCH_MONTHS = 1` para `pf`.
+
+**Alcance.** Los notebooks `notebooks/00_Landing/ECMWF/Historic_ECMWF_{CF,PF}.ipynb` tienen su
+propia copia inline de estas funciones y **siguen con el defecto**; no se tocaron porque el
+backfill corre local. Si alguna vez se los usa para backfill, hay que portar el mismo cambio.
+
+
+## Decisión 045: la búsqueda de modelos se ejecuta por protocolo y catálogo, con replay completo cuando cambia el dataset
+
+### Estado
+
+`Aceptada` (2026-09-05). Protocolo, catálogo y corredor implementados; la búsqueda en sí
+está abierta.
+
+### Problema
+
+El modelado venía corriéndose a mano: cada comparación era un comando distinto, cada
+resultado un JSON suelto en `rio_search/results/`, y la única forma de saber qué se había
+probado era leerlos todos. Eso tiene tres consecuencias que se agravan a medida que avanza
+el pipeline:
+
+1. **No hay estado.** Ante un corte no se sabe en qué se estaba ni qué falta.
+2. **No hay replay.** Gold se sigue corrigiendo — la Decisión 039 cambió el 85,5 % de los
+   días de 2019-2026 — y cada corrección invalida en silencio todo lo corrido antes. El
+   parquet carga, el entrenamiento corre y los números salen, calculados contra un target
+   que ya cambió.
+3. **La disciplina metodológica dependía de acordarse.** El arnés calcula TEST en cada
+   corrida y lo escribe al lado de VAL; nada impedía leerlo en cada comparación, que es la
+   forma más fácil de producir un resultado que no se sostiene.
+
+Con la Fase 4 del roadmap (pronóstico TIGGE + GEFS) en curso, el dataset **va a cambiar**:
+cuando termine, hay que poder correr todo de nuevo sin reconstruir nada.
+
+### Decisión
+
+Tres piezas, en `docs/protocolo_busqueda_modelos.md`, `rio_search/experiments/matrix.yaml`
+y `rio_search/runner.py`:
+
+| Pieza | Qué fija |
+| --- | --- |
+| **Protocolo** | 10 reglas invariantes, ciclo de 7 fases, cómo se lee un resultado, criterio de finalización y de continuación, 8 disparadores de "parar y preguntar", y qué se re-corre cuando cambia el dataset. |
+| **Catálogo** | 111 celdas en 12 bloques sobre 11 ejes, cada una con su comando o con qué habría que escribir para poder correrla. |
+| **Corredor** | Ejecuta el protocolo sobre el catálogo, calcula veredictos y lleva el ledger. `--todo` es el replay completo. |
+
+**Descenso coordinado, no producto cartesiano.** El producto cartesiano de los 11 ejes está
+en el orden de 10⁸ combinaciones. El diseño recorre un eje por bloque con una configuración
+ancla explícita, y el ganador de cada bloque pasa a ser el ancla del siguiente. Da ~120
+celdas, cada una atribuible a un cambio. Lo que el método no ve son las interacciones, y por
+eso el orden de bloques va de lo que menos interactúa (pérdida, features) a lo que más
+(arquitectura, estrategia de horizonte), y B9 libera al final los ejes acoplados sobre los
+finalistas.
+
+**Identidad del dato y replay.** `DATASET_ID = d<delta_version>-<sha8>`. Los resultados van
+a `results/<DATASET_ID>/`, los ids de celda son estables de por vida, y el ledger
+(`results/ledger.jsonl`, append-only) es la **única** fuente de estado. Cuando el
+DATASET_ID cambia, el corredor cierra las filas viejas como históricas, re-corre y
+`--deriva` lista las conclusiones que se dieron vuelta.
+
+**Lo que dejó de depender de la disciplina.** El corredor agrega `--no-test` a toda celda de
+entrenamiento fuera del bloque de confirmación, así que TEST no se calcula ni se escribe;
+el veredicto sale de un umbral de ruido (`2·√(ee² + ee²)` con `ee = sd/√n` entre semillas) y
+no de comparar dos números; una celda que no supera persistencia queda `descartado` antes de
+mirar su objetivo; y una celda no implementada deja fila `bloqueado` — el corredor nunca
+escribe código por iniciativa propia.
+
+### Qué se cambió del arnés
+
+Cinco brechas, todas cerradas el 2026-09-05:
+
+* `--patience` y `--train-start` en `train.py` (el segundo habilita la celda de piso
+  temporal: `make_splits` ya lo aceptaba y no estaba expuesto).
+* `--no-test` en `train.py`, con `evaluar_test` en `run_experiment`, `run_baselines` y
+  `run_comparison`. `--split test` junto con `--no-test` ahora es un error explícito.
+* `sensitivity.py` pasó de reportar TEST por defecto a reportar VAL.
+* `train.py` ya no revienta al imprimir cuando `--out` cae fuera del repo.
+* `rio_search/runner.py`, nuevo, con 26 tests. La suite pasó de 45 a 71.
+
+### Dos mediciones que cambiaron el diseño
+
+**La fuente de lluvia del portón no es un detalle de configuración.** Los hiperparámetros
+que venían de la búsqueda bayesiana se habían encontrado con `lluvia_media_est_mm`. Con los
+mismos hiperparámetros y la grilla MERGE, `val/gral` pasa de 0,4969 a 0,5488 — **cuatro
+veces el umbral de ruido** — y el perfil de régimen se da vuelta (V⁺ 0,365 → 0,530;
+V⁻ 0,747 → 0,657). τ entra en la pérdida **y** en la métrica, así que cambiar la fuente
+cambia las dos cosas a la vez. El ancla quedó en estaciones por coherencia con la
+procedencia de sus hiperparámetros, y MERGE —que es la fuente hidrológicamente preferible—
+se prueba como celda de un solo cambio. Si gana, hay que re-buscar hiperparámetros bajo esa
+fuente antes de seguir.
+
+**En VAL el modelo apenas le gana al piso.** *Skill* de RMSE de 4,9 % contra persistencia
+(1.030 vs 1.083 m³/s), y en G-RAL la ventaja sobre el mejor baseline (persistencia ×1,10,
+0,5044) es de 0,0075 — por debajo del umbral de 0,0121, o sea un empate. En TEST el mismo
+tipo de modelo llegaba a ~22 % de *skill*. Los dos conjuntos de números no son
+intercambiables y el año de VAL es bastante más duro. La guarda de admisión es una
+restricción viva, no una formalidad.
+
+### Estado de la búsqueda al cerrar esta decisión
+
+37 de 111 celdas corren hoy; el catálogo completo implementado son ~33 minutos de reloj sin
+las tres celdas de walk-forward. **No alcanza para cerrar la búsqueda**: la cobertura de
+prioridad P1 necesita la ventana/lookback, gradient boosting, DLinear, LSTM, la estrategia
+`per_horizon`, el target diferencial, el expectil con τ constante y la NSE-loss. Ninguna se
+implementa sin autorización.
+
+El primer bloque corrido (pérdidas, sobre VAL, 5 semillas) da un orden que **no** es el que
+la evidencia previa dejaba esperar en TEST, y queda anotado como hallazgo a leer, no como
+conclusión: `mae` 0,4678 y `mse_log` 0,4770 le ganan al ancla `gral` (0,4969), mientras que
+`expectile_raw` queda descartado por no superar persistencia. Son resultados
+**orientativos**: un solo año de VAL, un solo modelo, y sin la mitad de los ejes explorados.
+
+## Decisión 046: catálogo único de días descargados, revalidado a diario
+
+**Problema.** "¿Ya bajé este día?" se contestaba con `stat()` sobre el directorio de archivo. Eso
+falló de tres formas distintas:
+
+1. Con el archivo en un disco externo por USB, el backfill hace miles de lecturas contra el
+   disco lento solo para decidir qué pedir.
+2. **Estar en disco no implica haber llegado a Databricks.** El 2026-09-05 aparecieron 29 días
+   de febrero 2022 que estaban en `W:` pero nunca en el volumen: `sync_to_databricks.py` solo
+   escanea el directorio local, así que no los veía, y `already_landed()` los daba por buenos.
+   Era un hueco permanente que ningún proceso automático iba a corregir, y se descubrió de
+   casualidad al reconciliar a mano.
+3. GEFS ya usaba otro mecanismo (`gefs_backfill_state.json`) y ECMWF usaba presencia de archivo:
+   no había forma de ver el estado completo de una sola vez.
+
+**Decisión.** Un catálogo SQLite (`notebooks_local/catalogo.db`, construido por `catalogo.py`)
+con una fila por `(fuente, fecha, run_time)` que cruza las tres ubicaciones posibles: disco
+local, archivo externo y volumen de Databricks. Cubre las cuatro fuentes (`ecmwf_cf`,
+`ecmwf_pf`, `ecmwf_fc`, `gefs_reforecast`).
+
+`already_landed()` resuelve en tres escalones, y el orden importa:
+
+1. **disco local** — barato (`C:`) y siempre al día, incluso para lo recién escrito;
+2. **catálogo** — evita golpear el disco externo día por día, solo para lo ya archivado;
+3. **`stat()` sobre los directorios de archivo** — si el catálogo no existe o no se puede leer.
+
+Degradar al paso 3 es deliberado: que falte el índice tiene que costar lentitud, nunca una
+re-descarga.
+
+**Tarea diaria** `Catalogo_Revalidacion_Diaria` (06:45): escanea discos, lista los volúmenes y
+reporta discrepancias. Acota la deriva entre índice y realidad a 24 h.
+
+**El reporte distingue pendiente de huérfano**, que es el punto de todo esto: un día en el
+directorio **local** que no está en el volumen lo sube el próximo sync y no hay nada que hacer;
+uno en un directorio de **archivo** no lo va a subir nadie nunca. Mezclarlos haría que la tarea
+avise todos los días y se termine ignorando.
+
+**Estado al crearlo** (2026-09-09):
+
+| fuente | días | en disco | en volumen | GB en disco |
+|---|---|---|---|---|
+| `ecmwf_cf` | 6.702 | 6.700 | 6.702 | 22,6 |
+| `ecmwf_pf` | 3.139 | 3.139 | 3.111 | 898,1 |
+| `ecmwf_fc` | 56 | 56 | 56 | 0,3 |
+| `gefs_reforecast` | 7.305 | 0 | 7.305 | 0,0 |
+
+`gefs_reforecast` con 0 en disco y todo en el volumen es el modelo al que conviene converger:
+el volumen es el sistema de registro y el disco local solo un área de paso.
+
+**Nota.** `register_archive_dir()` pasó a admitir **varios** destinos por directorio de landing.
+Durante la migración `W:` → `D:` los archivos están repartidos entre los dos, y si solo valiera
+el último registrado, `already_landed()` daría `False` para todo lo aún no movido y el backfill
+re-pediría cientos de días ya bajados — el accidente que casi pasa en agosto (Decisión 042).
