@@ -2904,3 +2904,153 @@ el volumen es el sistema de registro y el disco local solo un área de paso.
 Durante la migración `W:` → `D:` los archivos están repartidos entre los dos, y si solo valiera
 el último registrado, `already_landed()` daría `False` para todo lo aún no movido y el backfill
 re-pediría cientos de días ya bajados — el accidente que casi pasa en agosto (Decisión 042).
+
+## Decisión 047: `repartition()` antes de `toPandas()` en el Silver de ECMWF
+
+**Problema.** Desde el 2026-09-08 el job `ECMWF_Forecast_Daily_Incremental` (job_id
+756555076983243) fallaba todos los días en `ETL_Silver_ECMWF_CF`; el último éxito había sido el
+2026-09-07. El error era `ArrowInvalid` dentro de `chunk_df.toPandas()`.
+
+La causa no es el volumen de datos: Bronze devuelve los `RecordBatch` de Arrow con **nullability
+distinta para `run_date` según el parquet de origen**. Los archivos escritos por la ruta
+histórica y los escritos por la ruta diaria no coinciden en ese detalle del esquema, y al
+concatenar los batches en el driver Arrow rechaza la unión.
+
+**Decisión.** Una línea, en los dos notebooks Silver de ECMWF (`_CF` y `_PF`):
+
+```python
+pdf = chunk_df.repartition(8).toPandas()
+```
+
+`repartition()` fuerza un shuffle, y el shuffle re-serializa: todos los batches salen con el
+mismo esquema y la concatenación deja de fallar. El costo es un shuffle sobre un chunk ya
+acotado a 60 días.
+
+**Por qué no se arregló el esquema de Bronze.** Reescribir el parquet histórico para uniformar
+la nullability es una reescritura de ~900 GB para corregir un detalle que solo importa en el
+borde Arrow→pandas. La alternativa barata resuelve el mismo problema sin tocar el dato.
+
+**Nota.** Los notebooks se publicaron con `databricks workspace import --format JUPYTER
+--overwrite` y se verificaron re-exportando: `bundle deploy` **no** actualiza el contenido de un
+notebook ya publicado, solo la definición del job.
+
+
+## Decisión 048: el pronóstico se agrega por sub-cuenca en Silver y colapsa a un número en Gold
+
+**Problema.** Bronze guarda el pronóstico punto a punto: para `pf` son 436 puntos × 16 pasos ×
+50 miembros por día, ~1.100 millones de filas en el histórico. Ningún modelo hidrológico agregado
+consume eso, y no había ninguna tabla entre Bronze y `training_dataset_v0`.
+
+**Decisión.** Dos saltos, con una división de trabajo deliberada.
+
+**En Silver** (`weather.silver.ecmwf_forecast_{cf,pf}_subcuenca`, notebook
+`ETL_Silver_ECMWF_Subcuenca`): una fila por `(run_date, run_time, step_hours, miembro,
+sub-cuenca)`.
+
+- **Se promedian los puntos** de cada sub-cuenca. La media areal es la entrada natural de un
+  modelo agregado. `n_puntos` viaja en la fila: sin él, un día con cobertura parcial da una media
+  sesgada hacia la parte de la cuenca que sí llegó y nada lo delata.
+- **Se conservan los 50 miembros.** Promediarlos acá borraría la dispersión del ensemble, que es
+  la única medida de incertidumbre que aporta `pf` — y sería irreversible sin reprocesar Bronze.
+- **Se mantienen las tres sub-cuencas.** En Silver está todo; el recorte es de Gold.
+
+**En Gold** (`training_dataset_v0`): solo `alta_frontera` (Decisión 018), y el ensemble colapsa a
+un número. `tp_mm_medio` viene **acumulado** desde el inicio del pronóstico (así lo entrega
+TIGGE), así que la lluvia del día de adelanto `d` es la diferencia entre el paso `24d` y el
+`24(d-1)`: publicar el acumulado crudo daría 15 columnas fuertemente colineales y ninguna en la
+unidad "mm que caen ese día".
+
+**La métrica sobre los miembros es la media, y es provisional.** Promediar el ensemble tira
+justamente la dispersión por la que se bajó. Está elegida para cerrar el pipeline hasta Gold, no
+porque sea la correcta; el reemplazo (P90, máximo, fracción de miembros sobre umbral) se
+implementa cambiando un `F.avg` en el notebook de Gold, sin tocar nada aguas arriba. Ese es el
+punto de conservar los miembros en Silver.
+
+**La fuente del agregado es Bronze + `weather.silver.punto_subcuenca`, no `*_basin`.** Los dos
+caminos aplican el mismo point-in-polygon; la diferencia es el costo. `ETL_Silver_ECMWF_{CF,PF}`
+lo recalcula con `toPandas()` + geopandas sobre todas las filas; el mapa tiene **436 puntos** y
+el agregado se resuelve con un JOIN. Medido: el agregado de `pf` sobre 1.175 días corrió en **20
+segundos**. `punto_subcuenca` se deriva de `*_basin` justamente para que el tageo tenga una sola
+fuente de verdad y las dos tablas Silver no puedan divergir.
+
+**Por qué el job de pronóstico vuelve a materializar Gold.** `Silver_Gold_Daily_Incremental`
+corre 04:30 America/Montevideo (07:30 UTC) y `ECMWF_Forecast_Daily_Incremental` a las 08:00 UTC:
+media hora después. Sin un segundo pase de Gold al final del job de pronóstico, el dataset
+publicaría siempre el pronóstico del día anterior. La ventana de Gold es `delete` + `append` sobre
+un rango, o sea idempotente: correrlo dos veces por día no duplica ninguna fila.
+
+**Por qué `pf` no tiene task de Landing en el job diario.** El ensemble lo baja el backfill local
+continuo (`run_tigge_backfill.py`), cuya grilla de lotes ya llega hasta `date.today() -
+TIGGE_LAG_DAYS`. Agregar una descarga de `pf` en Databricks pondría un segundo cliente contra la
+misma cola de ECDS — exactamente lo que prohíbe la Decisión 012.
+
+**Cobertura conocida.** `pf` arranca en 2006-10 y Gold en 2000-01-01, así que las columnas de
+pronóstico quedan en NULL para los primeros ~6 años del dataset. Es por construcción, no un
+defecto de carga.
+
+**Verificación** (2026-09-14, sobre el estado real de las tablas):
+
+| tabla | días | filas | control |
+|---|---|---|---|
+| `bronze.ecmwf_forecast_cf` | 6.706 | 115.561.080 | — |
+| `silver.ecmwf_forecast_cf_subcuenca` | 6.706 | 321.003 | = 6.706×16×3 − 59×5×3 |
+| `bronze.ecmwf_forecast_pf` | 3.138 | 2.710.692.000 | — |
+| `silver.ecmwf_forecast_pf_subcuenca` | 3.138 | 7.529.700 | = 3.138×16×50×3 − 1.500 (día parcial 2019-10-17) |
+
+Los dos agregados igualan a Bronze día por día. El de `pf` —1.963 días nuevos, ~1.700 millones
+de filas de entrada— corrió en **3,6 minutos**.
+
+**Traza de un día completo** (`run_date = 2026-09-11`, bajado ese mismo 2026-09-14 a las 02:52
+UTC), capa por capa:
+
+| capa | filas |
+|---|---|
+| Bronze (bounding box) | 17.280 = 1.080 puntos × 16 pasos |
+| Silver `*_basin` (dentro de la cuenca) | 6.976 = 436 × 16 |
+| Silver `*_subcuenca` | 48 = 3 × 16 |
+| Silver, solo `alta_frontera` | 16 |
+| Gold | 1 fila |
+
+`ecmwf_cf_tp_mm_d1` de Gold da **53,997476**, y reconstruirlo a mano desde Silver
+(`tp` del paso 24h menos el del paso 0h) da **53,997476**. Diferencia 0.
+
+**La acumulación quedó confirmada empíricamente**, que era el supuesto del que dependía todo el
+cálculo: el `tp` promedio de `alta_frontera` para una corrida cualquiera crece monótonamente de
+0,0 mm en el paso 0 a 192,4 mm en el paso 360. `UNIT_TO_MM_FACTOR = 1.0` es correcto (kg/m² = mm).
+
+**Anomalía menor registrada, sin corregir.** 34 de 29.530 incrementos muestreados dan un valor
+negativo, con mínimo **−0,0027 mm**. Es ruido de empaquetado del GRIB en el campo acumulado, no
+un error del cálculo — la magnitud lo demuestra. No se recorta a cero porque eso cambia valores
+del dataset, y qué entra en el dataset es una decisión que no toma la capa medallón.
+
+
+## Decisión 049: bisección del lote fallido y registro de días que la fuente no entrega
+
+**Problema.** La grilla alineada al calendario de la Decisión 044 destapó un hueco que la grilla
+solapada anterior venía salteando sin que nadie lo notara: el pedido `2016-09-02..2016-12-31`
+devolvía `400` de ECDS, cortaba `cf` y, por el encadenamiento de `run_tigge_backfill.py`, dejaba
+`pf` bloqueado. **48 fallos idénticos, dos días sin bajar nada.**
+
+La primera hipótesis —la cinta dañada J0018900 (Decisión 031)— era **falsa**: una sonda en vivo
+demostró que el dato estaba disponible. Sondeando por tamaño de rango (3, 30 y 45 días pasaban;
+46 y 121 fallaban) el problema se acotó a **un solo día malo, `2016-12-29`**.
+
+**Decisión.** Dos piezas en `common_ecmwf.py`:
+
+1. **`retrieve_bisecting(retrieve, raw_path_for, start, end)`** — ante un fallo, parte el rango
+   en dos y reintenta cada mitad, hasta rangos de un día. Un día que la fuente no sirve deja de
+   costar el lote entero.
+2. **Registro de días no disponibles** (`tigge_unavailable_days.json`, escrito atómicamente vía
+   `.tmp` + `replace`): cuando falla un pedido de **un solo día**, se anota con su motivo.
+   `missing_span()` los excluye del cálculo de pendientes.
+
+El registro no es cosmético: sin él, `_pending_batches()` nunca llega a 0 para ese lote y el
+`while True` de `run_source()` queda pidiendo en bucle un día que la fuente jamás va a entregar.
+
+**Resultado.** De los 121 días del lote se recuperaron **120**; queda registrado `2016-12-29`
+como no disponible.
+
+**Lección.** El corte ante el primer fallo (Decisión 030) evita bombardear una cola con rate
+limit, pero convierte cualquier día malo en un bloqueo total. La bisección es lo que distingue
+"la fuente está caída" de "este día puntual no existe" — y solo el primero justifica parar.
+

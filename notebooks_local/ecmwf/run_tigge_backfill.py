@@ -45,7 +45,7 @@ def _pending_batches(module) -> int:
     # arriba queda en loop infinito llamando a module.run() sin ningun progreso posible.
     known_unavailable = getattr(module, "_known_unavailable_reason", lambda s, e: None)
     # Los dias que la fuente demostro no poder servir tampoco cuentan como pendientes: si no,
-    # este conteo nunca llega a 0 por el mismo motivo (Decision 045).
+    # este conteo nunca llega a 0 por el mismo motivo (Decision 049).
     no_disponibles = load_unavailable_days(tipo)
     return sum(
         1 for start, end in batches

@@ -626,7 +626,7 @@ def retrieve_bisecting(retrieve, raw_path_for, start: date, end: date, min_days:
     hasta granularidad `min_days`. Devuelve (piezas_ok, tramos_fallidos), donde piezas_ok son
     tuplas (s, e, path) ya descargadas.
 
-    Por que existe (Decision 045): ECDS rechaza con 400 algunos rangos por dias puntuales que
+    Por que existe (Decision 049): ECDS rechaza con 400 algunos rangos por dias puntuales que
     no puede servir, y con el lote entero como unidad un solo dia malo tiraba abajo los ~120
     dias buenos que lo rodeaban -- y como la grilla de la Decision 044 es estable, el mismo
     request fallaba identico en cada corrida, en loop y sin avanzar nunca.
@@ -670,7 +670,7 @@ def load_unavailable_days(tipo: str, path: Path = UNAVAILABLE_DAYS_PATH) -> set:
     en un archivo auditable en vez de hardcodeado, con la fecha en que se comprobo. Sin esto,
     un dia que ECDS no entrega bloquea su lote para siempre: el bisect lo aisla, el lote queda
     sin piezas, el caller corta la fuente y la corrida siguiente repite todo igual
-    (Decision 045)."""
+    (Decision 049)."""
     if not path.exists():
         return set()
     try:
