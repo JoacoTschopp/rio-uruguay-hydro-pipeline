@@ -247,17 +247,16 @@ bloques:
     nombre: expectil con τ constante
     slug: expectile_tau_fijo
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "τ = 0,65 fijo, sin modulador"
-    implementar:
-      donde: rio_search/train.py
-      que: "flag --tau-constante FLOAT que reemplace ds.tau por un escalar en el entrenamiento (no en la evaluación)"
-      depende_de: []
-      esfuerzo: bajo
+    cmd: -m rio_search.train --loss gral --tau-constante 0.65 --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
     nota: >-
       Es el **control que le falta a la tesis**: separa "la asimetría ayuda" de "el modulador
       ayuda". Sin esta celda, cualquier ganancia de gral se le puede atribuir al modulador sin
-      evidencia. Prioridad P1 por eso.
+      evidencia. Prioridad P1 por eso. `--tau-constante` reemplaza el τ del entrenamiento por
+      el escalar; la evaluación sigue usando el τ del modulador, así que la diferencia con el
+      ancla mide sólo lo que aporta que τ varíe día a día.
 
   - id: B1.07
     nombre: huber
