@@ -1,0 +1,352 @@
+<title>Referencia · G-RAL y dataset</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+@page { size: A4; margin: 11mm 12mm; }
+
+:root{
+  --ink:#10202b; --ink-2:#3d4f5b; --ink-3:#6b7d8a; --line:#c9d4dc; --line-2:#dde5ea;
+  --accent:#0e7490; --accent-bg:#eaf4f7;
+  --seco:#8f5709; --seco-bg:#fbf1de; --humedo:#2647b0; --humedo-bg:#e6ebfb;
+  --paper:#ffffff; --ground:#e9eef2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:8.6pt;line-height:1.3;
+  -webkit-font-smoothing:antialiased}
+
+.hoja{background:var(--paper);width:186mm;min-height:273mm;margin:10mm auto;padding:0;
+  box-shadow:0 2px 14px rgba(16,32,43,.16);position:relative}
+.hoja-int{padding:8mm 9mm 7mm}
+
+h1{font-size:13.4pt;font-weight:700;margin:0;letter-spacing:-.01em}
+h2{font-size:10pt;font-weight:700;margin:8px 0 4px;padding-bottom:1.5px;
+  border-bottom:1.5px solid var(--accent);color:var(--accent)}
+h2:first-of-type{margin-top:8px}
+h3{font-size:9.3pt;font-weight:700;margin:9px 0 3px;color:var(--ink)}
+p{margin:0 0 4px;color:var(--ink-2)}
+p:last-child{margin-bottom:0}
+b,strong{color:var(--ink);font-weight:600}
+code,.m{font-family:"IBM Plex Mono",monospace;font-size:.92em}
+ul,ol{margin:0 0 5px;padding-left:15px;color:var(--ink-2)}
+li{margin-bottom:2px}
+
+.cab{display:flex;justify-content:space-between;align-items:baseline;
+  border-bottom:2.2px solid var(--ink);padding-bottom:4px;margin-bottom:2px}
+.cab .sub{font-family:"IBM Plex Mono",monospace;font-size:7.6pt;color:var(--ink-3);
+  letter-spacing:.09em;text-transform:uppercase}
+.pag{position:absolute;bottom:5mm;right:10mm;font-family:"IBM Plex Mono",monospace;
+  font-size:7.4pt;color:var(--ink-3)}
+.pie{border-top:1px solid var(--line-2);margin-top:8px;padding-top:5px;
+  font-size:7.4pt;line-height:1.32;color:var(--ink-3)}
+
+table{width:100%;border-collapse:collapse;font-size:7.95pt;margin:3px 0 4px}
+th{text-align:left;font-size:7.2pt;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:700;padding:2px 4px;border-bottom:1.2px solid var(--ink-3)}
+td{padding:2.2px 5px;border-bottom:.8px solid var(--line-2);color:var(--ink-2);
+  vertical-align:top}
+td.n,th.n{text-align:right;font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+td.c,th.c{text-align:center}
+tr:last-child td{border-bottom:none}
+tr.mid td{background:var(--accent-bg);font-weight:600;color:var(--ink)}
+td.hum{color:var(--humedo);font-weight:600}
+td.sec{color:var(--seco);font-weight:600}
+.tt{font-size:7.5pt;color:var(--ink-3);margin:-1px 0 5px;line-height:1.3}
+
+.eq{background:#f6f9fb;border-left:2.5px solid var(--accent);padding:5px 8px;margin:4px 0 5px;
+  font-family:"IBM Plex Mono",monospace;font-size:8.2pt;line-height:1.55;
+  white-space:pre;overflow-x:auto}
+.eq b{color:var(--accent);font-weight:600}
+.eq i{color:var(--ink-3);font-style:normal;padding-left:2.2ch}
+
+.caja{border:1px solid var(--line);border-radius:3px;padding:5px 7px;margin:4px 0;
+  background:#fafcfd}
+.caja h4{margin:0 0 2px;font-size:8.3pt;font-weight:700;color:var(--ink)}
+.caja p{margin:0;font-size:8.1pt;line-height:1.28}
+.caja.ac{border-left:2.5px solid var(--accent)}
+
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+.pasos{counter-reset:p;margin:4px 0 0;padding:0;list-style:none}
+.pasos li{counter-increment:p;position:relative;padding-left:17px;margin-bottom:2.5px;
+  font-size:8.2pt;line-height:1.3;color:var(--ink-2)}
+.pasos li::before{content:counter(p);position:absolute;left:0;top:.5px;
+  width:12px;height:12px;border-radius:50%;background:var(--accent);color:#fff;
+  font-family:"IBM Plex Mono",monospace;font-size:6.6pt;font-weight:600;
+  display:flex;align-items:center;justify-content:center}
+
+@media print{
+  body{background:#fff}
+  .hoja{width:auto;min-height:0;margin:0;box-shadow:none;page-break-after:always}
+  .hoja:last-child{page-break-after:auto}
+  .hoja-int{padding:0}
+  .pag{position:static;text-align:right;margin-top:3px}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+
+<!-- ================= HOJA 1 ================= -->
+<div class="hoja"><div class="hoja-int">
+
+  <div class="cab">
+    <h1>G-RAL &mdash; función de ganancia por régimen</h1>
+    <span class="sub">Río Uruguay · ana_74100000</span>
+  </div>
+  <p class="tt">Qué se eligió y por qué. Lo marcado <b>«se declara»</b> es criterio, no ajuste: son las decisiones que conviene validar.</p>
+
+  <h2>1 · La función</h2>
+  <p>
+    Un error cuadrático medio con <b>dos cambios</b>: se mide sobre el <b>logaritmo</b> del caudal, y
+    el peso de cada error depende de <b>su signo</b> y del <b>día</b>.
+  </p>
+  <div class="eq">
+&epsilon;(t,h)  =  ln Q<sub>obs</sub>(t+h)  &minus;  ln Q<sub>pred</sub>(t+h)      <i>&epsilon; &gt; 0 &rArr; el modelo subestimó</i>
+&psi;<sub>&tau;</sub>(&epsilon;)   =  2 · | &tau; &minus; 1{&epsilon; &lt; 0} | · &epsilon;²        <i>pérdida expectil (Newey &amp; Powell, 1987)</i>
+<b>G-RAL(h)</b>  =  &radic;( media<sub>t</sub>  &psi;<sub>&tau;(t)</sub>( &epsilon;(t,h) ) )
+  </div>
+  <p>
+    Con <code>&tau; = 0,5</code> y sin logaritmo, <b>G-RAL <i>es</i> el RMSE</b> &mdash; dígito por
+    dígito, no una aproximación. Piso del logaritmo <code>Q<sub>0</sub> = 100 m³/s</code>, por debajo
+    del p1 observado (204): nunca se activa con datos reales.
+  </p>
+
+  <h2>2 · Qué significa &tau;, y cuánto castiga</h2>
+  <p>
+    <b>Decisión: <code>&tau;</code> se lee como un precio.</b> El cociente
+    <code>&tau;/(1&minus;&tau;)</code> dice cuántas veces más caro es equivocarse para un lado que para
+    el otro. La consecuencia es que <b><code>&tau;</code> no se estima de los datos: se declara</b>, y
+    por lo tanto expresa un criterio de operación &mdash;discutible con quien opera el embalse, en
+    unidades de costo y no de estadística&mdash; y no un parámetro que el modelo ajuste.
+  </p>
+  <table>
+    <thead><tr>
+      <th class="n">&tau;</th><th>Castiga más</th><th class="n">Cociente</th>
+      <th>Lectura operativa</th><th class="n">% días</th></tr></thead>
+    <tbody>
+      <tr><td class="n">0,85</td><td class="hum">subestimar</td><td class="n">5,7×</td>
+          <td>crecida plena: quedarse corto es lo caro</td><td class="n">11,7</td></tr>
+      <tr><td class="n">0,80</td><td class="hum">subestimar</td><td class="n">4,0×</td>
+          <td>régimen húmedo</td><td class="n">17,0</td></tr>
+      <tr><td class="n">0,65</td><td class="hum">subestimar</td><td class="n">1,9×</td>
+          <td>umbral de reporte de V⁺</td><td class="n">6,3</td></tr>
+      <tr class="mid"><td class="n">0,50</td><td>ninguno</td><td class="n">1,0×</td>
+          <td><b>acá la función es exactamente el RMSE</b></td><td class="n">&mdash;</td></tr>
+      <tr><td class="n">0,35</td><td class="sec">sobrestimar</td><td class="n">1,9×</td>
+          <td>umbral de reporte de V⁻</td><td class="n">6,4</td></tr>
+      <tr><td class="n">0,20</td><td class="sec">sobrestimar</td><td class="n">4,0×</td>
+          <td>régimen seco</td><td class="n">17,3</td></tr>
+      <tr><td class="n">0,15</td><td class="sec">sobrestimar</td><td class="n">5,7×</td>
+          <td>estiaje pleno: el optimismo es lo caro</td><td class="n">11,2</td></tr>
+    </tbody>
+  </table>
+  <p class="tt">
+    % de días sobre 9.628 del snapshot delta 299, modulador en modo oráculo con lluvia media por estación.
+    <b>La función cambia de signo:</b> 49 % de los días castiga más subestimar y 51 % más sobrestimar.
+    En estiaje no es más indulgente &mdash; es exigente al revés.
+  </p>
+
+  <h2>3 · Cómo se calcula &tau; cada día</h2>
+  <p>
+    Función determinista de la lluvia &mdash; misma lluvia, mismo <code>&tau;</code>, nadie lo fija a mano. Cada paso lleva su fórmula.
+  </p>
+  <div class="dos">
+    <div>
+      <ol class="pasos">
+        <li><b>Humedad antecedente.</b> Lluvia de los <b>30 días previos</b> (sin incluir hoy), a
+            percentil de la serie: <code>A(t)</code>.</li>
+        <li><b>Lluvia por venir.</b> <b>14 días de pronóstico</b>, ponderando cada lead por
+            <code>&gamma;<sup>k</sup></code>, a percentil: <code>F(t)</code>.</li>
+        <li><b>Una sola señal.</b> <code>W = 0,35·A + 0,65·F</code>. El pronóstico domina porque es el
+            que anticipa la crecida; el pasado modula la respuesta del suelo.</li>
+        <li><b>Forma de S.</b> <code>r = tanh(&kappa;·(2W&minus;1))</code>, en [−1, +1].</li>
+        <li><b>A precio.</b> <code>&tau; = clip(0,5 + 0,35·r)</code>.</li>
+      </ol>
+    </div>
+    <div>
+      <div class="caja ac" style="margin-top:0">
+        <h4>El invariante que no se puede romper</h4>
+        <p>
+          El modulador <b>sólo lee lo disponible en t₀</b>: lluvia observada y pronosticada. <b>Nunca el
+          caudal del día que se quiere predecir.</b> Si lo leyera, el score dejaría de ser propio y
+          premiaría al modelo sesgado a crecida justo en los días donde se lo mira.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <h2>4 · Por qué la tangente hiperbólica</h2>
+  <div>
+    <p>
+      <code>W(t)</code> entra como <b>percentil</b>: está repartido uniforme en [0, 1], y un mapeo
+      lineal dejaría <b>43 % de los días</b> amontonados cerca de la simetría, donde la métrica no dice
+      nada distinto del RMSE. La <code>tanh</code> con <code>&kappa; = 2,2</code> baja ese
+      amontonamiento a <b>21 %</b>. Es una S monótona que hace tres cosas a la vez: <b>separa</b> el
+      centro (pendiente <code>&kappa; &gt; 1</code> en el origen), <b>satura</b> en ±1 &mdash;así
+      <code>&tau;</code> nunca pasa del techo declarado, sea cual sea W&mdash; y deja <b>una sola
+      perilla</b> para graduar el reparto. Con <code>&kappa;</code> mayor se acerca a tres cajas duras;
+      con <code>&kappa;</code> menor <code>&tau;</code> queda casi constante en 0,5 y la asimetría
+      desaparece.
+    </p>
+  </div>
+
+  <h2>5 · Los límites</h2>
+  <table>
+    <thead><tr><th>Parámetro</th><th class="n">Valor</th><th>Qué acota</th><th>Cómo se trata</th></tr></thead>
+    <tbody>
+      <tr><td><code>&tau;<sub>max</sub></code></td><td class="n">0,85</td>
+          <td>Techo de la asimetría: el <code>clip</code> deja <code>&tau;</code> en
+              <b>[0,15 ; 0,85]</b>, castigo máximo <b>5,7×</b> hacia cualquier lado.</td>
+          <td><b>Se declara.</b> Es un costo operativo, no se ajusta a los datos.</td></tr>
+      <tr><td><code>&kappa;</code></td><td class="n">2,2</td><td>Nitidez de la S (§4).</td>
+          <td>Sensibilidad</td></tr>
+      <tr><td><code>&gamma;</code> · <code>w<sub>ant</sub></code>/<code>w<sub>fc</sub></code></td>
+          <td class="n">0,85 · 0,35/0,65</td>
+          <td>Peso por lead (+1 pesa 4,3× el +14) y pasado vs. pronóstico.</td>
+          <td>Sensibilidad</td></tr>
+      <tr><td>ventanas · <code>Q<sub>0</sub></code></td><td class="n">30 d · 14 d · 100</td>
+          <td>Memoria de humedad del suelo, horizonte máximo del target y piso del logaritmo.</td>
+          <td>Fijo</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pie">
+    <b>Métricas que la acompañan, siempre:</b> V⁺ = P(subestima | &tau; &gt; 0,65) ·
+    V⁻ = P(sobrestima | &tau; &lt; 0,35) · FA = P(sobrestima | &tau; &gt; 0,65), más RMSE, NSE y KGE.
+    <b>Criterio de campeón:</b> minimizar G-RAL sujeto a que V⁺ y V⁻ no empeoren contra persistencia.
+  </div>
+  <div class="pag">1 / 2</div>
+</div></div>
+
+<!-- ================= HOJA 2 ================= -->
+<div class="hoja"><div class="hoja-int">
+
+  <div class="cab">
+    <h1>Dataset de entrenamiento</h1>
+    <span class="sub">weather.gold.training_dataset_v0 · delta 299</span>
+  </div>
+  <p class="tt">
+    Snapshot del 2026-09-15 · <b>9.754 filas</b>, 100 columnas · 2000-01-01 → 2026-09-13 ·
+    grano lógico <code>fecha + punto_prediccion</code>, calendario diario continuo.
+  </p>
+
+  <h2>1 · El target</h2>
+  <div class="dos">
+    <div>
+      <p>
+        <b>Caudal del Río Uruguay en m³/s</b>, en la estación <code>ana_74100000</code> (Iraí, frontera
+        Brasil/Argentina). <b>Ocho horizontes</b> en una sola fila:
+      </p>
+      <div class="eq" style="margin:4px 0">caudal_t_mas_{1,2,3,4,5,6,7,14}d</div>
+      <p>
+        El caudal no se mide: se <b>deriva del nivel</b> por la curva de aforo vigente de cada estación.
+        Cobertura <b>99,7 %</b> de los días; el target observable termina 14 días antes del fin de la
+        serie, por construcción.
+      </p>
+    </div>
+    <div>
+      <div class="caja">
+        <h4>Un solo target, y por qué</h4>
+        <p>
+          El nivel <b>salió</b> del dataset. Es función determinista del caudal vía la curva de aforo,
+          así que no aportaba información &mdash; y sus ocho columnas futuras eran <b>fuga directa</b>
+          del target por la monotonía de la curva. Sigue completo en
+          <code>weather.silver.river_levels_daily</code> si alguna vez hace falta por JOIN.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <h2>2 · Atributos por origen</h2>
+  <table>
+    <thead><tr>
+      <th>Origen</th><th>Qué aporta</th><th class="n">Col.</th>
+      <th class="n">Cobertura</th><th class="n">Desde</th><th class="c">En uso</th></tr></thead>
+    <tbody>
+      <tr><td><b>ANA</b> · nivel telemétrico<br><span class="tt">Agência Nacional de Águas (BR)</span></td>
+          <td>Caudal del punto de predicción: actual, rezagos 1/3/7 d, medias móviles 3/7 d, variación
+              diaria. <b>Es el target y su historia.</b></td>
+          <td class="n">7</td><td class="n">99,7 %</td><td class="n">2000</td><td class="c">sí</td></tr>
+      <tr><td><b>ANA</b> · red de estaciones</td>
+          <td>Caudal agregado de la sub-cuenca <code>alta_frontera</code> (22 estaciones aguas arriba),
+              con rezagos 1–3 d y % de estaciones confiables.</td>
+          <td class="n">5</td><td class="n">99,6 %</td><td class="n">2000</td><td class="c">sí</td></tr>
+      <tr><td><b>ANA</b> · pluviómetros</td>
+          <td>Lluvia acumulada, acumulados 3/7 d, conteo de estaciones y cobertura. Se usa la
+              <b>media por estación</b>, no la suma: <code>station_count</code> va de 0 a 177 según la
+              época y la suma cruda no es estacionaria.</td>
+          <td class="n">5</td><td class="n">99,8 %</td><td class="n">2000</td><td class="c">sí</td></tr>
+      <tr><td><b>CPTEC/INPE</b> · MERGE<br><span class="tt">grilla 0,1°, ventana 12Z–12Z</span></td>
+          <td>Lluvia observada como <b>media areal real</b> sobre la sub-cuenca: media, máximo,
+              acumulados 3/7 d, cobertura. Es la fuente preferible del modulador.</td>
+          <td class="n">7</td><td class="n">99,9 %</td><td class="n">2000</td><td class="c">opt.</td></tr>
+      <tr><td><b>CPTEC/INPE</b> · SAMeT<br><span class="tt">grilla 0,05°, día UTC</span></td>
+          <td>Temperatura observada en grilla: media, máxima, mínima y cobertura sobre la sub-cuenca.</td>
+          <td class="n">5</td><td class="n">99,8 %</td><td class="n">2000</td><td class="c">opt.</td></tr>
+      <tr><td><b>ECMWF</b> · control (cf)<br><span class="tt">TIGGE + GEFS empalmado</span></td>
+          <td><b>Precipitación pronosticada</b>, un valor por lead d1…d15, más acumulados 3/7 d.
+              Emitida en t₀: es información legítima sobre el futuro.</td>
+          <td class="n">17</td><td class="n">68,8 %</td><td class="n">2006</td><td class="c">no</td></tr>
+      <tr><td><b>ECMWF</b> · ensemble (pf)<br><span class="tt">50 miembros perturbados</span></td>
+          <td>Lo mismo que el control, como media del ensemble, más el conteo de miembros. Es la puerta
+              al pronóstico probabilístico.</td>
+          <td class="n">18</td><td class="n">32,2 %</td><td class="n">2018</td><td class="c">no</td></tr>
+      <tr><td><b>INMET</b> / METAR · estaciones</td>
+          <td>Temperatura media, mínima y máxima por estación, con conteo y cobertura. En la práctica
+              sólo INMET: los aeropuertos METAR caen fuera de las sub-cuencas.</td>
+          <td class="n">6</td><td class="n">73,7 %</td><td class="n">2006</td><td class="c">no</td></tr>
+      <tr><td><b>ANA</b> · otras sub-cuencas</td>
+          <td>Caudal agregado de <code>intermedia_paso_libres</code> y <code>baja_salto_grande</code>.
+              Tienen datos reales, pero están <b>aguas abajo</b> del punto de predicción y fuera del
+              alcance de la tesis.</td>
+          <td class="n">10</td><td class="n">79,0 %</td><td class="n">2005</td><td class="c">no</td></tr>
+      <tr><td><b>Derivadas</b> · pipeline</td>
+          <td>Banderas de calidad del caudal (confiable, extrapolado, supera aforo máximo, vigencia de
+              curva) y, ya en el entrenamiento, lluvia media por estación con acumulados 3/7/10/30 d y
+              estacionalidad cíclica (<code>doy_sin</code>, <code>doy_cos</code>).</td>
+          <td class="n">8+</td><td class="n">100 %</td><td class="n">2000</td><td class="c">parc.</td></tr>
+    </tbody>
+  </table>
+  <p class="tt">
+    «Cobertura» = días con al menos una columna del grupo no nula, sobre 9.754. «En uso» = si el
+    pipeline de entrenamiento lo consume hoy como feature: <b>sí</b> por defecto, <b>opt.</b> activable
+    por configuración, <b>no</b> presente en Gold pero todavía sin grupo de features definido.
+  </p>
+
+  <h2>3 · Lo que el entrenamiento usa hoy</h2>
+  <div class="dos">
+    <div>
+      <p>
+        Por defecto entran <b>19 features</b> de cuatro grupos: estado del caudal (7), agregado de la
+        sub-cuenca alta (5), lluvia por estación derivada (5) y estacionalidad (2). Con la grilla CPTEC
+        activada son <b>26</b>.
+      </p>
+      <p>
+        <b>Splits temporales con embargo.</b> TEST = últimos 365 días, VAL = los 365 previos, TRAIN = el
+        resto, con 14 días de hueco entre bloques para que ningún target de un split caiga dentro del
+        período de inputs del siguiente.
+      </p>
+    </div>
+    <div>
+      <div class="caja ac">
+        <h4>Novedad del snapshot 297-299: llegó el pronóstico</h4>
+        <p>
+          Las <b>35 columnas de ECMWF</b> (cf + pf) entraron el 2026-09-14 y todavía <b>no tienen grupo
+          de features</b> en el pipeline. Desbloquean las dos cosas que faltaban: features de
+          pronóstico, y el <b>modo operable del modulador</b> &mdash; hasta ahora τ se calculaba con lluvia
+          futura observada (retrospectivo, no operable) o sólo con el pasado.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pie">
+    <b>Alcance espacial:</b> sólo la sub-cuenca <code>alta_frontera</code>, el aporte hasta la frontera
+    Brasil/Argentina. La ingesta cubre las tres sub-cuencas; la exclusión de las de aguas abajo es una
+    decisión de modelado, reversible sin volver a descargar nada. &nbsp;·&nbsp;
+    <b>Piso temporal:</b> 2000-01-01 para caudal, features y pronóstico.
+  </div>
+  <div class="pag">2 / 2</div>
+</div></div>

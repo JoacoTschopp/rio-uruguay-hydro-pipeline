@@ -94,7 +94,7 @@ td.good{color:var(--ok);font-weight:600}
 .formula .eq{font-family:"IBM Plex Mono",monospace;font-size:15px;color:var(--ink);
   line-height:1.9;display:block;white-space:nowrap}
 .formula .eq b{color:var(--caudal);font-weight:600}
-.formula .eq i{color:var(--ink-3);font-style:normal}
+.formula .eq i{color:var(--ink-3);font-style:normal;padding-left:2.5ch}
 .formula .where{margin:12px 0 0;font-size:13.5px;color:var(--ink-3);max-width:none}
 
 pre.code{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
@@ -138,8 +138,22 @@ figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
 .svg-axis{stroke:var(--line-2);stroke-width:1}
 /* despues de .svg-num/.svg-lbl a proposito: misma especificidad, gana el orden */
 .tx-crit{fill:var(--crit)} .tx-inv{fill:var(--surface)}
+.tx-humedo{fill:var(--humedo)} .tx-seco{fill:var(--seco)}
 .svg-box{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1}
 
+.ref{border-left:2px solid var(--line-2);padding:2px 0 2px 16px;margin:0 0 18px}
+.ref:hover{border-left-color:var(--caudal)}
+.ref .cite{color:var(--ink);font-size:14.5px;margin:0 0 4px;max-width:78ch}
+.ref .cite b{font-weight:600}
+.ref .cite .yr{font-family:"IBM Plex Mono",monospace;color:var(--ink-3);font-size:13px}
+.ref .venue{font-style:italic;color:var(--ink-2)}
+.ref .rol{font-size:13.5px;color:var(--ink-3);margin:0;max-width:78ch}
+.ref .slug{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--caudal)}
+.ref a{text-decoration:none;border-bottom:1px solid transparent}
+.ref a:hover{border-bottom-color:var(--caudal)}
+.refgrp{font-family:"IBM Plex Sans",sans-serif;font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600;margin:26px 0 12px}
+.refgrp:first-of-type{margin-top:8px}
 .foot{border-top:1px solid var(--line);padding:28px 0 46px;color:var(--ink-3);font-size:13px}
 .foot p{color:var(--ink-3);max-width:82ch}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -147,20 +161,19 @@ figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
 
 <header class="mast">
   <div class="wrap">
-    <p class="eyebrow">Río Uruguay &middot; informe de decisión &middot; modelado</p>
-    <h1>Una función de ganancia que sepa <em>en qué río</em> está parada</h1>
+    <p class="eyebrow">Río Uruguay &middot; especificación de métrica &middot; modelado</p>
+    <h1>G-RAL &mdash; la función de ganancia <em>por régimen</em></h1>
     <p class="lede">
-      Hoy el modelo se evalúa con RMSE, que trata igual un error de más y uno de menos.
-      Operativamente no son iguales: en crecida lo grave es subestimar, en estiaje lo grave es
-      sobrestimar. Este informe responde si eso se puede escribir como <b>una sola función</b>
-      &mdash; sí, y muestra cuál &mdash; y qué encontró la evidencia sobre la serie real que
-      obliga a corregir la formulación intuitiva en tres puntos.
+      La métrica con la que se evalúan y se entrenan los modelos de pronóstico de caudal en
+      <code>ana_74100000</code>. Un error de más y uno de menos no cuestan lo mismo: en crecida lo
+      grave es subestimar, en estiaje lo grave es sobrestimar. G-RAL escribe esa asimetría como
+      <b>una sola función</b>, con un peso que cambia día a día según cuán mojada esté la cuenca.
     </p>
     <div class="metaline">
       <span class="chip">Serie: <b>ana_74100000</b> &middot; caudal diario</span>
-      <span class="chip">Snapshot Gold <b>delta 263</b> &middot; 2000-01-01 &rarr; 2026-08-23</span>
-      <span class="chip">n = <b>9.696</b> días con caudal</span>
-      <span class="chip">Generado: <b>2026-08-28</b></span>
+      <span class="chip">Snapshot Gold <b>delta 278</b> &middot; n = 9.617 días</span>
+      <span class="chip">Implementada en <code>rio_search/metrics.py</code> y <code>gate.py</code></span>
+      <span class="chip">Revisado: <b>2026-09-09</b></span>
     </div>
   </div>
 </header>
@@ -168,337 +181,159 @@ figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
 <main class="wrap">
 
 <section>
-  <div class="sec-head"><span class="sec-num">01</span><h2>La respuesta corta</h2></div>
+  <div class="sec-head"><span class="sec-num">01</span><h2>La función</h2></div>
   <div class="card">
     <p>
-      <b>Sí, existe una función única.</b> No hace falta una métrica por situación: hace falta
-      <b>una métrica y una función que devuelva un número por día</b>. La familia es la
-      <b>pérdida expectil asimétrica</b>, gobernada por un solo parámetro <code>&tau;</code>:
+      G-RAL &mdash; <i>ganancia régimen-asimétrica en logaritmo</i> &mdash; es un error cuadrático medio
+      con dos cambios: se mide sobre el <b>logaritmo</b> del caudal, y el peso de cada error depende
+      de <b>su signo</b> y del <b>día</b>. Nada más.
     </p>
     <div class="formula">
-      <span class="eq">&psi;<b>&tau;</b>(e)  =  2 &middot; |<b>&tau;</b> &minus; 1{e &lt; 0}| &middot; e&sup2;</span>
+      <span class="eq">&epsilon;(t, h)   =  ln max( Q<sub>obs</sub>(t+h), Q<sub>0</sub> )  &minus;  ln max( Q<sub>pred</sub>(t+h), Q<sub>0</sub> )</span>
+      <span class="eq">&psi;<sub>&tau;</sub>(&epsilon;)   =  2 &middot; | &tau; &minus; 1{&epsilon; &lt; 0} | &middot; &epsilon;&sup2;                    <i>p&eacute;rdida expectil</i></span>
+      <span class="eq"><b>G-RAL(h)</b>  =  &radic;&#8202;(  media<sub>t</sub>  &psi;<sub>&tau;(t)</sub>( &epsilon;(t, h) )  )</span>
       <p class="where">
-        con <code>e = Q<sub>obs</sub> &minus; Q<sub>pred</sub></code>: <b>e &gt; 0 quiere decir que el
-        modelo subestimó</b>, <b>e &lt; 0 que sobrestimó</b>. <code>1{&middot;}</code> es el indicador,
-        vale 1 si la condición se cumple y 0 si no.
+        <code>&epsilon; &gt; 0</code> &rArr; el modelo <b>subestim&oacute;</b>. <code>&tau;(t) &isin; (0, 1)</code>
+        sale del modulador de r&eacute;gimen (&sect;02): con <code>&tau; &gt; 0,5</code> pesa m&aacute;s
+        subestimar, con <code>&tau; &lt; 0,5</code> pesa m&aacute;s sobrestimar.
+        <code>Q<sub>0</sub> = 100 m&sup3;/s</code> es el piso del logaritmo, por debajo del p1 observado
+        (204 m&sup3;/s): no se activa nunca con datos reales, s&oacute;lo evita el log de un valor no f&iacute;sico.
       </p>
     </div>
-    <p>El régimen no cambia la fórmula. Cambia el número <code>&tau;</code>:</p>
-    <div class="tbl"><table>
-      <thead><tr><th>Situación</th><th class="num">&tau;</th><th>Qué hace la fórmula</th>
-        <th class="num">Costo relativo de subestimar</th></tr></thead>
-      <tbody>
-        <tr><td><span class="pill seco">estiaje / sequía</span></td><td class="num">0,20</td>
-            <td>castiga cuatro veces más la sobrestimación</td><td class="num">0,25&times;</td></tr>
-        <tr><td><span class="pill neutro">estable</span></td><td class="num">0,50</td>
-            <td><b>es exactamente el error cuadrático</b> &rarr; RMSE</td><td class="num">1,00&times;</td></tr>
-        <tr><td><span class="pill humedo">crecida / inundación</span></td><td class="num">0,80</td>
-            <td>castiga cuatro veces más la subestimación</td><td class="num">4,00&times;</td></tr>
-      </tbody>
-    </table></div>
-    <p style="margin-top:14px">
-      La razón de penalización es exactamente <code>&tau; / (1 &minus; &tau;)</code>, y esa identidad da
-      la forma honesta de fijar el parámetro: si subestimar en crecida cuesta <i>k</i> veces más que
-      sobrestimar, entonces <code>&tau; = k / (k + 1)</code>. <b>&tau; no se ajusta a los datos</b>:
-      codifica una preferencia operativa, se declara, y se hace análisis de sensibilidad (&sect;07).
-    </p>
-
-    <h3>Pero con eso solo no alcanza &mdash; y ese es el hallazgo del informe</h3>
     <p>
-      Al probar la métrica contra los 26 años de serie real aparecieron tres cosas que la formulación
-      intuitiva no anticipa. Las tres cambian el diseño:
+      La asimetr&iacute;a se lee como un <b>precio</b>. El cociente <code>&tau;/(1&minus;&tau;)</code> dice
+      cu&aacute;ntas veces m&aacute;s caro es equivocarse para un lado que para el otro: con
+      <code>&tau; = 0,85</code>, subestimar cuesta <b>5,7&times;</b> lo que sobrestimar. Es la forma de
+      discutir el par&aacute;metro con un operador en unidades de costo y no de estad&iacute;stica.
     </p>
-    <div class="tbl"><table>
-      <thead><tr><th>Lo que muestra la evidencia</th><th>Consecuencia sobre el diseño</th></tr></thead>
-      <tbody>
-        <tr><td>La regla de tres cajas (10 d atrás / 5 d adelante; 30 d atrás / 14 d adelante) deja
-            <b>80,7 % de los días sin régimen asignado</b>, y 117 días caen en dos cajas a la vez.</td>
-            <td>El portón no puede ser discreto: <b>&tau; tiene que ser continuo</b> y estar definido
-            todos los días (&sect;04).</td></tr>
-        <tr><td>Mirar &laquo;el río ya está alto&raquo; (Q &gt; p90) selecciona la <b>rama de bajada</b> de la onda:
-            ahí la persistencia subestima sólo el <b>17,8 %</b> de las veces. La <b>lluvia pronosticada</b>
-            a 5 días sí aísla el riesgo: subestima el <b>83,9 %</b>.</td>
-            <td>El portón se abre con el <b>pronóstico de lluvia</b>, no con el caudal actual. La
-            intuición de mirar hacia adelante era correcta; la de mirar el nivel de hoy, no (&sect;04).</td></tr>
-        <tr><td>El 25 % de días de menor caudal aporta <b>0,7 % del error cuadrático total</b>. Agregar
-            asimetría en unidades crudas <b>no cambió el ranking de ningún modelo candidato</b>.</td>
-            <td>Antes que la asimetría hay que arreglar <b>la escala</b>: sin transformar, la sequía es
-            invisible y ninguna ponderación la rescata (&sect;05).</td></tr>
-      </tbody>
-    </table></div>
-    <p style="margin-top:14px">
-      La métrica que sale de ahí &mdash; una sola fórmula, con las tres correcciones adentro &mdash; está en
-      <b>&sect;06</b>. Conserva la propiedad que hace que todo esto sea defendible en la tesis:
-      <b>con &tau; = 0,5 en todos los días devuelve el RMSE, dígito por dígito.</b>
-    </p>
-  </div>
-</section>
-
-<section>
-  <div class="sec-head"><span class="sec-num">02</span><h2>Qué mide RMSE hoy, y qué no</h2></div>
-  <div class="card">
-    <p>
-      Antes de reemplazar nada conviene saber qué está midiendo la métrica actual. Descomponiendo el
-      error cuadrático de un baseline de persistencia por banda de caudal observado, sobre los 26 años
-      de serie:
-    </p>
-    <figure>
-      <svg viewBox="0 0 640 252" role="img" aria-label="El diez por ciento de días de mayor caudal concentra entre el 61 y el 87 por ciento del error cuadrático total, mientras el 25 por ciento de días de menor caudal aporta alrededor del uno por ciento.">
-        <text class="svg-lbl" x="90" y="24">reparto del error cuadrático total (SSE) por banda de caudal observado</text>
-        <g>
-          <text class="svg-lbl" x="76" y="61" text-anchor="end">h = 1</text>
-          <rect class="sv-humedo" x="90" y="45" width="418.6" height="22" rx="2"/>
-          <rect class="sv-neutro" x="508.6" y="45" width="56.6" height="22" opacity=".5"/>
-          <rect class="sv-seco" x="565.2" y="45" width="4.8" height="22"/>
-          <text class="svg-num tx-inv" x="100" y="61">87,2 %</text>
-        </g>
-        <g>
-          <text class="svg-lbl" x="76" y="106" text-anchor="end">h = 3</text>
-          <rect class="sv-humedo" x="90" y="90" width="408.0" height="22" rx="2"/>
-          <rect class="sv-neutro" x="498.0" y="90" width="67.7" height="22" opacity=".5"/>
-          <rect class="sv-seco" x="565.7" y="90" width="4.3" height="22"/>
-          <text class="svg-num tx-inv" x="100" y="106">85,0 %</text>
-        </g>
-        <g>
-          <text class="svg-lbl" x="76" y="151" text-anchor="end">h = 7</text>
-          <rect class="sv-humedo" x="90" y="135" width="348.0" height="22" rx="2"/>
-          <rect class="sv-neutro" x="438.0" y="135" width="128.6" height="22" opacity=".5"/>
-          <rect class="sv-seco" x="566.6" y="135" width="3.4" height="22"/>
-          <text class="svg-num tx-inv" x="100" y="151">72,5 %</text>
-        </g>
-        <g>
-          <text class="svg-lbl" x="76" y="196" text-anchor="end">h = 14</text>
-          <rect class="sv-humedo" x="90" y="180" width="292.3" height="22" rx="2"/>
-          <rect class="sv-neutro" x="382.3" y="180" width="182.4" height="22" opacity=".5"/>
-          <rect class="sv-seco" x="564.7" y="180" width="5.3" height="22"/>
-          <text class="svg-num tx-inv" x="100" y="196">60,9 %</text>
-        </g>
-        <line class="svg-axis" x1="90" y1="214" x2="570" y2="214"/>
-        <g>
-          <rect class="sv-humedo" x="90" y="230" width="10" height="10" rx="2"/>
-          <text class="svg-lbl" x="106" y="239">10 % de mayor caudal</text>
-          <rect class="sv-neutro" x="262" y="230" width="10" height="10" rx="2" opacity=".5"/>
-          <text class="svg-lbl" x="278" y="239">bandas intermedias</text>
-          <rect class="sv-seco" x="420" y="230" width="10" height="10" rx="2"/>
-          <text class="svg-lbl" x="436" y="239">25 % de menor caudal (&asymp; 1 %)</text>
-        </g>
-      </svg>
-      <figcaption>
-        Baseline de persistencia sobre <code>caudal_actual_m3s</code>, 2000&ndash;2026. La franja ocre
-        de la derecha &mdash; el cuartil bajo, todo el estiaje &mdash; es el 0,7&ndash;1,1 % del error total.
-      </figcaption>
-    </figure>
-
-    <div class="callout">
-      <h4>El problema no es que RMSE ignore las crecidas. Es lo contrario.</h4>
+    <div class="callout ok">
+      <h4>Con &tau; = 0,5 y sin logaritmo, G-RAL <i>es</i> el RMSE</h4>
       <p>
-        RMSE <b>ya es</b> casi exclusivamente una métrica de crecidas: el 10 % de días de mayor caudal
-        explica entre el 61 % (h = 14) y el 87 % (h = 1) de todo el error cuadrático. Lo que RMSE no
-        puede hacer es <b>distinguir de qué lado</b> ocurrió ese error. Y en el otro extremo
-        <b>hace la sequía literalmente invisible</b>: optimizar RMSE hasta el último decimal no mejora
-        el estiaje, porque el estiaje no pesa.
+        No es una aproximaci&oacute;n ni una analog&iacute;a: <code>&psi;<sub>0,5</sub>(&epsilon;) = &epsilon;&sup2;</code>
+        exactamente, as&iacute; que la ra&iacute;z de la media devuelve el RMSE d&iacute;gito por d&iacute;gito.
+        Hay un test que lo verifica con diferencia <code>0,00e+00</code>, y es la verificaci&oacute;n de
+        partida de toda la implementaci&oacute;n. G-RAL no es una m&eacute;trica de otra familia: es el RMSE
+        con dos ingredientes agregados, y sacando los dos se vuelve a &eacute;l.
       </p>
     </div>
-
+    <h3>Por qu&eacute; la familia expectil</h3>
     <p>
-      Ese diagnóstico redefine el problema. No se trata de &laquo;darle más peso a las crecidas&raquo; &mdash;
-      ya lo tienen de sobra. Se trata de dos cosas distintas: <b>darle signo</b> al error donde el signo
-      importa, y <b>darle escala</b> al estiaje para que exista.
+      Dos propiedades la eligen, y las dos importan porque la misma funci&oacute;n se usa para
+      <b>evaluar y para entrenar</b>:
     </p>
-
-    <h3>El error no tiene el mismo signo ni el mismo tamaño en cada régimen</h3>
+    <ul>
+      <li><b>El gradiente es continuo en <code>&epsilon; = 0</code></b> &mdash; tiende a cero por los dos
+          lados. La p&eacute;rdida pinball (cuantiles) tiene un salto ah&iacute;, y por eso necesita trucos
+          para entrenar; esta no.</li>
+      <li><b>Se reduce al caso sim&eacute;trico de forma exacta</b>, que es lo que permite compararla contra
+          RMSE sin discutir escalas.</li>
+    </ul>
     <p>
-      Clasificando los días con la regla propuesta y midiendo el sesgo de la persistencia a 7 días
-      (<code>e = obs &minus; pred</code>, <code>e &gt; 0</code> = subestimó):
-    </p>
-    <div class="tbl"><table>
-      <thead><tr><th>Régimen</th><th class="num">días</th><th class="num">sesgo medio</th>
-        <th class="num">RMSE</th><th class="num">P(subestima)</th>
-        <th class="num">|e| mediano</th><th class="num">Q mediano</th><th class="num">|e| / Q</th></tr></thead>
-      <tbody>
-        <tr><td><span class="pill neutro">estable</span></td><td class="num">756</td><td class="num">&minus;88,7</td>
-            <td class="num">516,4</td><td class="num">35,7 %</td><td class="num">153,9</td>
-            <td class="num">864,7</td><td class="num">17,0 %</td></tr>
-        <tr><td><span class="pill humedo">inundación</span></td><td class="num">854</td><td class="num">&minus;2.292,1</td>
-            <td class="num">5.179,0</td><td class="num">19,0 %</td><td class="num">2.384,8</td>
-            <td class="num">4.912,2</td><td class="num">50,1 %</td></tr>
-        <tr><td><span class="pill seco">sequía</span></td><td class="num">380</td><td class="num">+7,2</td>
-            <td class="num">153,6</td><td class="num">42,1 %</td><td class="num">54,9</td>
-            <td class="num">469,7</td><td class="num">11,9 %</td></tr>
-        <tr class="hl"><td>todos</td><td class="num">9.675</td><td class="num">+1,2</td>
-            <td class="num">2.138,5</td><td class="num">45,2 %</td><td class="num">&mdash;</td>
-            <td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
-      </tbody>
-    </table></div>
-    <p style="margin-top:14px">
-      Valores en m³/s. Dos lecturas importantes acá. La primera: el error típico va de
-      <b>55 m³/s en sequía a 2.385 m³/s en crecida</b>, un factor 43 &mdash; cualquier métrica en unidades
-      crudas está dominada por la crecida por construcción. La segunda: medido en <b>|e| / Q</b> el orden
-      casi se invierte (11,9 % / 17,0 % / 50,1 %), que es la primera pista de que la escala correcta
-      no es lineal.
+      El precio de esa elecci&oacute;n hay que decirlo: un modelo entrenado con una p&eacute;rdida asimétrica
+      <b>no estima la media condicional</b>, estima el <code>&tau;</code>-expectil. Va a tener sesgo
+      positivo en r&eacute;gimen h&uacute;medo <b>por dise&ntilde;o</b>, y eso le sube el RMSE. No es un
+      defecto de calibraci&oacute;n: es la decisi&oacute;n operativa hecha expl&iacute;cita.
     </p>
   </div>
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-num">03</span><h2>La familia: por qué expectil y no otra</h2></div>
+  <div class="sec-head"><span class="sec-num">02</span><h2>El modulador: de la lluvia a &tau;</h2></div>
   <div class="card">
     <p>
-      Hay cuatro candidatas razonables para expresar &laquo;este error duele más que aquel&raquo;. Se elige
-      el expectil por dos propiedades duras, no por gusto.
+      <code>&tau;</code> no lo fija nadie a mano. Es una <b>funci&oacute;n determinista de la lluvia</b>
+      que produce un valor por d&iacute;a: misma lluvia, mismo <code>&tau;</code>. Toma dos se&ntilde;ales
+      &mdash;cu&aacute;nto llovi&oacute; en el &uacute;ltimo mes y cu&aacute;nto se pronostica para la
+      pr&oacute;xima quincena&mdash; y las comprime en un solo n&uacute;mero.
     </p>
-    <figure>
-      <svg viewBox="0 0 640 348" role="img" aria-label="Tres parábolas sobre el mismo eje: con tau igual a 0,85 la rama derecha, la de subestimación, es empinada; con tau igual a 0,5 la parábola es simétrica y equivale al error cuadrático; con tau igual a 0,2 la rama empinada es la izquierda, la de sobrestimación.">
-        <line class="svg-axis" x1="70" y1="250" x2="620" y2="250"/>
-        <line class="svg-axis" x1="340" y1="40" x2="340" y2="262" stroke-dasharray="3 3"/>
-        <polyline class="st-humedo" fill="none" stroke-width="2.2" stroke-linejoin="round"
-          points="70,214.6 115,225.4 160,234.3 205,241.1 250,246.1 295,249.0 340,250 385,244.4 430,227.7 475,199.8 520,160.8 565,110.6 610,49.2"/>
-        <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" stroke-linejoin="round"
-          points="70,131.9 115,168.0 160,197.5 205,220.5 250,236.9 295,246.7 340,250 385,246.7 430,236.9 475,220.5 520,197.5 565,168.0 610,131.9"/>
-        <polyline class="st-seco" fill="none" stroke-width="2.2" stroke-linejoin="round"
-          points="70,61.0 115,118.8 160,166.0 205,202.8 250,229.0 295,244.8 340,250 385,248.7 430,244.8 475,238.2 520,229.0 565,217.2 610,202.8"/>
-        <text class="svg-lbl-em" x="70" y="278" text-anchor="start">&larr; sobrestima  (e &lt; 0)</text>
-        <text class="svg-lbl-em" x="620" y="278" text-anchor="end">subestima  (e &gt; 0) &rarr;</text>
-        <text class="svg-lbl" x="340" y="300" text-anchor="middle">error  e = Q observado &minus; Q predicho</text>
-        <text class="svg-lbl" x="62" y="46" text-anchor="end">&psi;(e)</text>
-        <g>
-          <line class="st-humedo" x1="60" y1="330" x2="84" y2="330" stroke-width="2.2"/>
-          <text class="svg-lbl" x="92" y="334">&tau; = 0,85 &middot; húmedo</text>
-          <line x1="240" y1="330" x2="264" y2="330" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"/>
-          <text class="svg-lbl" x="272" y="334">&tau; = 0,50 &middot; RMSE</text>
-          <line class="st-seco" x1="420" y1="330" x2="444" y2="330" stroke-width="2.2"/>
-          <text class="svg-lbl" x="452" y="334">&tau; = 0,20 &middot; seco</text>
-        </g>
-      </svg>
-      <figcaption>
-        Es siempre la misma parábola, inclinada por &tau;. La curva punteada &mdash; el RMSE de hoy &mdash;
-        es el caso &tau; = 0,5; las otras dos no la reemplazan, la continúan.
-      </figcaption>
-    </figure>
-
-    <h3>Las dos propiedades que deciden</h3>
-    <p>
-      <b>1. Reduce a RMSE de forma exacta.</b> Con &tau; = 0,5 el factor
-      <code>2&middot;|0,5 &minus; 1{e&lt;0}|</code> vale 1 en las dos ramas, así que
-      <code>&psi;(e) = e&sup2;</code>. Verificado numéricamente sobre la serie: la diferencia entre
-      RMSE y la métrica asimétrica con &tau; = 0,5 es <b>0,00e+00</b>. Eso importa para la tesis &mdash;
-      la métrica nueva no compite con la estándar, la <i>contiene</i> como caso particular, y todo lo
-      reportado antes sigue siendo comparable.
-    </p>
-    <p>
-      <b>2. Es derivable en todas partes.</b>
-      <code>&part;&psi;/&part;Q<sub>pred</sub> = &minus;4&middot;|&tau; &minus; 1{e&lt;0}|&middot;e</code>, que tiende
-      a 0 por los dos lados en <code>e = 0</code>. Sirve como función de pérdida de entrenamiento en
-      PyTorch sin el gradiente discontinuo de la pérdida pinball. Como Rio_Search entrena en PyTorch
-      (Decisión 038), poder usar <b>la misma función para entrenar y para evaluar</b> elimina el
-      desacople clásico entre lo que se optimiza y lo que se reporta.
-    </p>
-
-    <div class="tbl"><table>
-      <thead><tr><th>Candidata</th><th>Forma</th><th>Su mínimo estima</th><th>Por qué sí / por qué no</th></tr></thead>
-      <tbody>
-        <tr class="hl"><td>Expectil</td><td class="mono">2|&tau;&minus;1{e&lt;0}|&thinsp;e&sup2;</td>
-          <td>el &tau;-expectil</td>
-          <td>Contiene a RMSE exactamente en &tau; = 0,5; derivable en 0; una sola constante con lectura
-          operativa directa. <b>Elegida.</b></td></tr>
-        <tr><td>Pinball / cuantil</td><td class="mono">(&tau;&minus;1{e&lt;0})&thinsp;e</td>
-          <td>el &tau;-cuantil</td>
-          <td>Es el estándar probabilístico, pero en &tau; = 0,5 da MAE, no RMSE: rompe la continuidad
-          con lo ya reportado, y no es derivable en 0. Vuelve en &sect;09, donde sí corresponde.</td></tr>
-        <tr><td>LINEX</td><td class="mono">(2/a&sup2;)(exp(a&thinsp;e)&minus;a&thinsp;e&minus;1)</td>
-          <td>una media exponencial</td>
-          <td>Penalización exponencial de un lado &mdash; expresa muy bien &laquo;nunca subestimar&raquo;, pero
-          explota con errores de 20.000 m³/s y el parámetro <i>a</i> no tiene lectura operativa.</td></tr>
-        <tr><td>NSE / KGE ponderados</td><td class="mono">&mdash;</td><td>&mdash;</td>
-          <td>Son métricas normalizadas por la varianza observada, no funciones de pérdida: no admiten
-          asimetría sin dejar de ser interpretables. Se siguen reportando aparte (&sect;08).</td></tr>
-      </tbody>
-    </table></div>
-  </div>
-</section>
-
-<section>
-  <div class="sec-head"><span class="sec-num">04</span><h2>El portón: qué mira, y cuándo</h2></div>
-  <div class="card">
-    <p>
-      Definida la fórmula, queda la parte que la propuesta original describe como &laquo;situación diaria&raquo;:
-      qué función produce <code>&tau;</code> cada día. Acá la evidencia obliga a dos correcciones.
-    </p>
-
-    <h3>Corrección 1 &mdash; tres cajas dejan afuera cuatro de cada cinco días</h3>
-    <p>
-      Implementando la regla tal como se planteó, con umbrales en el cuartil de cada acumulado de lluvia
-      (y usando la lluvia observada futura como <i>oráculo</i> de pronóstico perfecto, o sea el mejor caso
-      posible):
-    </p>
-    <div class="stat-grid">
-      <div class="stat"><div class="v neutro">7,8 %</div><div class="l">días <b>estables</b> (758)</div></div>
-      <div class="stat"><div class="v humedo">8,8 %</div><div class="l">días de <b>inundación</b> (858)</div></div>
-      <div class="stat"><div class="v seco">3,9 %</div><div class="l">días de <b>sequía</b> (380)</div></div>
-      <div class="stat"><div class="v crit">80,7 %</div><div class="l"><b>sin régimen asignado</b> (7.853)</div></div>
+    <div class="formula">
+      <span class="eq">A(t)  =  rank&thinsp;%<sub>serie</sub> ( &Sigma;<sub>i=1..30</sub>  P&#772;(t &minus; i) )                <i>humedad antecedente observada</i></span>
+      <span class="eq">F(t)  =  rank&thinsp;%<sub>serie</sub> ( &Sigma;<sub>k=1..14</sub>  &gamma;<sup>k</sup> &middot; P&#770;(t + k) )        <i>lluvia pronosticada, ponderada por lead</i></span>
+      <span class="eq">W(t)  =  w<sub>ant</sub> &middot; A(t)  +  w<sub>fc</sub> &middot; F(t)                     <i>una sola se&ntilde;al, en [0, 1]</i></span>
+      <span class="eq">r(t)  =  tanh( &kappa; &middot; (2&middot;W(t) &minus; 1) )                        <i>&iacute;ndice de r&eacute;gimen, en [&minus;1, +1]</i></span>
+      <span class="eq"><b>&tau;(t)</b>  =  clip( 0,5 + (&tau;<sub>max</sub> &minus; 0,5) &middot; r(t) ,  1&minus;&tau;<sub>max</sub> ,  &tau;<sub>max</sub> )</span>
+      <p class="where">
+        <code>P&#772;</code> = lluvia observada (media areal), <code>P&#770;</code> = lluvia pronosticada.
+        Valores vigentes: <code>&gamma; = 0,85</code>, <code>&kappa; = 2,2</code>,
+        <code>w<sub>ant</sub>/w<sub>fc</sub> = 0,35 / 0,65</code>, <code>&tau;<sub>max</sub> = 0,85</code>
+        (&sect;04). <code>r = &minus;1</code> &rarr; estiaje pleno, <code>r = 0</code> &rarr;
+        <code>&tau; = 0,5</code> &rarr; RMSE, <code>r = +1</code> &rarr; crecida.
+      </p>
     </div>
     <p>
-      Además, 117 días entran a la vez en &laquo;estable&raquo; y en otra caja &mdash; las condiciones no son
-      excluyentes. Una métrica que sólo sabe qué hacer con el 20 % de los días no es una métrica de
-      evaluación: es un filtro. Y elegir un modelo con el 20 % de los datos tira a la basura casi toda
-      la evidencia disponible.
+      Los cinco renglones hacen una sola cosa: <b>medir cu&aacute;n mojada est&aacute; la cuenca hoy, en
+      una escala de 0 a 1, y convertirla en el peso de la asimetr&iacute;a</b>. El <code>rank&thinsp;%</code>
+      vuelve la se&ntilde;al comparable entre &eacute;pocas del a&ntilde;o &mdash;50 mm en enero no
+      significan lo mismo que en julio&mdash;; la <code>tanh</code> le da forma de S para que el centro de
+      la distribuci&oacute;n no quede aplastado contra los extremos; el <code>clip</code> impide que la
+      asimetr&iacute;a supere el techo declarado.
     </p>
     <figure>
-      <svg viewBox="0 0 640 268" role="img" aria-label="Comparación de dos portones: la regla de tres cajas cubre sólo el 20 por ciento de los días y deja 80,7 por ciento sin asignar; el índice continuo asigna un valor de tau a cada uno de los días.">
-        <defs>
-          <linearGradient id="ramp" x1="0" y1="0" x2="1" y2="0">
-            <stop class="g-seco" offset="0"/>
-            <stop class="g-neutro" offset="0.5"/>
-            <stop class="g-humedo" offset="1"/>
-          </linearGradient>
-          <pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-            <rect width="8" height="8" class="sv-surf"/>
-            <line x1="0" y1="0" x2="0" y2="8" class="svg-axis"/>
-          </pattern>
-        </defs>
-
-        <text class="svg-lbl-em" x="90" y="30">Opción A &mdash; regla de tres cajas</text>
-        <rect class="sv-seco"   x="90"    y="42" width="20.0"  height="30"/>
-        <rect class="sv-neutro" x="110.0" y="42" width="40.1"  height="30"/>
-        <rect class="sv-humedo" x="150.1" y="42" width="45.2"  height="30"/>
-        <rect fill="url(#hatch)" class="sv-line" x="195.3" y="42" width="414.6" height="30"/>
-        <text class="svg-num" x="402" y="62" text-anchor="middle">80,7 % sin régimen asignado</text>
-        <text class="svg-lbl" x="90"  y="92">sequía 3,9 %  &middot;  estable 7,8 %  &middot;  inundación 8,8 %   &mdash;   20,5 % de los días</text>
-        <text class="svg-lbl" x="90"  y="112">&tau; queda indefinido en el resto; 117 días caen en dos cajas a la vez</text>
-
-        <text class="svg-lbl-em" x="90" y="160">Opción B &mdash; índice de régimen continuo</text>
-        <rect fill="url(#ramp)" x="90" y="172" width="520" height="30" rx="2"/>
-        <line class="svg-axis" x1="269.9" y1="168" x2="269.9" y2="210" stroke-dasharray="3 3"/>
-        <line class="svg-axis" x1="423.3" y1="168" x2="423.3" y2="210" stroke-dasharray="3 3"/>
-        <text class="svg-num tx-inv" x="180" y="192" text-anchor="middle">34,6 %</text>
-        <text class="svg-num tx-inv" x="346" y="192" text-anchor="middle">29,5 %</text>
-        <text class="svg-num tx-inv" x="517" y="192" text-anchor="middle">34,5 %</text>
-        <text class="svg-lbl" x="90"  y="226">&tau; = 0,15</text>
-        <text class="svg-lbl" x="269.9" y="226" text-anchor="middle">0,35</text>
-        <text class="svg-lbl" x="350" y="226" text-anchor="middle">0,50</text>
-        <text class="svg-lbl" x="423.3" y="226" text-anchor="middle">0,65</text>
-        <text class="svg-lbl" x="610" y="226" text-anchor="end">0,85</text>
-        <text class="svg-lbl" x="90"  y="250">cada día tiene un &tau;; el reparto de días surge de la serie, no de un umbral</text>
+      <svg viewBox="0 0 700 300" role="img" aria-label="Dos paneles alineados sobre 2019 y 2020: arriba el caudal observado en escala logaritmica, abajo el valor de tau dia a dia. Tau sube antes de cada crecida y baja en la rama de bajada.">
+        <defs><clipPath id="cpA"><rect x="66" y="150" width="582" height="96"/></clipPath></defs>
+        <text class="svg-lbl-em" x="66" y="24">Caudal observado &middot; m&sup3;/s (escala log)</text>
+        <line class="svg-axis" x1="66" y1="95.7" x2="590" y2="95.7" stroke-dasharray="2 4" opacity=".55"/>
+        <text class="svg-lbl" x="60" y="99.2" text-anchor="end">500</text>
+        <line class="svg-axis" x1="66" y1="74.8" x2="590" y2="74.8" stroke-dasharray="2 4" opacity=".55"/>
+        <text class="svg-lbl" x="60" y="78.3" text-anchor="end">2.000</text>
+        <line class="svg-axis" x1="66" y1="50.6" x2="590" y2="50.6" stroke-dasharray="2 4" opacity=".55"/>
+        <text class="svg-lbl" x="60" y="54.1" text-anchor="end">10.000</text>
+        <path d="M66.0 89.4 L66.7 80.9 L67.4 74.7 L68.2 82.5 L68.9 83.4 L69.6 91.8 L70.3 78.4 L71.0 77.0 L71.7 76.4 L72.5 74.4 L73.2 78.0 L73.9 81.1 L74.6 80.1 L75.3 73.1 L76.0 71.9 L76.8 71.8 L77.5 72.1 L78.2 72.3 L78.9 72.3 L79.6 75.3 L80.4 72.7 L81.1 72.9 L81.8 73.7 L82.5 72.2 L83.2 72.4 L83.9 72.8 L84.7 75.4 L85.4 73.6 L86.1 76.2 L86.8 75.0 L87.5 74.7 L88.3 75.4 L89.0 81.3 L89.7 85.2 L90.4 78.4 L91.1 81.4 L91.8 82.5 L92.6 80.5 L93.3 80.3 L94.0 87.1 L94.7 89.4 L95.4 80.2 L96.1 80.7 L96.9 88.4 L97.6 84.2 L98.3 81.7 L99.0 70.7 L99.7 75.1 L100.5 75.2 L101.2 73.4 L101.9 76.6 L102.6 77.2 L103.3 78.2 L104.0 81.9 L104.8 85.7 L105.5 77.8 L106.2 73.1 L106.9 75.8 L107.6 77.1 L108.4 78.6 L109.1 85.7 L109.8 90.1 L110.5 86.1 L111.2 86.6 L111.9 80.0 L112.7 78.1 L113.4 78.9 L114.1 84.1 L114.8 87.5 L115.5 82.4 L116.2 79.5 L117.0 72.0 L117.7 71.3 L118.4 70.9 L119.1 71.1 L119.8 81.2 L120.6 76.6 L121.3 65.4 L122.0 66.8 L122.7 69.6 L123.4 71.7 L124.1 74.3 L124.9 80.6 L125.6 75.5 L126.3 76.4 L127.0 75.3 L127.7 75.2 L128.4 76.0 L129.2 78.5 L129.9 84.4 L130.6 77.4 L131.3 78.6 L132.0 76.4 L132.8 75.8 L133.5 77.0 L134.2 76.8 L134.9 84.3 L135.6 78.2 L136.3 79.4 L137.1 80.8 L137.8 81.3 L138.5 83.7 L139.2 88.4 L139.9 90.2 L140.7 85.1 L141.4 88.0 L142.1 89.4 L142.8 88.9 L143.5 91.5 L144.2 91.8 L145.0 88.7 L145.7 82.2 L146.4 84.2 L147.1 83.3 L147.8 84.2 L148.5 86.8 L149.3 91.6 L150.0 82.5 L150.7 76.8 L151.4 79.9 L152.1 85.0 L152.9 79.2 L153.6 83.0 L154.3 85.6 L155.0 86.4 L155.7 87.4 L156.4 88.5 L157.2 84.2 L157.9 85.3 L158.6 84.2 L159.3 73.3 L160.0 62.9 L160.8 65.1 L161.5 73.7 L162.2 74.7 L162.9 78.9 L163.6 82.8 L164.3 73.6 L165.1 84.0 L165.8 78.3 L166.5 77.2 L167.2 74.6 L167.9 75.1 L168.6 73.3 L169.4 75.5 L170.1 82.1 L170.8 76.9 L171.5 75.6 L172.2 62.9 L173.0 59.3 L173.7 49.8 L174.4 56.0 L175.1 59.0 L175.8 65.8 L176.5 71.9 L177.3 66.8 L178.0 73.8 L178.7 76.0 L179.4 78.7 L180.1 78.5 L180.8 75.0 L181.6 78.0 L182.3 81.3 L183.0 79.0 L183.7 80.4 L184.4 82.7 L185.2 87.1 L185.9 87.6 L186.6 74.9 L187.3 79.4 L188.0 82.9 L188.7 84.7 L189.5 87.6 L190.2 91.7 L190.9 85.2 L191.6 85.7 L192.3 78.7 L193.1 77.9 L193.8 81.0 L194.5 85.9 L195.2 87.3 L195.9 81.0 L196.6 78.3 L197.4 80.0 L198.1 66.5 L198.8 73.3 L199.5 80.5 L200.2 78.6 L200.9 80.7 L201.7 79.9 L202.4 78.9 L203.1 80.8 L203.8 79.6 L204.5 81.6 L205.3 84.1 L206.0 77.7 L206.7 77.6 L207.4 82.3 L208.1 79.3 L208.8 84.0 L209.6 96.6 L210.3 107.3 L211.0 80.0 L211.7 80.3 L212.4 80.0 L213.2 79.7 L213.9 80.2 L214.6 84.6 L215.3 86.7 L216.0 80.0 L216.7 78.8 L217.5 77.2 L218.2 79.3 L218.9 80.4 L219.6 87.8 L220.3 90.0 L221.0 84.2 L221.8 83.4 L222.5 82.2 L223.2 82.6 L223.9 86.9 L224.6 87.9 L225.4 93.9 L226.1 75.1 L226.8 82.7 L227.5 84.1 L228.2 85.2 L228.9 92.4 L229.7 94.4 L230.4 93.3 L231.1 87.5 L231.8 84.6 L232.5 83.4 L233.2 87.0 L234.0 89.6 L234.7 93.0 L235.4 95.5 L236.1 95.9 L236.8 95.9 L237.6 94.3 L238.3 90.7 L239.0 91.6 L239.7 92.9 L240.4 93.5 L241.1 91.0 L241.9 91.9 L242.6 88.2 L243.3 89.2 L244.0 93.1 L244.7 95.3 L245.5 95.8 L246.2 94.7 L246.9 92.5 L247.6 90.4 L248.3 89.6 L249.0 94.1 L249.8 95.6 L250.5 95.9 L251.2 95.8 L251.9 91.4 L252.6 90.2 L253.3 87.8 L254.1 85.3 L254.8 89.6 L255.5 93.3 L256.2 94.7 L256.9 93.7 L257.7 91.7 L258.4 92.3 L259.1 93.9 L259.8 95.2 L260.5 95.6 L261.2 92.3 L262.0 94.4 L262.7 91.8 L263.4 93.6 L264.1 92.3 L264.8 95.2 L265.6 95.1 L266.3 92.1 L267.0 93.7 L267.7 91.0 L268.4 87.0 L269.1 91.0 L269.9 93.8 L270.6 95.1 L271.3 94.1 L272.0 95.3 L272.7 93.9 L273.4 94.6 L274.2 93.5 L274.9 94.8 L275.6 94.5 L276.3 95.3 L277.0 92.4 L277.8 87.3 L278.5 88.3 L279.2 90.4 L279.9 93.0 L280.6 94.0 L281.3 90.8 L282.1 82.6 L282.8 79.7 L283.5 78.2 L284.2 81.9 L284.9 84.2 L285.6 81.4 L286.4 75.6 L287.1 74.8 L287.8 73.2 L288.5 73.2 L289.2 77.6 L290.0 73.0 L290.7 76.6 L291.4 74.6 L292.1 76.1 L292.8 72.6 L293.5 73.9 L294.3 76.3 L295.0 74.8 L295.7 81.1 L296.4 75.7 L297.1 74.6 L297.9 76.9 L298.6 75.5 L299.3 75.3 L300.0 76.5 L300.7 85.1 L301.4 79.9 L302.2 75.9 L302.9 74.8 L303.6 76.1 L304.3 77.3 L305.0 83.0 L305.7 82.8 L306.5 77.8 L307.2 75.9 L307.9 73.7 L308.6 73.3 L309.3 73.4 L310.1 85.0 L310.8 87.4 L311.5 79.4 L312.2 78.5 L312.9 78.3 L313.6 77.3 L314.4 80.7 L315.1 86.3 L315.8 92.2 L316.5 86.0 L317.2 84.8 L318.0 83.3 L318.7 86.0 L319.4 87.6 L320.1 89.1 L320.8 90.0 L321.5 92.5 L322.3 96.4 L323.0 97.3 L323.7 90.0 L324.4 87.6 L325.1 91.0 L325.8 91.1 L326.6 94.2 L327.3 94.8 L328.0 95.1 L328.7 104.6 L329.4 95.0 L330.2 102.2 L330.9 107.5 L331.6 97.2 L332.3 91.0 L333.0 91.5 L333.7 92.3 L334.5 93.1 L335.2 93.4 L335.9 93.3 L336.6 99.4 L337.3 94.4 L338.0 92.0 L338.8 92.1 L339.5 95.2 L340.2 99.2 L340.9 103.5 L341.6 96.2 L342.4 93.3 L343.1 96.2 L343.8 96.9 L344.5 94.3 L345.2 103.5 L345.9 107.4 L346.7 96.6 L347.4 88.8 L348.1 91.5 L348.8 85.4 L349.5 85.1 L350.3 89.0 L351.0 93.4 L351.7 91.0 L352.4 87.6 L353.1 90.8 L353.8 90.0 L354.6 89.6 L355.3 92.3 L356.0 96.3 L356.7 90.7 L357.4 94.7 L358.1 95.1 L358.9 97.1 L359.6 98.6 L360.3 94.8 L361.0 101.7 L361.7 100.0 L362.5 98.9 L363.2 94.3 L363.9 96.1 L364.6 100.6 L365.3 106.7 L366.0 107.3 L366.8 107.7 L367.5 100.6 L368.2 91.8 L368.9 84.3 L369.6 89.9 L370.4 98.9 L371.1 101.8 L371.8 93.9 L372.5 91.1 L373.2 91.5 L373.9 93.1 L374.7 92.7 L375.4 101.3 L376.1 107.0 L376.8 100.9 L377.5 97.6 L378.2 98.7 L379.0 94.8 L379.7 97.9 L380.4 104.1 L381.1 108.2 L381.8 104.7 L382.6 102.2 L383.3 108.5 L384.0 109.6 L384.7 110.0 L385.4 109.9 L386.1 110.1 L386.9 110.4 L387.6 110.1 L388.3 101.5 L389.0 107.3 L389.7 108.3 L390.4 104.4 L391.2 105.2 L391.9 101.1 L392.6 104.9 L393.3 106.0 L394.0 105.6 L394.8 104.2 L395.5 106.9 L396.2 106.5 L396.9 102.6 L397.6 92.7 L398.3 105.9 L399.1 106.6 L399.8 105.9 L400.5 109.6 L401.2 109.9 L401.9 103.7 L402.7 104.3 L403.4 99.9 L404.1 105.4 L404.8 104.7 L405.5 107.0 L406.2 109.9 L407.0 109.8 L407.7 109.6 L408.4 110.0 L409.1 110.0 L409.8 110.3 L410.5 109.9 L411.3 110.4 L412.0 110.6 L412.7 109.9 L413.4 110.4 L414.1 109.9 L414.9 106.4 L415.6 109.9 L416.3 110.2 L417.0 110.1 L417.7 109.9 L418.4 110.0 L419.2 110.6 L419.9 111.0 L420.6 113.0 L421.3 113.4 L422.0 113.8 L422.8 112.9 L423.5 112.9 L424.2 113.5 L424.9 113.1 L425.6 114.5 L426.3 114.6 L427.1 113.9 L427.8 114.5 L428.5 114.1 L429.2 114.5 L429.9 109.7 L430.6 92.1 L431.4 91.6 L432.1 90.9 L432.8 92.3 L433.5 96.5 L434.2 100.8 L435.0 105.4 L435.7 110.5 L436.4 110.5 L437.1 112.9 L437.8 108.9 L438.5 105.7 L439.3 106.0 L440.0 106.8 L440.7 100.7 L441.4 99.2 L442.1 89.1 L442.8 95.7 L443.6 76.1 L444.3 56.3 L445.0 59.2 L445.7 68.9 L446.4 74.4 L447.2 73.7 L447.9 78.4 L448.6 80.7 L449.3 79.6 L450.0 77.2 L450.7 84.1 L451.5 92.1 L452.2 89.5 L452.9 85.9 L453.6 89.8 L454.3 91.4 L455.1 89.0 L455.8 97.6 L456.5 95.7 L457.2 91.2 L457.9 89.0 L458.6 81.7 L459.4 77.7 L460.1 77.9 L460.8 83.7 L461.5 88.4 L462.2 79.2 L462.9 73.4 L463.7 68.4 L464.4 67.9 L465.1 70.3 L465.8 72.2 L466.5 75.2 L467.3 73.8 L468.0 73.9 L468.7 73.1 L469.4 74.5 L470.1 74.2 L470.8 73.9 L471.6 79.7 L472.3 77.2 L473.0 75.6 L473.7 74.9 L474.4 75.0 L475.2 75.2 L475.9 75.2 L476.6 77.4 L477.3 75.0 L478.0 74.2 L478.7 75.3 L479.5 76.0 L480.2 75.3 L480.9 76.9 L481.6 88.1 L482.3 87.7 L483.0 80.2 L483.8 95.3 L484.5 85.7 L485.2 81.2 L485.9 91.2 L486.6 106.1 L487.4 86.0 L488.1 83.1 L488.8 86.5 L489.5 87.6 L490.2 74.1 L490.9 75.3 L491.7 70.6 L492.4 71.9 L493.1 72.2 L493.8 71.0 L494.5 71.0 L495.2 71.7 L496.0 72.2 L496.7 81.6 L497.4 73.7 L498.1 73.0 L498.8 75.0 L499.6 76.5 L500.3 81.7 L501.0 81.6 L501.7 85.3 L502.4 83.8 L503.1 80.6 L503.9 81.3 L504.6 80.9 L505.3 81.2 L506.0 84.7 L506.7 95.5 L507.5 94.1 L508.2 84.2 L508.9 83.7 L509.6 84.2 L510.3 78.5 L511.0 80.2 L511.8 92.2 L512.5 82.2 L513.2 81.2 L513.9 84.4 L514.6 80.6 L515.3 83.1 L516.1 82.2 L516.8 94.5 L517.5 91.4 L518.2 89.2 L518.9 90.0 L519.7 97.7 L520.4 86.0 L521.1 85.8 L521.8 84.8 L522.5 85.8 L523.2 84.8 L524.0 81.9 L524.7 81.6 L525.4 82.2 L526.1 86.5 L526.8 95.5 L527.6 86.3 L528.3 84.0 L529.0 87.6 L529.7 85.8 L530.4 94.3 L531.1 88.5 L531.9 99.7 L532.6 109.1 L533.3 83.5 L534.0 75.8 L534.7 89.8 L535.4 87.2 L536.2 86.9 L536.9 101.9 L537.6 93.2 L538.3 91.6 L539.0 105.2 L539.8 104.3 L540.5 93.9 L541.2 93.4 L541.9 109.6 L542.6 109.2 L543.3 91.6 L544.1 93.9 L544.8 104.8 L545.5 98.6 L546.2 109.7 L546.9 109.7 L547.6 110.8 L548.4 104.3 L549.1 104.2 L549.8 111.2 L550.5 105.8 L551.2 109.2 L552.0 109.7 L552.7 95.7 L553.4 92.6 L554.1 96.2 L554.8 104.8 L555.5 97.1 L556.3 100.5 L557.0 109.3 L557.7 97.9 L558.4 94.3 L559.1 95.0 L559.9 105.2 L560.6 106.1 L561.3 109.3 L562.0 110.1 L562.7 101.9 L563.4 100.2 L564.2 94.3 L564.9 95.0 L565.6 94.5 L566.3 110.0 L567.0 109.8 L567.7 94.5 L568.5 79.7 L569.2 92.6 L569.9 95.7 L570.6 95.2 L571.3 97.1 L572.1 105.2 L572.8 94.5 L573.5 90.6 L574.2 91.6 L574.9 100.7 L575.6 93.9 L576.4 105.5 L577.1 109.2 L577.8 94.8 L578.5 94.3 L579.2 95.2 L580.0 96.9 L580.7 94.1 L581.4 96.9 L582.1 95.2 L582.8 77.5 L583.5 79.1 L584.3 82.5 L585.0 77.9 L585.7 88.3 L586.4 92.1 L587.1 95.2 L587.8 99.1 L588.6 93.7 L589.3 97.9 L590.0 93.7" fill="none" stroke="var(--caudal)" stroke-width="1.25"/>
+        <text class="svg-lbl-em" x="66" y="146">&tau; del modulador &middot; un valor por d&iacute;a</text>
+        <rect class="sv-surf" x="66" y="183.5" width="582" height="33.0" opacity=".55"/>
+        <path d="M66.0 200.0 L 66.0 178.7 L 66.7 173.5 L 67.4 174.0 L 68.2 174.5 L 68.9 171.7 L 69.6 169.0 L 70.3 169.3 L 71.0 169.2 L 71.7 166.9 L 72.5 166.7 L 73.2 166.3 L 73.9 165.8 L 74.6 166.3 L 75.3 169.7 L 76.0 169.5 L 76.8 170.5 L 77.5 172.7 L 78.2 181.1 L 78.9 187.4 L 79.6 189.1 L 80.4 188.4 L 81.1 182.0 L 81.8 193.1 L 82.5 212.1 L 83.2 209.6 L 83.9 206.8 L 84.7 200.2 L 85.4 192.7 L 86.1 186.5 L 86.8 179.6 L 87.5 177.0 L 88.3 173.7 L 89.0 176.3 L 89.7 190.7 L 90.4 187.8 L 91.1 182.3 L 91.8 177.2 L 92.6 173.3 L 93.3 170.6 L 94.0 168.4 L 94.7 167.8 L 95.4 167.9 L 96.1 167.5 L 96.9 166.6 L 97.6 167.5 L 98.3 182.7 L 99.0 190.2 L 99.7 186.7 L 100.5 190.3 L 101.2 191.6 L 101.9 186.3 L 102.6 179.8 L 103.3 173.1 L 104.0 170.1 L 104.8 170.1 L 105.5 185.6 L 106.2 196.2 L 106.9 184.8 L 107.6 178.5 L 108.4 173.1 L 109.1 169.5 L 109.8 167.0 L 110.5 165.5 L 111.2 165.4 L 111.9 166.4 L 112.7 166.3 L 113.4 166.1 L 114.1 166.0 L 114.8 165.1 L 115.5 164.6 L 116.2 171.3 L 117.0 176.7 L 117.7 173.7 L 118.4 170.2 L 119.1 167.7 L 119.8 168.5 L 120.6 205.8 L 121.3 223.0 L 122.0 221.3 L 122.7 221.3 L 123.4 223.0 L 124.1 224.4 L 124.9 221.9 L 125.6 219.8 L 126.3 218.3 L 127.0 216.2 L 127.7 216.9 L 128.4 215.9 L 129.2 210.8 L 129.9 206.7 L 130.6 204.5 L 131.3 194.1 L 132.0 185.7 L 132.8 180.4 L 133.5 202.6 L 134.2 220.6 L 134.9 224.8 L 135.6 226.9 L 136.3 226.1 L 137.1 224.3 L 137.8 222.5 L 138.5 224.1 L 139.2 217.8 L 139.9 208.4 L 140.7 200.6 L 141.4 220.5 L 142.1 216.2 L 142.8 214.8 L 143.5 209.0 L 144.2 215.2 L 145.0 221.7 L 145.7 217.6 L 146.4 210.9 L 147.1 201.7 L 147.8 192.8 L 148.5 184.9 L 149.3 196.3 L 150.0 211.9 L 150.7 203.6 L 151.4 192.5 L 152.1 187.9 L 152.9 182.6 L 153.6 177.0 L 154.3 173.8 L 155.0 172.9 L 155.7 177.8 L 156.4 175.2 L 157.2 171.6 L 157.9 170.5 L 158.6 170.9 L 159.3 183.0 L 160.0 198.8 L 160.8 198.2 L 161.5 198.2 L 162.2 189.0 L 162.9 175.4 L 163.6 170.8 L 164.3 167.8 L 165.1 166.3 L 165.8 165.2 L 166.5 165.0 L 167.2 166.2 L 167.9 165.2 L 168.6 165.1 L 169.4 164.5 L 170.1 163.9 L 170.8 163.7 L 171.5 164.9 L 172.2 164.3 L 173.0 178.8 L 173.7 210.3 L 174.4 221.7 L 175.1 223.5 L 175.8 223.4 L 176.5 223.3 L 177.3 224.0 L 178.0 224.5 L 178.7 224.7 L 179.4 224.7 L 180.1 225.1 L 180.8 226.3 L 181.6 229.0 L 182.3 229.3 L 183.0 229.3 L 183.7 229.5 L 184.4 228.7 L 185.2 227.8 L 185.9 224.5 L 186.6 218.2 L 187.3 211.9 L 188.0 206.2 L 188.7 198.3 L 189.5 196.7 L 190.2 190.0 L 190.9 185.4 L 191.6 182.4 L 192.3 207.7 L 193.1 195.2 L 193.8 200.1 L 194.5 192.8 L 195.2 195.4 L 195.9 209.4 L 196.6 231.8 L 197.4 236.3 L 198.1 235.7 L 198.8 236.1 L 199.5 235.8 L 200.2 235.4 L 200.9 235.0 L 201.7 234.3 L 202.4 233.4 L 203.1 231.9 L 203.8 229.7 L 204.5 226.1 L 205.3 234.8 L 206.0 236.3 L 206.7 235.9 L 207.4 235.8 L 208.1 235.8 L 208.8 236.0 L 209.6 235.8 L 210.3 235.7 L 211.0 235.5 L 211.7 235.2 L 212.4 234.8 L 213.2 234.3 L 213.9 234.5 L 214.6 235.3 L 215.3 234.8 L 216.0 234.4 L 216.7 235.9 L 217.5 235.5 L 218.2 235.5 L 218.9 237.1 L 219.6 237.3 L 220.3 237.3 L 221.0 237.3 L 221.8 237.2 L 222.5 237.2 L 223.2 237.1 L 223.9 237.1 L 224.6 237.0 L 225.4 237.0 L 226.1 236.9 L 226.8 236.9 L 227.5 237.0 L 228.2 236.9 L 228.9 236.7 L 229.7 236.1 L 230.4 236.5 L 231.1 236.9 L 231.8 237.0 L 232.5 236.9 L 233.2 236.9 L 234.0 236.9 L 234.7 236.7 L 235.4 236.4 L 236.1 236.1 L 236.8 235.6 L 237.6 234.9 L 238.3 233.6 L 239.0 231.7 L 239.7 236.3 L 240.4 237.1 L 241.1 237.0 L 241.9 236.9 L 242.6 236.6 L 243.3 235.7 L 244.0 236.1 L 244.7 236.2 L 245.5 235.7 L 246.2 235.1 L 246.9 234.2 L 247.6 232.8 L 248.3 233.2 L 249.0 232.6 L 249.8 230.3 L 250.5 226.7 L 251.2 221.7 L 251.9 216.4 L 252.6 214.3 L 253.3 231.1 L 254.1 236.6 L 254.8 236.1 L 255.5 234.9 L 256.2 234.4 L 256.9 233.4 L 257.7 231.8 L 258.4 229.2 L 259.1 225.3 L 259.8 220.1 L 260.5 213.0 L 261.2 202.9 L 262.0 195.7 L 262.7 199.3 L 263.4 212.7 L 264.1 203.3 L 264.8 214.1 L 265.6 231.4 L 266.3 226.6 L 267.0 222.3 L 267.7 217.4 L 268.4 210.7 L 269.1 202.4 L 269.9 193.0 L 270.6 186.7 L 271.3 187.3 L 272.0 184.1 L 272.7 181.7 L 273.4 181.8 L 274.2 185.8 L 274.9 182.0 L 275.6 182.7 L 276.3 207.0 L 277.0 192.4 L 277.8 183.5 L 278.5 176.7 L 279.2 172.3 L 279.9 169.5 L 280.6 170.2 L 281.3 172.8 L 282.1 168.4 L 282.8 166.6 L 283.5 170.6 L 284.2 167.8 L 284.9 166.4 L 285.6 166.2 L 286.4 166.0 L 287.1 183.3 L 287.8 180.1 L 288.5 182.2 L 289.2 179.2 L 290.0 187.0 L 290.7 201.8 L 291.4 199.1 L 292.1 186.9 L 292.8 182.7 L 293.5 206.1 L 294.3 210.8 L 295.0 205.9 L 295.7 202.4 L 296.4 199.3 L 297.1 192.3 L 297.9 183.6 L 298.6 178.8 L 299.3 174.5 L 300.0 174.0 L 300.7 169.5 L 301.4 166.9 L 302.2 174.6 L 302.9 212.7 L 303.6 214.6 L 304.3 209.7 L 305.0 204.4 L 305.7 201.5 L 306.5 191.4 L 307.2 184.2 L 307.9 196.0 L 308.6 206.0 L 309.3 209.4 L 310.1 202.6 L 310.8 202.1 L 311.5 211.1 L 312.2 205.8 L 312.9 202.1 L 313.6 196.9 L 314.4 188.6 L 315.1 184.2 L 315.8 200.8 L 316.5 226.0 L 317.2 228.7 L 318.0 229.2 L 318.7 228.9 L 319.4 230.9 L 320.1 232.3 L 320.8 231.6 L 321.5 230.8 L 322.3 230.5 L 323.0 229.4 L 323.7 227.3 L 324.4 226.9 L 325.1 225.9 L 325.8 223.4 L 326.6 220.2 L 327.3 220.1 L 328.0 222.0 L 328.7 219.3 L 329.4 211.1 L 330.2 210.7 L 330.9 212.5 L 331.6 206.9 L 332.3 203.1 L 333.0 195.7 L 333.7 192.4 L 334.5 208.1 L 335.2 227.8 L 335.9 221.6 L 336.6 216.5 L 337.3 211.0 L 338.0 207.1 L 338.8 230.4 L 339.5 231.5 L 340.2 229.5 L 340.9 226.3 L 341.6 221.0 L 342.4 216.8 L 343.1 215.7 L 343.8 214.8 L 344.5 207.7 L 345.2 198.1 L 345.9 188.1 L 346.7 181.2 L 347.4 177.6 L 348.1 192.8 L 348.8 221.6 L 349.5 217.0 L 350.3 210.9 L 351.0 213.7 L 351.7 225.0 L 352.4 222.0 L 353.1 218.0 L 353.8 217.3 L 354.6 215.0 L 355.3 215.7 L 356.0 227.4 L 356.7 231.7 L 357.4 227.7 L 358.1 219.9 L 358.9 214.0 L 359.6 206.3 L 360.3 202.8 L 361.0 206.6 L 361.7 205.5 L 362.5 204.8 L 363.2 198.3 L 363.9 188.8 L 364.6 181.8 L 365.3 177.0 L 366.0 173.9 L 366.8 172.0 L 367.5 198.3 L 368.2 232.4 L 368.9 230.6 L 369.6 230.3 L 370.4 232.4 L 371.1 234.0 L 371.8 234.3 L 372.5 234.5 L 373.2 234.3 L 373.9 234.4 L 374.7 234.2 L 375.4 234.3 L 376.1 234.6 L 376.8 234.3 L 377.5 234.0 L 378.2 233.9 L 379.0 233.5 L 379.7 232.5 L 380.4 231.2 L 381.1 228.8 L 381.8 225.9 L 382.6 223.1 L 383.3 233.4 L 384.0 235.8 L 384.7 235.5 L 385.4 235.4 L 386.1 235.1 L 386.9 233.8 L 387.6 232.1 L 388.3 231.0 L 389.0 229.0 L 389.7 231.0 L 390.4 229.7 L 391.2 230.8 L 391.9 231.8 L 392.6 227.6 L 393.3 223.8 L 394.0 224.6 L 394.8 223.8 L 395.5 217.1 L 396.2 208.8 L 396.9 228.7 L 397.6 235.4 L 398.3 234.3 L 399.1 233.2 L 399.8 231.7 L 400.5 229.1 L 401.2 225.7 L 401.9 229.9 L 402.7 237.0 L 403.4 236.6 L 404.1 236.6 L 404.8 236.6 L 405.5 236.8 L 406.2 237.0 L 407.0 237.0 L 407.7 236.8 L 408.4 236.7 L 409.1 236.6 L 409.8 236.5 L 410.5 236.3 L 411.3 236.0 L 412.0 235.7 L 412.7 235.0 L 413.4 233.4 L 414.1 231.9 L 414.9 232.3 L 415.6 231.9 L 416.3 229.6 L 417.0 226.4 L 417.7 233.3 L 418.4 235.1 L 419.2 234.9 L 419.9 229.5 L 420.6 224.6 L 421.3 218.6 L 422.0 210.5 L 422.8 211.5 L 423.5 228.7 L 424.2 227.6 L 424.9 224.6 L 425.6 218.9 L 426.3 210.7 L 427.1 201.9 L 427.8 193.8 L 428.5 187.0 L 429.2 182.5 L 429.9 234.1 L 430.6 233.9 L 431.4 233.5 L 432.1 232.7 L 432.8 229.7 L 433.5 218.3 L 434.2 203.3 L 435.0 193.3 L 435.7 184.3 L 436.4 178.7 L 437.1 175.6 L 437.8 172.7 L 438.5 170.8 L 439.3 170.0 L 440.0 172.0 L 440.7 170.0 L 441.4 167.7 L 442.1 167.1 L 442.8 167.0 L 443.6 171.2 L 444.3 205.5 L 445.0 204.1 L 445.7 216.6 L 446.4 222.7 L 447.2 220.9 L 447.9 214.8 L 448.6 208.7 L 449.3 203.2 L 450.0 196.8 L 450.7 189.4 L 451.5 180.9 L 452.2 181.4 L 452.9 174.4 L 453.6 169.3 L 454.3 172.9 L 455.1 174.4 L 455.8 170.7 L 456.5 167.5 L 457.2 166.4 L 457.9 169.7 L 458.6 173.5 L 459.4 168.5 L 460.1 165.8 L 460.8 164.6 L 461.5 164.6 L 462.2 165.1 L 462.9 168.0 L 463.7 193.2 L 464.4 187.4 L 465.1 184.3 L 465.8 192.5 L 466.5 206.1 L 467.3 207.2 L 468.0 207.2 L 468.7 197.1 L 469.4 213.3 L 470.1 229.6 L 470.8 227.0 L 471.6 225.3 L 472.3 223.2 L 473.0 220.8 L 473.7 217.1 L 474.4 211.9 L 475.2 205.5 L 475.9 207.8 L 476.6 204.9 L 477.3 203.1 L 478.0 226.4 L 478.7 231.4 L 479.5 229.0 L 480.2 227.9 L 480.9 224.2 L 481.6 220.0 L 482.3 213.9 L 483.0 203.8 L 483.8 194.9 L 484.5 189.1 L 485.2 187.6 L 485.9 188.2 L 486.6 181.5 L 487.4 178.2 L 488.1 176.4 L 488.8 178.4 L 489.5 178.4 L 490.2 183.8 L 490.9 212.0 L 491.7 200.1 L 492.4 198.9 L 493.1 215.9 L 493.8 227.9 L 494.5 225.3 L 495.2 222.5 L 496.0 218.1 L 496.7 229.9 L 497.4 229.3 L 498.1 226.3 L 498.8 224.2 L 499.6 222.3 L 500.3 221.6 L 501.0 231.8 L 501.7 229.8 L 502.4 228.3 L 503.1 226.5 L 503.9 223.3 L 504.6 218.6 L 505.3 212.3 L 506.0 204.8 L 506.7 199.2 L 507.5 223.8 L 508.2 232.7 L 508.9 231.4 L 509.6 231.2 L 510.3 230.8 L 511.0 232.3 L 511.8 233.0 L 512.5 233.2 L 513.2 234.8 L 513.9 235.0 L 514.6 236.1 L 515.3 236.2 L 516.1 236.2 L 516.8 235.7 L 517.5 235.2 L 518.2 234.4 L 518.9 233.5 L 519.7 231.5 L 520.4 228.1 L 521.1 223.5 L 521.8 227.9 L 522.5 236.5 L 523.2 236.1 L 524.0 236.3 L 524.7 236.4 L 525.4 236.1 L 526.1 236.1 L 526.8 236.5 L 527.6 236.2 L 528.3 235.8 L 529.0 235.7 L 529.7 236.8 L 530.4 237.3 L 531.1 237.3 L 531.9 237.2 L 532.6 237.2 L 533.3 237.1 L 534.0 237.0 L 534.7 237.0 L 535.4 236.8 L 536.2 236.6 L 536.9 236.3 L 537.6 236.0 L 538.3 235.6 L 539.0 234.9 L 539.8 233.9 L 540.5 232.4 L 541.2 233.8 L 541.9 234.5 L 542.6 235.1 L 543.3 235.8 L 544.1 235.0 L 544.8 235.3 L 545.5 235.1 L 546.2 235.9 L 546.9 236.0 L 547.6 235.3 L 548.4 234.9 L 549.1 234.6 L 549.8 233.2 L 550.5 231.0 L 551.2 227.7 L 552.0 223.4 L 552.7 228.4 L 553.4 230.4 L 554.1 233.9 L 554.8 235.1 L 555.5 235.3 L 556.3 234.1 L 557.0 232.3 L 557.7 232.8 L 558.4 232.2 L 559.1 229.1 L 559.9 221.7 L 560.6 217.4 L 561.3 210.3 L 562.0 200.2 L 562.7 191.5 L 563.4 185.6 L 564.2 181.7 L 564.9 179.9 L 565.6 180.0 L 566.3 177.4 L 567.0 188.0 L 567.7 183.2 L 568.5 177.2 L 569.2 179.6 L 569.9 224.9 L 570.6 213.4 L 571.3 219.5 L 572.1 217.1 L 572.8 208.0 L 573.5 200.3 L 574.2 192.1 L 574.9 186.0 L 575.6 180.3 L 576.4 180.8 L 577.1 179.4 L 577.8 175.5 L 578.5 171.9 L 579.2 169.5 L 580.0 168.1 L 580.7 166.9 L 581.4 166.7 L 582.1 174.9 L 582.8 216.3 L 583.5 205.0 L 584.3 194.3 L 585.0 186.3 L 585.7 180.7 L 586.4 174.2 L 587.1 171.8 L 587.8 172.9 L 588.6 174.5 L 589.3 176.2 L 590.0 195.8 L 590.0 200.0 Z" clip-path="url(#cpA)" fill="var(--caudal)" opacity=".16"/>
+        <line class="st-humedo" x1="66" y1="183.5" x2="590" y2="183.5" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
+        <line class="st-seco" x1="66" y1="216.5" x2="590" y2="216.5" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
+        <line class="svg-axis" x1="66" y1="200.0" x2="590" y2="200.0"/>
+        <path d="M66.0 178.7 L66.7 173.5 L67.4 174.0 L68.2 174.5 L68.9 171.7 L69.6 169.0 L70.3 169.3 L71.0 169.2 L71.7 166.9 L72.5 166.7 L73.2 166.3 L73.9 165.8 L74.6 166.3 L75.3 169.7 L76.0 169.5 L76.8 170.5 L77.5 172.7 L78.2 181.1 L78.9 187.4 L79.6 189.1 L80.4 188.4 L81.1 182.0 L81.8 193.1 L82.5 212.1 L83.2 209.6 L83.9 206.8 L84.7 200.2 L85.4 192.7 L86.1 186.5 L86.8 179.6 L87.5 177.0 L88.3 173.7 L89.0 176.3 L89.7 190.7 L90.4 187.8 L91.1 182.3 L91.8 177.2 L92.6 173.3 L93.3 170.6 L94.0 168.4 L94.7 167.8 L95.4 167.9 L96.1 167.5 L96.9 166.6 L97.6 167.5 L98.3 182.7 L99.0 190.2 L99.7 186.7 L100.5 190.3 L101.2 191.6 L101.9 186.3 L102.6 179.8 L103.3 173.1 L104.0 170.1 L104.8 170.1 L105.5 185.6 L106.2 196.2 L106.9 184.8 L107.6 178.5 L108.4 173.1 L109.1 169.5 L109.8 167.0 L110.5 165.5 L111.2 165.4 L111.9 166.4 L112.7 166.3 L113.4 166.1 L114.1 166.0 L114.8 165.1 L115.5 164.6 L116.2 171.3 L117.0 176.7 L117.7 173.7 L118.4 170.2 L119.1 167.7 L119.8 168.5 L120.6 205.8 L121.3 223.0 L122.0 221.3 L122.7 221.3 L123.4 223.0 L124.1 224.4 L124.9 221.9 L125.6 219.8 L126.3 218.3 L127.0 216.2 L127.7 216.9 L128.4 215.9 L129.2 210.8 L129.9 206.7 L130.6 204.5 L131.3 194.1 L132.0 185.7 L132.8 180.4 L133.5 202.6 L134.2 220.6 L134.9 224.8 L135.6 226.9 L136.3 226.1 L137.1 224.3 L137.8 222.5 L138.5 224.1 L139.2 217.8 L139.9 208.4 L140.7 200.6 L141.4 220.5 L142.1 216.2 L142.8 214.8 L143.5 209.0 L144.2 215.2 L145.0 221.7 L145.7 217.6 L146.4 210.9 L147.1 201.7 L147.8 192.8 L148.5 184.9 L149.3 196.3 L150.0 211.9 L150.7 203.6 L151.4 192.5 L152.1 187.9 L152.9 182.6 L153.6 177.0 L154.3 173.8 L155.0 172.9 L155.7 177.8 L156.4 175.2 L157.2 171.6 L157.9 170.5 L158.6 170.9 L159.3 183.0 L160.0 198.8 L160.8 198.2 L161.5 198.2 L162.2 189.0 L162.9 175.4 L163.6 170.8 L164.3 167.8 L165.1 166.3 L165.8 165.2 L166.5 165.0 L167.2 166.2 L167.9 165.2 L168.6 165.1 L169.4 164.5 L170.1 163.9 L170.8 163.7 L171.5 164.9 L172.2 164.3 L173.0 178.8 L173.7 210.3 L174.4 221.7 L175.1 223.5 L175.8 223.4 L176.5 223.3 L177.3 224.0 L178.0 224.5 L178.7 224.7 L179.4 224.7 L180.1 225.1 L180.8 226.3 L181.6 229.0 L182.3 229.3 L183.0 229.3 L183.7 229.5 L184.4 228.7 L185.2 227.8 L185.9 224.5 L186.6 218.2 L187.3 211.9 L188.0 206.2 L188.7 198.3 L189.5 196.7 L190.2 190.0 L190.9 185.4 L191.6 182.4 L192.3 207.7 L193.1 195.2 L193.8 200.1 L194.5 192.8 L195.2 195.4 L195.9 209.4 L196.6 231.8 L197.4 236.3 L198.1 235.7 L198.8 236.1 L199.5 235.8 L200.2 235.4 L200.9 235.0 L201.7 234.3 L202.4 233.4 L203.1 231.9 L203.8 229.7 L204.5 226.1 L205.3 234.8 L206.0 236.3 L206.7 235.9 L207.4 235.8 L208.1 235.8 L208.8 236.0 L209.6 235.8 L210.3 235.7 L211.0 235.5 L211.7 235.2 L212.4 234.8 L213.2 234.3 L213.9 234.5 L214.6 235.3 L215.3 234.8 L216.0 234.4 L216.7 235.9 L217.5 235.5 L218.2 235.5 L218.9 237.1 L219.6 237.3 L220.3 237.3 L221.0 237.3 L221.8 237.2 L222.5 237.2 L223.2 237.1 L223.9 237.1 L224.6 237.0 L225.4 237.0 L226.1 236.9 L226.8 236.9 L227.5 237.0 L228.2 236.9 L228.9 236.7 L229.7 236.1 L230.4 236.5 L231.1 236.9 L231.8 237.0 L232.5 236.9 L233.2 236.9 L234.0 236.9 L234.7 236.7 L235.4 236.4 L236.1 236.1 L236.8 235.6 L237.6 234.9 L238.3 233.6 L239.0 231.7 L239.7 236.3 L240.4 237.1 L241.1 237.0 L241.9 236.9 L242.6 236.6 L243.3 235.7 L244.0 236.1 L244.7 236.2 L245.5 235.7 L246.2 235.1 L246.9 234.2 L247.6 232.8 L248.3 233.2 L249.0 232.6 L249.8 230.3 L250.5 226.7 L251.2 221.7 L251.9 216.4 L252.6 214.3 L253.3 231.1 L254.1 236.6 L254.8 236.1 L255.5 234.9 L256.2 234.4 L256.9 233.4 L257.7 231.8 L258.4 229.2 L259.1 225.3 L259.8 220.1 L260.5 213.0 L261.2 202.9 L262.0 195.7 L262.7 199.3 L263.4 212.7 L264.1 203.3 L264.8 214.1 L265.6 231.4 L266.3 226.6 L267.0 222.3 L267.7 217.4 L268.4 210.7 L269.1 202.4 L269.9 193.0 L270.6 186.7 L271.3 187.3 L272.0 184.1 L272.7 181.7 L273.4 181.8 L274.2 185.8 L274.9 182.0 L275.6 182.7 L276.3 207.0 L277.0 192.4 L277.8 183.5 L278.5 176.7 L279.2 172.3 L279.9 169.5 L280.6 170.2 L281.3 172.8 L282.1 168.4 L282.8 166.6 L283.5 170.6 L284.2 167.8 L284.9 166.4 L285.6 166.2 L286.4 166.0 L287.1 183.3 L287.8 180.1 L288.5 182.2 L289.2 179.2 L290.0 187.0 L290.7 201.8 L291.4 199.1 L292.1 186.9 L292.8 182.7 L293.5 206.1 L294.3 210.8 L295.0 205.9 L295.7 202.4 L296.4 199.3 L297.1 192.3 L297.9 183.6 L298.6 178.8 L299.3 174.5 L300.0 174.0 L300.7 169.5 L301.4 166.9 L302.2 174.6 L302.9 212.7 L303.6 214.6 L304.3 209.7 L305.0 204.4 L305.7 201.5 L306.5 191.4 L307.2 184.2 L307.9 196.0 L308.6 206.0 L309.3 209.4 L310.1 202.6 L310.8 202.1 L311.5 211.1 L312.2 205.8 L312.9 202.1 L313.6 196.9 L314.4 188.6 L315.1 184.2 L315.8 200.8 L316.5 226.0 L317.2 228.7 L318.0 229.2 L318.7 228.9 L319.4 230.9 L320.1 232.3 L320.8 231.6 L321.5 230.8 L322.3 230.5 L323.0 229.4 L323.7 227.3 L324.4 226.9 L325.1 225.9 L325.8 223.4 L326.6 220.2 L327.3 220.1 L328.0 222.0 L328.7 219.3 L329.4 211.1 L330.2 210.7 L330.9 212.5 L331.6 206.9 L332.3 203.1 L333.0 195.7 L333.7 192.4 L334.5 208.1 L335.2 227.8 L335.9 221.6 L336.6 216.5 L337.3 211.0 L338.0 207.1 L338.8 230.4 L339.5 231.5 L340.2 229.5 L340.9 226.3 L341.6 221.0 L342.4 216.8 L343.1 215.7 L343.8 214.8 L344.5 207.7 L345.2 198.1 L345.9 188.1 L346.7 181.2 L347.4 177.6 L348.1 192.8 L348.8 221.6 L349.5 217.0 L350.3 210.9 L351.0 213.7 L351.7 225.0 L352.4 222.0 L353.1 218.0 L353.8 217.3 L354.6 215.0 L355.3 215.7 L356.0 227.4 L356.7 231.7 L357.4 227.7 L358.1 219.9 L358.9 214.0 L359.6 206.3 L360.3 202.8 L361.0 206.6 L361.7 205.5 L362.5 204.8 L363.2 198.3 L363.9 188.8 L364.6 181.8 L365.3 177.0 L366.0 173.9 L366.8 172.0 L367.5 198.3 L368.2 232.4 L368.9 230.6 L369.6 230.3 L370.4 232.4 L371.1 234.0 L371.8 234.3 L372.5 234.5 L373.2 234.3 L373.9 234.4 L374.7 234.2 L375.4 234.3 L376.1 234.6 L376.8 234.3 L377.5 234.0 L378.2 233.9 L379.0 233.5 L379.7 232.5 L380.4 231.2 L381.1 228.8 L381.8 225.9 L382.6 223.1 L383.3 233.4 L384.0 235.8 L384.7 235.5 L385.4 235.4 L386.1 235.1 L386.9 233.8 L387.6 232.1 L388.3 231.0 L389.0 229.0 L389.7 231.0 L390.4 229.7 L391.2 230.8 L391.9 231.8 L392.6 227.6 L393.3 223.8 L394.0 224.6 L394.8 223.8 L395.5 217.1 L396.2 208.8 L396.9 228.7 L397.6 235.4 L398.3 234.3 L399.1 233.2 L399.8 231.7 L400.5 229.1 L401.2 225.7 L401.9 229.9 L402.7 237.0 L403.4 236.6 L404.1 236.6 L404.8 236.6 L405.5 236.8 L406.2 237.0 L407.0 237.0 L407.7 236.8 L408.4 236.7 L409.1 236.6 L409.8 236.5 L410.5 236.3 L411.3 236.0 L412.0 235.7 L412.7 235.0 L413.4 233.4 L414.1 231.9 L414.9 232.3 L415.6 231.9 L416.3 229.6 L417.0 226.4 L417.7 233.3 L418.4 235.1 L419.2 234.9 L419.9 229.5 L420.6 224.6 L421.3 218.6 L422.0 210.5 L422.8 211.5 L423.5 228.7 L424.2 227.6 L424.9 224.6 L425.6 218.9 L426.3 210.7 L427.1 201.9 L427.8 193.8 L428.5 187.0 L429.2 182.5 L429.9 234.1 L430.6 233.9 L431.4 233.5 L432.1 232.7 L432.8 229.7 L433.5 218.3 L434.2 203.3 L435.0 193.3 L435.7 184.3 L436.4 178.7 L437.1 175.6 L437.8 172.7 L438.5 170.8 L439.3 170.0 L440.0 172.0 L440.7 170.0 L441.4 167.7 L442.1 167.1 L442.8 167.0 L443.6 171.2 L444.3 205.5 L445.0 204.1 L445.7 216.6 L446.4 222.7 L447.2 220.9 L447.9 214.8 L448.6 208.7 L449.3 203.2 L450.0 196.8 L450.7 189.4 L451.5 180.9 L452.2 181.4 L452.9 174.4 L453.6 169.3 L454.3 172.9 L455.1 174.4 L455.8 170.7 L456.5 167.5 L457.2 166.4 L457.9 169.7 L458.6 173.5 L459.4 168.5 L460.1 165.8 L460.8 164.6 L461.5 164.6 L462.2 165.1 L462.9 168.0 L463.7 193.2 L464.4 187.4 L465.1 184.3 L465.8 192.5 L466.5 206.1 L467.3 207.2 L468.0 207.2 L468.7 197.1 L469.4 213.3 L470.1 229.6 L470.8 227.0 L471.6 225.3 L472.3 223.2 L473.0 220.8 L473.7 217.1 L474.4 211.9 L475.2 205.5 L475.9 207.8 L476.6 204.9 L477.3 203.1 L478.0 226.4 L478.7 231.4 L479.5 229.0 L480.2 227.9 L480.9 224.2 L481.6 220.0 L482.3 213.9 L483.0 203.8 L483.8 194.9 L484.5 189.1 L485.2 187.6 L485.9 188.2 L486.6 181.5 L487.4 178.2 L488.1 176.4 L488.8 178.4 L489.5 178.4 L490.2 183.8 L490.9 212.0 L491.7 200.1 L492.4 198.9 L493.1 215.9 L493.8 227.9 L494.5 225.3 L495.2 222.5 L496.0 218.1 L496.7 229.9 L497.4 229.3 L498.1 226.3 L498.8 224.2 L499.6 222.3 L500.3 221.6 L501.0 231.8 L501.7 229.8 L502.4 228.3 L503.1 226.5 L503.9 223.3 L504.6 218.6 L505.3 212.3 L506.0 204.8 L506.7 199.2 L507.5 223.8 L508.2 232.7 L508.9 231.4 L509.6 231.2 L510.3 230.8 L511.0 232.3 L511.8 233.0 L512.5 233.2 L513.2 234.8 L513.9 235.0 L514.6 236.1 L515.3 236.2 L516.1 236.2 L516.8 235.7 L517.5 235.2 L518.2 234.4 L518.9 233.5 L519.7 231.5 L520.4 228.1 L521.1 223.5 L521.8 227.9 L522.5 236.5 L523.2 236.1 L524.0 236.3 L524.7 236.4 L525.4 236.1 L526.1 236.1 L526.8 236.5 L527.6 236.2 L528.3 235.8 L529.0 235.7 L529.7 236.8 L530.4 237.3 L531.1 237.3 L531.9 237.2 L532.6 237.2 L533.3 237.1 L534.0 237.0 L534.7 237.0 L535.4 236.8 L536.2 236.6 L536.9 236.3 L537.6 236.0 L538.3 235.6 L539.0 234.9 L539.8 233.9 L540.5 232.4 L541.2 233.8 L541.9 234.5 L542.6 235.1 L543.3 235.8 L544.1 235.0 L544.8 235.3 L545.5 235.1 L546.2 235.9 L546.9 236.0 L547.6 235.3 L548.4 234.9 L549.1 234.6 L549.8 233.2 L550.5 231.0 L551.2 227.7 L552.0 223.4 L552.7 228.4 L553.4 230.4 L554.1 233.9 L554.8 235.1 L555.5 235.3 L556.3 234.1 L557.0 232.3 L557.7 232.8 L558.4 232.2 L559.1 229.1 L559.9 221.7 L560.6 217.4 L561.3 210.3 L562.0 200.2 L562.7 191.5 L563.4 185.6 L564.2 181.7 L564.9 179.9 L565.6 180.0 L566.3 177.4 L567.0 188.0 L567.7 183.2 L568.5 177.2 L569.2 179.6 L569.9 224.9 L570.6 213.4 L571.3 219.5 L572.1 217.1 L572.8 208.0 L573.5 200.3 L574.2 192.1 L574.9 186.0 L575.6 180.3 L576.4 180.8 L577.1 179.4 L577.8 175.5 L578.5 171.9 L579.2 169.5 L580.0 168.1 L580.7 166.9 L581.4 166.7 L582.1 174.9 L582.8 216.3 L583.5 205.0 L584.3 194.3 L585.0 186.3 L585.7 180.7 L586.4 174.2 L587.1 171.8 L587.8 172.9 L588.6 174.5 L589.3 176.2 L590.0 195.8" fill="none" stroke="var(--caudal)" stroke-width="1.35"/>
+        <text class="svg-lbl" x="60" y="165.0" text-anchor="end">0,85</text>
+        <text class="svg-lbl" x="60" y="187.0" text-anchor="end">0,65</text>
+        <text class="svg-lbl" x="60" y="203.5" text-anchor="end">0,50</text>
+        <text class="svg-lbl" x="60" y="220.0" text-anchor="end">0,35</text>
+        <text class="svg-lbl" x="60" y="242.0" text-anchor="end">0,15</text>
+        <text class="svg-lbl tx-humedo" x="598" y="169.2">castiga</text>
+        <text class="svg-lbl tx-humedo" x="598" y="181.2">subestimar</text>
+        <text class="svg-lbl tx-seco" x="598" y="228.6">castiga</text>
+        <text class="svg-lbl tx-seco" x="598" y="240.6">sobrestimar</text>
+        <line class="svg-axis" x1="66" y1="252" x2="590" y2="252"/>
+        <line class="svg-axis" x1="66.0" y1="252" x2="66.0" y2="257"/>
+        <text class="svg-lbl" x="66.0" y="269" text-anchor="middle">2019</text>
+        <line class="svg-axis" x1="195.9" y1="252" x2="195.9" y2="257"/>
+        <text class="svg-lbl" x="195.9" y="269" text-anchor="middle">jul</text>
+        <line class="svg-axis" x1="328.0" y1="252" x2="328.0" y2="257"/>
+        <text class="svg-lbl" x="328.0" y="269" text-anchor="middle">2020</text>
+        <line class="svg-axis" x1="458.6" y1="252" x2="458.6" y2="257"/>
+        <text class="svg-lbl" x="458.6" y="269" text-anchor="middle">jul</text>
+        <line class="st-humedo" x1="170.8" y1="150" x2="170.8" y2="246" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <line class="st-humedo" x1="170.8" y1="30" x2="170.8" y2="124" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <line class="svg-axis" x1="173.7" y1="30" x2="173.7" y2="124" stroke-dasharray="4 3"/>
+        <text class="svg-lbl tx-humedo" x="166.8" y="288" text-anchor="end">&tau; = 0,83  (27 may)</text>
+        <text class="svg-lbl" x="179.7" y="288">pico de caudal 4 d despu&eacute;s &mdash; y ah&iacute; &tau; ya baj&oacute; a 0,30</text>
       </svg>
       <figcaption>
-        El mismo eje &mdash; seco a la izquierda, húmedo a la derecha &mdash; con los dos portones sobre los
-        9.732 días de la serie. La diferencia no es de precisión sino de cobertura: B define &tau; para
-        el 100 % de los días y no tiene fronteras donde la métrica salte.
+        Dos a&ntilde;os de la serie, con los dos paneles sobre el mismo eje temporal. La lectura
+        importante est&aacute; en la crecida de mayo de 2019: <b>&tau; llega a 0,83 el 27 de mayo, cuatro
+        d&iacute;as antes del pico de caudal</b>, y para el 1&#186; de junio &mdash;con el r&iacute;o en su
+        m&aacute;ximo de 10.530 m&sup3;/s&mdash; ya cay&oacute; a 0,30. El modulador sube cuando el
+        riesgo es <i>quedarse corto</i> y baja en la rama de bajada, cuando el riesgo pasa a ser el
+        contrario. Tambi&eacute;n se ve el estiaje de 2020, con &tau; pegado abajo durante meses.
       </figcaption>
     </figure>
 
-    <h3>Corrección 2 &mdash; el caudal actual apunta al lado equivocado</h3>
+    <h3>Mira el pron&oacute;stico de lluvia, no el r&iacute;o de hoy</h3>
     <p>
-      La regla propuesta combina dos señales: cuánto llovió antes y cuánto se pronostica. Vale la pena
-      separarlas y ver cuál captura realmente el riesgo de subestimar. Probando distintos portones
-      contra los días donde la persistencia a 7 días efectivamente subestima:
+      Es la decisi&oacute;n de dise&ntilde;o menos evidente del modulador y la que m&aacute;s cambia el
+      resultado. La intuici&oacute;n dice &laquo;si el r&iacute;o est&aacute; alto, estamos en crecida&raquo;,
+      y es al rev&eacute;s: cuando <code>Q</code> ya super&oacute; el p90, lo m&aacute;s probable en los
+      d&iacute;as siguientes es que <b>baje</b>. Ese modulador selecciona la rama de <i>recesi&oacute;n</i>
+      de la onda, no la de ascenso.
     </p>
     <div class="tbl"><table>
-      <thead><tr><th>Portón candidato para &laquo;inundación&raquo;</th><th class="num">% de días</th>
-        <th class="num">P(subestima)</th><th class="num">sesgo medio</th>
-        <th class="num">captura del error de subestimación</th></tr></thead>
+      <thead><tr><th>Se&ntilde;al que abre el modulador</th><th class="num">% de d&iacute;as</th>
+        <th class="num">P(el pron&oacute;stico subestima)</th><th class="num">sesgo medio m&sup3;/s</th>
+        <th class="num">captura del error de subestimaci&oacute;n</th></tr></thead>
       <tbody>
-        <tr><td>Q &gt; p90 &mdash; el río ya está alto</td><td class="num">10,0 %</td>
+        <tr><td>Q &gt; p90 &mdash; el r&iacute;o ya est&aacute; alto</td><td class="num">10,0 %</td>
             <td class="num bad">17,8 %</td><td class="num">&minus;2.268,5</td><td class="num">20,2 %</td></tr>
         <tr><td>acum. 30 d &gt; p75 <b>y</b> Q &gt; p90</td><td class="num">8,4 %</td>
             <td class="num bad">18,8 %</td><td class="num">&minus;2.361,5</td><td class="num">19,2 %</td></tr>
@@ -506,57 +341,400 @@ figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
             <td class="num good">66,8 %</td><td class="num">+929,1</td><td class="num good">93,0 %</td></tr>
         <tr class="hl"><td>lluvia pronosticada 5 d &gt; p90</td><td class="num">10,0 %</td>
             <td class="num good">83,9 %</td><td class="num">+1.983,2</td><td class="num good">68,2 %</td></tr>
-        <tr><td>pronóstico 5 d &gt; p90 <b>y</b> acum. 30 d &gt; p50</td><td class="num">6,2 %</td>
-            <td class="num">78,7 %</td><td class="num">+2.013,9</td><td class="num">50,7 %</td></tr>
-        <tr><td>pronóstico 5 d &gt; p90 <b>y</b> Q &gt; p75</td><td class="num">3,7 %</td>
+        <tr><td>pron&oacute;stico 5 d &gt; p90 <b>y</b> Q &gt; p75</td><td class="num">3,7 %</td>
             <td class="num">68,1 %</td><td class="num">+1.691,8</td><td class="num">33,4 %</td></tr>
       </tbody>
     </table></div>
-
-    <div class="callout crit">
-      <h4>Condicionar en &laquo;el río está alto&raquo; invierte la señal que se quiere capturar</h4>
-      <p>
-        Cuando Q ya superó el p90, lo más probable en los 7 días siguientes es que <b>baje</b>: el portón
-        está seleccionando la rama de recesión de la onda, no la de ascenso. Por eso ahí la persistencia
-        <b>sobrestima</b> el 82 % de las veces (sesgo &minus;2.268 m³/s) y sólo captura el 20 % del error de
-        subestimación. Poner &tau; = 0,8 sobre esos días premiaría precisamente al modelo que exagera la
-        crecida ya instalada. El pronóstico de lluvia es lo que anticipa el ascenso &mdash; con el mismo
-        10 % de días, sube P(subestima) de 17,8 % a 83,9 % y la captura del riesgo de 20 % a 68 %.
-      </p>
-    </div>
-
-    <h3>El portón continuo que sale de eso</h3>
-    <div class="formula">
-      <span class="eq">A(t)  =  rank&thinsp;%<sub>serie</sub> ( &Sigma;<sub>i=1..30</sub>  P&#772;(t &minus; i) )                <i>humedad antecedente observada</i></span>
-      <span class="eq">F(t)  =  rank&thinsp;%<sub>serie</sub> ( &Sigma;<sub>k=1..14</sub>  &gamma;<sup>k</sup> &middot; P&#770;(t + k) )        <i>lluvia pronosticada, ponderada por lead</i></span>
-      <span class="eq">W(t)  =  0,35 &middot; A(t)  +  0,65 &middot; F(t)</span>
-      <span class="eq">r(t)  =  tanh( &kappa; &middot; (2&middot;W(t) &minus; 1) )                        <i>índice de régimen, en [&minus;1, +1]</i></span>
-      <span class="eq"><b>&tau;(t)</b>  =  clip( 0,5 + (&tau;<sub>max</sub> &minus; 0,5) &middot; r(t) ,  1&minus;&tau;<sub>max</sub> ,  &tau;<sub>max</sub> )</span>
-      <p class="where">
-        <code>P&#772;</code> = lluvia media por estación observada, <code>P&#770;</code> = lluvia pronosticada
-        (GEFS / ECMWF). Con <code>&gamma; = 0,85</code>, <code>&kappa; = 2,2</code>,
-        <code>&tau;<sub>max</sub> = 0,85</code>: <code>r = &minus;1</code> &rarr; estiaje pleno,
-        <code>r = 0</code> &rarr; &tau; = 0,5 &rarr; RMSE, <code>r = +1</code> &rarr; crecida.
-      </p>
-    </div>
-    <p>
-      El peso 0,35 / 0,65 no es arbitrario: sale de la tabla de arriba, donde la señal de pronóstico
-      resultó ser la que aísla el riesgo. La humedad antecedente entra igual porque condiciona la
-      respuesta del suelo &mdash; los mismos 50 mm producen una onda muy distinta sobre suelo saturado
-      que sobre suelo seco &mdash; pero entra como modulador, no como disparador.
-    </p>
-
-    <h3>La propiedad que hace que esta métrica no sea manipulable</h3>
-    <p>
-      Hay una tentación evidente y hay que nombrarla para descartarla: definir el régimen mirando
-      <b>el caudal observado del día que se quiere predecir</b> (&laquo;esto fue una crecida, entonces
-      evalúo con &tau; = 0,8&raquo;). Eso rompe la métrica. Es el <i>dilema del pronosticador</i>: cuando la
-      verificación se condiciona sobre el resultado observado, el score deja de ser propio y premia
-      sistemáticamente al modelo sesgado hacia el extremo &mdash; un modelo que siempre pronostica crecida
-      queda bien evaluado en los días de crecida, que son los únicos donde se lo mira.
+    <p style="margin-top:14px">
+      Con el mismo 10 % de d&iacute;as, pasar del caudal actual al pron&oacute;stico de lluvia sube
+      P(subestima) de <b>17,8 % a 83,9 %</b>. Por eso el peso del pron&oacute;stico es el que domina
+      (<code>w<sub>fc</sub> = 0,65</code>) y la humedad antecedente entra como <b>modulador</b> y no como
+      disparador: los mismos 50 mm producen una onda muy distinta sobre suelo saturado que sobre suelo seco.
     </p>
     <figure>
-      <svg viewBox="0 0 660 262" role="img" aria-label="Línea de tiempo: la ventana de 30 días de lluvia observada y la ventana de 14 días de lluvia pronosticada alimentan el portón que fija tau; el caudal observado del día objetivo no puede alimentarlo.">
+      <svg viewBox="0 0 700 210" role="img" aria-label="Correlacion entre tau y el caudal segun el desfasaje: sube desde 0,35 en el pasado hasta 0,61 ocho o nueve dias hacia adelante.">
+        <line class="svg-axis" x1="74.0" y1="136.2" x2="620.0" y2="136.2" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="66.0" y="139.8" text-anchor="end">0,35</text>
+        <line class="svg-axis" x1="74.0" y1="108.8" x2="620.0" y2="108.8" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="66.0" y="112.2" text-anchor="end">0,45</text>
+        <line class="svg-axis" x1="74.0" y1="81.2" x2="620.0" y2="81.2" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="66.0" y="84.7" text-anchor="end">0,55</text>
+        <line class="svg-axis" x1="74.0" y1="53.7" x2="620.0" y2="53.7" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="66.0" y="57.2" text-anchor="end">0,65</text>
+        <line class="svg-axis" x1="217.7" y1="34.0" x2="217.7" y2="156.0"/>
+        <path d="M74.0 137.4 L102.7 136.6 L131.5 135.5 L160.2 134.0 L188.9 131.8 L217.7 127.8 L246.4 118.0 L275.2 103.8 L303.9 91.3 L332.6 81.7 L361.4 74.9 L390.1 69.9 L418.8 66.6 L447.6 64.8 L476.3 64.1 L505.1 64.4 L533.8 65.6 L562.5 67.4 L591.3 69.8 L620.0 73.1" fill="none" stroke="var(--caudal)" stroke-width="2"/>
+        <circle class="sv-humedo" cx="476.3" cy="64.1" r="4.5"/>
+        <text class="svg-lbl tx-humedo" x="476.3" y="53.1" text-anchor="middle">m&aacute;ximo en t+9 &middot; r = 0,61</text>
+        <circle class="sv-neutro" cx="217.7" cy="127.8" r="4"/>
+        <text class="svg-lbl" x="209.7" y="149.8" text-anchor="end">hoy &middot; r = 0,38</text>
+        <line class="svg-axis" x1="74.0" y1="156.0" x2="620.0" y2="156.0"/>
+        <line class="svg-axis" x1="74.0" y1="156.0" x2="74.0" y2="161.0"/>
+        <text class="svg-lbl" x="74.0" y="175.0" text-anchor="middle">t-5</text>
+        <line class="svg-axis" x1="217.7" y1="156.0" x2="217.7" y2="161.0"/>
+        <text class="svg-lbl" x="217.7" y="175.0" text-anchor="middle">t+0</text>
+        <line class="svg-axis" x1="361.4" y1="156.0" x2="361.4" y2="161.0"/>
+        <text class="svg-lbl" x="361.4" y="175.0" text-anchor="middle">t+5</text>
+        <line class="svg-axis" x1="505.1" y1="156.0" x2="505.1" y2="161.0"/>
+        <text class="svg-lbl" x="505.1" y="175.0" text-anchor="middle">t+10</text>
+        <line class="svg-axis" x1="620.0" y1="156.0" x2="620.0" y2="161.0"/>
+        <text class="svg-lbl" x="620.0" y="175.0" text-anchor="middle">t+14</text>
+        <text class="svg-lbl" x="347.0" y="195.0" text-anchor="middle">desfasaje entre &tau;(t) y el caudal observado</text>
+        <text class="svg-lbl-em" x="74" y="24">correlaci&oacute;n de &tau;(t) con ln Q</text>
+      </svg>
+      <figcaption>
+        La misma propiedad, medida sobre los 26 a&ntilde;os de la serie: <code>&tau;</code> correlaciona
+        con el caudal de <b>ocho o nueve d&iacute;as m&aacute;s adelante</b> (r = 0,61) bastante mejor que
+        con el de hoy (r = 0,38). Eso es lo que se le pide a un modulador &mdash;que anticipe el
+        r&eacute;gimen, no que lo constate&mdash; y es consecuencia directa de alimentarlo con
+        pron&oacute;stico de lluvia.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>C&oacute;mo se comporta</h2></div>
+  <div class="card">
+    <p>
+      El vocabulario &mdash;&laquo;seco&raquo;, &laquo;normal&raquo;, &laquo;inundaci&oacute;n&raquo;&mdash;
+      invita a leer tres categor&iacute;as. <b>No hay categor&iacute;as.</b> Cada d&iacute;a recibe su
+      propio <code>&tau;</code> sobre un continuo, y <code>&tau;</code> est&aacute; definido el
+      <b>100 %</b> de los d&iacute;as: la m&eacute;trica no tiene fronteras donde saltar ni d&iacute;as que
+      no sepa evaluar.
+    </p>
+    <figure>
+      <svg viewBox="0 0 700 286" role="img" aria-label="Curva del costo relativo en funcion de tau: a la izquierda tau bajo castiga sobrestimar hasta cinco veces, al centro es simetrico y equivale al RMSE, a la derecha tau alto castiga subestimar hasta cinco veces. Debajo, el histograma de dias sobre el mismo eje.">
+        <path d="M99.5 147.1 L101.5 146.4 L103.5 145.7 L105.6 145.1 L107.6 144.4 L109.6 143.8 L111.6 143.2 L113.6 142.6 L115.7 141.9 L117.7 141.3 L119.7 140.7 L121.7 140.2 L123.8 139.6 L125.8 139.0 L127.8 138.4 L129.8 137.9 L131.8 137.3 L133.9 136.8 L135.9 136.2 L137.9 135.7 L139.9 135.2 L141.9 134.6 L144.0 134.1 L146.0 133.6 L148.0 133.1 L150.0 132.6 L152.0 132.1 L154.1 131.6 L156.1 131.1 L158.1 130.6 L160.1 130.1 L162.1 129.6 L164.2 129.2 L166.2 128.7 L168.2 128.2 L170.2 127.7 L172.3 127.3 L174.3 126.8 L176.3 126.4 L178.3 125.9 L180.3 125.5 L182.4 125.0 L184.4 124.6 L186.4 124.1 L188.4 123.7 L190.4 123.2 L192.5 122.8 L194.5 122.4 L196.5 122.0 L198.5 121.5 L200.5 121.1 L202.6 120.7 L204.6 120.3 L206.6 119.8 L208.6 119.4 L210.7 119.0 L212.7 118.6 L214.7 118.2 L216.7 117.8 L218.7 117.4 L220.8 117.0 L222.8 116.6 L224.8 116.2 L226.8 115.8 L228.8 115.4 L230.9 115.0 L232.9 114.6 L234.9 114.2 L236.9 113.8 L238.9 113.4 L241.0 113.0 L243.0 112.7 L245.0 112.3 L247.0 111.9 L249.0 111.5 L251.1 111.1 L253.1 110.8 L255.1 110.4 L257.1 110.0 L259.2 109.6 L261.2 109.3 L263.2 108.9 L265.2 108.5 L267.2 108.1 L269.3 107.8 L271.3 107.4 L273.3 107.0 L275.3 106.7 L277.3 106.3 L279.4 105.9 L281.4 105.6 L283.4 105.2 L285.4 104.8 L287.4 104.5 L289.5 104.1 L291.5 103.7 L293.5 103.4 L295.5 103.0 L297.6 102.7 L299.6 102.3 L301.6 101.9 L303.6 101.6 L305.6 101.2 L307.7 100.9 L309.7 100.5 L311.7 100.2 L313.7 99.8 L315.7 99.4 L317.8 99.1 L319.8 98.7 L321.8 98.4 L323.8 98.0 L325.8 97.7 L327.9 97.3 L329.9 97.0 L331.9 96.6 L333.9 96.2 L335.9 95.9 L338.0 95.5 L340.0 95.2 L342.0 94.8 L344.0 94.5 L346.1 94.1 L348.1 93.8 L350.1 93.4 L352.1 93.0 L354.1 92.7 L356.2 92.3 L358.2 92.0 L360.2 91.6 L362.2 91.3 L364.2 90.9 L366.3 90.6 L368.3 90.2 L370.3 89.8 L372.3 89.5 L374.3 89.1 L376.4 88.8 L378.4 88.4 L380.4 88.1 L382.4 87.7 L384.4 87.3 L386.5 87.0 L388.5 86.6 L390.5 86.3 L392.5 85.9 L394.6 85.5 L396.6 85.2 L398.6 84.8 L400.6 84.4 L402.6 84.1 L404.7 83.7 L406.7 83.3 L408.7 83.0 L410.7 82.6 L412.7 82.2 L414.8 81.9 L416.8 81.5 L418.8 81.1 L420.8 80.7 L422.8 80.4 L424.9 80.0 L426.9 79.6 L428.9 79.2 L430.9 78.9 L433.0 78.5 L435.0 78.1 L437.0 77.7 L439.0 77.3 L441.0 77.0 L443.1 76.6 L445.1 76.2 L447.1 75.8 L449.1 75.4 L451.1 75.0 L453.2 74.6 L455.2 74.2 L457.2 73.8 L459.2 73.4 L461.2 73.0 L463.3 72.6 L465.3 72.2 L467.3 71.8 L469.3 71.4 L471.3 71.0 L473.4 70.6 L475.4 70.2 L477.4 69.7 L479.4 69.3 L481.5 68.9 L483.5 68.5 L485.5 68.0 L487.5 67.6 L489.5 67.2 L491.6 66.8 L493.6 66.3 L495.6 65.9 L497.6 65.4 L499.6 65.0 L501.7 64.5 L503.7 64.1 L505.7 63.6 L507.7 63.2 L509.7 62.7 L511.8 62.3 L513.8 61.8 L515.8 61.3 L517.8 60.8 L519.9 60.4 L521.9 59.9 L523.9 59.4 L525.9 58.9 L527.9 58.4 L530.0 57.9 L532.0 57.4 L534.0 56.9 L536.0 56.4 L538.0 55.9 L540.1 55.4 L542.1 54.8 L544.1 54.3 L546.1 53.8 L548.1 53.2 L550.2 52.7 L552.2 52.1 L554.2 51.6 L556.2 51.0 L558.2 50.4 L560.3 49.8 L562.3 49.3 L564.3 48.7 L566.3 48.1 L568.4 47.4 L570.4 46.8 L572.4 46.2 L574.4 45.6 L576.4 44.9 L578.5 44.3 L580.5 43.6 L582.5 42.9" fill="none" stroke="var(--caudal)" stroke-width="2"/>
+        <line class="svg-axis" x1="96.0" y1="95.0" x2="586.0" y2="95.0"/>
+        <line class="svg-axis" x1="96.0" y1="45.6" x2="586.0" y2="45.6" stroke-dasharray="2 4" opacity=".5"/>
+        <line class="svg-axis" x1="96.0" y1="144.4" x2="586.0" y2="144.4" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="90" y="49.1" text-anchor="end">5&times;</text>
+        <text class="svg-lbl" x="90" y="147.9" text-anchor="end">5&times;</text>
+        <line class="svg-axis" x1="96.0" y1="61.3" x2="586.0" y2="61.3" stroke-dasharray="2 4" opacity=".5"/>
+        <line class="svg-axis" x1="96.0" y1="128.7" x2="586.0" y2="128.7" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="90" y="64.8" text-anchor="end">3&times;</text>
+        <text class="svg-lbl" x="90" y="132.2" text-anchor="end">3&times;</text>
+        <line class="svg-axis" x1="96.0" y1="73.7" x2="586.0" y2="73.7" stroke-dasharray="2 4" opacity=".5"/>
+        <line class="svg-axis" x1="96.0" y1="116.3" x2="586.0" y2="116.3" stroke-dasharray="2 4" opacity=".5"/>
+        <text class="svg-lbl" x="90" y="77.2" text-anchor="end">2&times;</text>
+        <text class="svg-lbl" x="90" y="119.8" text-anchor="end">2&times;</text>
+        <text class="svg-lbl" x="90" y="98.5" text-anchor="end">sim&eacute;trico</text>
+        <text class="svg-lbl-em tx-humedo" x="594.0" y="50.0">castiga</text>
+        <text class="svg-lbl-em tx-humedo" x="594.0" y="64.0">SUBestimar</text>
+        <text class="svg-lbl-em tx-seco" x="594.0" y="134.0">castiga</text>
+        <text class="svg-lbl-em tx-seco" x="594.0" y="148.0">SOBREstimar</text>
+        <circle class="sv-neutro" cx="341.0" cy="95.0" r="4"/>
+        <text class="svg-lbl" x="341.0" y="85.0" text-anchor="middle">&tau; = 0,50 &rarr; es el RMSE</text>
+        <rect class="sv-seco" x="96.6" y="207.7" width="13.2" height="30.3" opacity=".85"/>
+        <rect class="sv-seco" x="111.0" y="190.0" width="13.2" height="48.0" opacity=".85"/>
+        <rect class="sv-seco" x="125.4" y="198.7" width="13.2" height="39.3" opacity=".85"/>
+        <rect class="sv-seco" x="139.8" y="203.2" width="13.2" height="34.8" opacity=".85"/>
+        <rect class="sv-seco" x="154.2" y="208.9" width="13.2" height="29.1" opacity=".85"/>
+        <rect class="sv-seco" x="168.7" y="210.5" width="13.2" height="27.5" opacity=".85"/>
+        <rect class="sv-seco" x="183.1" y="209.7" width="13.2" height="28.3" opacity=".85"/>
+        <rect class="sv-seco" x="197.5" y="211.4" width="13.2" height="26.6" opacity=".85"/>
+        <rect class="sv-seco" x="211.9" y="215.5" width="13.2" height="22.5" opacity=".85"/>
+        <rect class="sv-seco" x="226.3" y="218.3" width="13.2" height="19.7" opacity=".85"/>
+        <rect class="sv-neutro" x="240.7" y="217.1" width="13.2" height="20.9" opacity=".85"/>
+        <rect class="sv-neutro" x="255.1" y="218.0" width="13.2" height="20.0" opacity=".85"/>
+        <rect class="sv-neutro" x="269.5" y="216.4" width="13.2" height="21.6" opacity=".85"/>
+        <rect class="sv-neutro" x="284.0" y="220.5" width="13.2" height="17.5" opacity=".85"/>
+        <rect class="sv-neutro" x="298.4" y="221.7" width="13.2" height="16.3" opacity=".85"/>
+        <rect class="sv-neutro" x="312.8" y="221.4" width="13.2" height="16.6" opacity=".85"/>
+        <rect class="sv-neutro" x="327.2" y="221.4" width="13.2" height="16.6" opacity=".85"/>
+        <rect class="sv-neutro" x="341.6" y="221.9" width="13.2" height="16.1" opacity=".85"/>
+        <rect class="sv-neutro" x="356.0" y="222.0" width="13.2" height="16.0" opacity=".85"/>
+        <rect class="sv-neutro" x="370.4" y="223.1" width="13.2" height="14.9" opacity=".85"/>
+        <rect class="sv-neutro" x="384.8" y="220.0" width="13.2" height="18.0" opacity=".85"/>
+        <rect class="sv-neutro" x="399.2" y="219.3" width="13.2" height="18.7" opacity=".85"/>
+        <rect class="sv-neutro" x="413.7" y="220.9" width="13.2" height="17.1" opacity=".85"/>
+        <rect class="sv-neutro" x="428.1" y="219.4" width="13.2" height="18.6" opacity=".85"/>
+        <rect class="sv-humedo" x="442.5" y="219.2" width="13.2" height="18.8" opacity=".85"/>
+        <rect class="sv-humedo" x="456.9" y="214.4" width="13.2" height="23.6" opacity=".85"/>
+        <rect class="sv-humedo" x="471.3" y="213.4" width="13.2" height="24.6" opacity=".85"/>
+        <rect class="sv-humedo" x="485.7" y="212.3" width="13.2" height="25.7" opacity=".85"/>
+        <rect class="sv-humedo" x="500.1" y="212.7" width="13.2" height="25.3" opacity=".85"/>
+        <rect class="sv-humedo" x="514.5" y="207.0" width="13.2" height="31.0" opacity=".85"/>
+        <rect class="sv-humedo" x="529.0" y="203.0" width="13.2" height="35.0" opacity=".85"/>
+        <rect class="sv-humedo" x="543.4" y="197.9" width="13.2" height="40.1" opacity=".85"/>
+        <rect class="sv-humedo" x="557.8" y="186.0" width="13.2" height="52.0" opacity=".85"/>
+        <rect class="sv-humedo" x="572.2" y="208.2" width="13.2" height="29.8" opacity=".85"/>
+        <line class="svg-axis" x1="96.0" y1="238.0" x2="586.0" y2="238.0"/>
+        <line class="svg-axis" x1="96.0" y1="238.0" x2="96.0" y2="243.0"/>
+        <text class="svg-lbl" x="96.0" y="256.0" text-anchor="middle">0,15</text>
+        <line class="svg-axis" x1="236.0" y1="238.0" x2="236.0" y2="243.0"/>
+        <text class="svg-lbl" x="236.0" y="256.0" text-anchor="middle">0,35</text>
+        <line class="svg-axis" x1="341.0" y1="238.0" x2="341.0" y2="243.0"/>
+        <text class="svg-lbl" x="341.0" y="256.0" text-anchor="middle">0,50</text>
+        <line class="svg-axis" x1="446.0" y1="238.0" x2="446.0" y2="243.0"/>
+        <text class="svg-lbl" x="446.0" y="256.0" text-anchor="middle">0,65</text>
+        <line class="svg-axis" x1="586.0" y1="238.0" x2="586.0" y2="243.0"/>
+        <text class="svg-lbl" x="586.0" y="256.0" text-anchor="middle">0,85</text>
+        <text class="svg-lbl-em" x="96" y="176">Los 9.617 d&iacute;as de la serie, repartidos sobre el mismo eje</text>
+        <text class="svg-lbl" x="341.0" y="272.0" text-anchor="middle">&tau;  &mdash;  ninguna frontera: la densidad es continua</text>
+      </svg>
+      <figcaption>
+        Arriba, el costo relativo que impone cada valor de <code>&tau;</code>; abajo, c&oacute;mo se
+        reparten los 9.617 d&iacute;as con target del snapshot delta 278 sobre ese mismo eje. La curva pasa
+        por el centro &mdash;<code>&tau; = 0,50</code>, donde la funci&oacute;n <b>es</b> el RMSE&mdash; y
+        es sim&eacute;trica: no hay un lado &laquo;penalizado&raquo; y otro &laquo;libre&raquo;.
+      </figcaption>
+    </figure>
+    <div class="stat-grid">
+      <div class="stat"><div class="v humedo">49,4 %</div><div class="l">de los d&iacute;as castiga m&aacute;s <b>subestimar</b> (&tau; &gt; 0,5)</div></div>
+      <div class="stat"><div class="v seco">50,6 %</div><div class="l">castiga m&aacute;s <b>sobrestimar</b> (&tau; &lt; 0,5)</div></div>
+      <div class="stat"><div class="v">19,4 %</div><div class="l">queda cerca de sim&eacute;trico (menos de 1,5&times;)</div></div>
+      <div class="stat"><div class="v">5,2&times; / 5,1&times;</div><div class="l">castigo m&aacute;ximo en cada direcci&oacute;n</div></div>
+    </div>
+    <p>
+      La segunda cifra es la que suele pasarse por alto: <b>en estiaje la funci&oacute;n no es m&aacute;s
+      indulgente, es exigente al rev&eacute;s</b>. Castiga el optimismo hasta 5&times;, porque anunciar
+      m&aacute;s agua de la que va a haber es, en seco, la decisi&oacute;n cara. La mitad de la serie
+      est&aacute; de ese lado.
+    </p>
+    <p>
+      Sobre el snapshot vigente, <code>&tau;</code> va de <b>0,159 a 0,841</b> con mediana <b>0,494</b>, y
+      cambia todos los d&iacute;as: mediana de <code>|&Delta;&tau;|</code> diario de 0,026, p95 de 0,15 y
+      m&aacute;ximo de 0,57 cuando entra un frente. El reparto de d&iacute;as es
+      <span class="pill humedo">h&uacute;medo 35,0 %</span>
+      <span class="pill neutro">neutro 30,1 %</span>
+      <span class="pill seco">seco 34,9 %</span>, y ese reparto <b>surge de la serie</b>: no hay ning&uacute;n
+      umbral que lo imponga, sale de <code>&kappa;</code>.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Qu&eacute; se puede modificar</h2></div>
+  <div class="card">
+    <p>
+      Todo lo que se puede mover, en un solo lugar. La distinci&oacute;n que ordena la tabla es entre
+      <b>lo que se declara</b> (codifica una decisi&oacute;n operativa y no se estima de los datos),
+      <b>lo que admite sensibilidad</b> (par&aacute;metros de forma, que se barren para mostrar que la
+      conclusi&oacute;n no depende de ellos) y <b>lo que se elige</b> (una opci&oacute;n entre varias, que
+      hay que declarar al citar cualquier cifra).
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Perilla</th><th class="num">Valor</th><th class="num">Rango explorado</th>
+        <th>Qu&eacute; controla</th><th>C&oacute;mo se trata</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td><code>&tau;<sub>max</sub></code></td><td class="num">0,85</td>
+          <td class="num">0,60 &ndash; 0,95</td>
+          <td>El <b>techo de la asimetr&iacute;a</b>. Equivale a declarar que subestimar en crecida plena
+              cuesta <b>5,7&times;</b> lo que sobrestimar. Es la &uacute;nica perilla cargada de valor.</td>
+          <td><b>Se declara.</b> No se ajusta a los datos: si se eligiera por m&eacute;trica, el modelo
+              estar&iacute;a decidiendo cu&aacute;nto cuesta equivocarse.</td></tr>
+        <tr><td><code>&kappa;</code></td><td class="num">2,2</td><td class="num">1,5 &ndash; 3,0</td>
+          <td>La <b>nitidez</b> del tanh: cu&aacute;n r&aacute;pido se pasa de seco a h&uacute;medo. Con
+              2,2 el reparto queda 35 / 30 / 35 %; m&aacute;s alto se acerca a tres cajas, m&aacute;s bajo
+              deja <code>&tau;</code> casi constante en 0,5.</td><td>Sensibilidad</td></tr>
+        <tr><td><code>w<sub>ant</sub></code> / <code>w<sub>fc</sub></code></td><td class="num">0,35 / 0,65</td>
+          <td class="num">&mdash;</td>
+          <td>Cu&aacute;nto pesa el <b>pasado observado</b> frente al <b>pron&oacute;stico</b>. El 0,65 sale
+              de la tabla de &sect;02.</td><td>Sensibilidad</td></tr>
+        <tr><td><code>&gamma;</code></td><td class="num">0,85</td><td class="num">0,70 &ndash; 0,95</td>
+          <td>Decaimiento del peso por <b>lead</b>. Con 0,85 el d&iacute;a +1 pesa 4,3 veces m&aacute;s que
+              el +14.</td><td>Sensibilidad</td></tr>
+        <tr><td>ventana antecedente</td><td class="num">30 d</td><td class="num">15 &ndash; 60</td>
+          <td>Memoria de humedad del suelo.</td><td>Fijo</td></tr>
+        <tr><td>ventana de pron&oacute;stico</td><td class="num">14 d</td><td class="num">&mdash;</td>
+          <td>Igual al horizonte m&aacute;ximo del target. No hay decisi&oacute;n que tomar.</td><td>Fijo</td></tr>
+        <tr><td><code>Q<sub>0</sub></code></td><td class="num">100 m&sup3;/s</td><td class="num">&mdash;</td>
+          <td>Piso del logaritmo. Por debajo del p1 observado (204): nunca se activa con datos reales.</td>
+          <td>Fijo</td></tr>
+        <tr class="hl"><td><b>modo del modulador</b></td><td class="num">&mdash;</td><td class="num">&mdash;</td>
+          <td><code>antecedent</code> (s&oacute;lo pasado, <b>operable hoy</b>) &middot;
+              <code>forecast</code> (pron&oacute;stico real, operable cuando Gold tenga las columnas) &middot;
+              <code>oracle</code> (lluvia futura observada, <b>retrospectivo, no operable</b>).</td>
+          <td><b>Se elige y se declara.</b></td></tr>
+        <tr class="hl"><td><b>fuente de lluvia</b></td><td class="num">&mdash;</td><td class="num">&mdash;</td>
+          <td>Grilla MERGE de CPTEC (media areal real, preferible) o media por estaci&oacute;n. Nunca la
+              suma cruda: depende de cu&aacute;ntos pluvi&oacute;metros reportaron.</td>
+          <td><b>Se elige y se declara.</b> Cambia el resultado (&sect;06).</td></tr>
+        <tr><td>umbrales de reporte</td><td class="num">0,65 / 0,35</td><td class="num">&mdash;</td>
+          <td>S&oacute;lo para contar d&iacute;as en V&#8314;, V&#8315; y FA (&sect;05). <b>No intervienen
+              en el c&aacute;lculo de G-RAL.</b></td><td>Convenci&oacute;n de reporte</td></tr>
+        <tr><td><code>w(t)</code> &mdash; peso por d&iacute;a</td><td class="num">1</td><td class="num">&mdash;</td>
+          <td>Gancho previsto por si se quisiera ponderar por criticidad operativa.</td>
+          <td><b>No se usa.</b> Dos mecanismos de ponderaci&oacute;n simult&aacute;neos son imposibles de
+              interpretar.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout">
+      <h4>Protocolo de sensibilidad</h4>
+      <p>
+        Reportar G-RAL del campe&oacute;n y de sus dos competidores m&aacute;s cercanos para
+        <code>&tau;<sub>max</sub> &isin; {0,70 &middot; 0,80 &middot; 0,85 &middot; 0,90}</code>. Si el
+        campe&oacute;n no cambia, el resultado es robusto y se dice. Si cambia, el resultado depende del
+        par&aacute;metro y tambi&eacute;n hay que decirlo &mdash; eso es un hallazgo, no un problema a
+        esconder. El barrido est&aacute; implementado en <code>rio_search/sensitivity.py</code>.
+      </p>
+    </div>
+    <p>
+      Para traducir un umbral operativo declarado por un operador a un percentil de la serie, la curva de
+      duraci&oacute;n de caudales de <code>ana_74100000</code> (2000&ndash;2026) da p10 = 454, p25 = 644,
+      p50 = 1.277, p75 = 1.980, p90 = 3.182 y p99 = 10.548 m&sup3;/s.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Las tres m&eacute;tricas que la acompa&ntilde;an</h2></div>
+  <div class="card">
+    <p>
+      Un escalar agregado nunca va a expresar <i>&laquo;nunca subestimar&raquo;</i>. Puede expresar
+      <i>&laquo;subestimar cuesta caro&raquo;</i>, que es otra cosa. La restricci&oacute;n dura se reporta
+      aparte, y en la pr&aacute;ctica estas tres discriminan entre modelos <b>mejor que el propio G-RAL</b>:
+    </p>
+    <div class="formula">
+      <span class="eq"><b>V&#8314;</b>(h)  =  P( &epsilon; &gt; 0  |  &tau;(t) &gt; 0,65 )        <i>subestimaci&oacute;n en r&eacute;gimen h&uacute;medo &mdash; debe bajar</i></span>
+      <span class="eq"><b>V&#8315;</b>(h)  =  P( &epsilon; &lt; 0  |  &tau;(t) &lt; 0,35 )        <i>sobrestimaci&oacute;n en r&eacute;gimen seco &mdash; debe bajar</i></span>
+      <span class="eq"><b>FA</b>(h)  =  P( &epsilon; &lt; 0  |  &tau;(t) &gt; 0,65 )        <i>falsa alarma &mdash; no debe subir sin control</i></span>
+    </div>
+    <p>
+      <b>FA es el contrapeso indispensable.</b> Sin ella, la forma trivial de bajar V&#8314; es pronosticar
+      siempre de m&aacute;s, y eso tiene su propio costo operativo: evacuaciones innecesarias, vertidos
+      anticipados en Salto Grande. Una mejora de V&#8314; pagada con FA no es una mejora, es correr el sesgo.
+    </p>
+    <div class="callout">
+      <h4>Criterio de campe&oacute;n</h4>
+      <p>
+        Minimizar G-RAL <b>sujeto a que V&#8314; y V&#8315; no empeoren respecto del baseline de
+        persistencia</b> &mdash; no minimizar G-RAL a secas. Y RMSE, NSE y KGE se siguen reportando
+        siempre, nunca en lugar de estas: responden <i>&laquo;&iquest;qu&eacute; tan preciso es?&raquo;</i>,
+        mientras G-RAL responde <i>&laquo;&iquest;qu&eacute; tan caro sale equivocarse as&iacute;?&raquo;</i>.
+        Son preguntas distintas y las dos van en la tabla.
+      </p>
+    </div>
+    <div class="callout">
+      <h4>Una costura conocida</h4>
+      <p>
+        <code>&tau;</code> entra <b>continuo</b> al c&aacute;lculo de G-RAL y al entrenamiento, pero estas
+        tres usan cortes duros para poder contar d&iacute;as. Es una simplificaci&oacute;n <b>de la
+        lectura</b> y tiene su costo: un d&iacute;a con <code>&tau; = 0,66</code> y otro con
+        <code>&tau; = 0,84</code> pesan igual dentro de V&#8314;, cuando el segundo importa el doble. Una
+        versi&oacute;n ponderada por <code>&tau;</code> en vez de por conteo ser&iacute;a coherente con el
+        resto y queda como mejora pendiente.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Las decisiones tomadas</h2></div>
+  <div class="card">
+    <p>
+      Nueve decisiones separan el RMSE de esta funci&oacute;n. Ninguna es gratis: cada una compr&oacute;
+      algo y cobr&oacute; algo, y la tesis tiene que poder defender las dos mitades.
+    </p>
+    <div class="tbl"><table>
+      <thead><tr><th>Decisi&oacute;n</th><th>Por qu&eacute; &mdash; la evidencia</th><th>Qu&eacute; cuesta</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td><b>Medir el error en logaritmo</b></td>
+          <td>En unidades crudas el error t&iacute;pico va de <b>55 m&sup3;/s en estiaje a 2.385 en
+              crecida</b> &mdash;un factor 43&mdash; y el cuartil bajo aporta el <b>0,7 %</b> del error
+              cuadr&aacute;tico total. Sin transformar, la sequ&iacute;a es invisible y ninguna
+              ponderaci&oacute;n la rescata.</td>
+          <td>Comprime la crecida. El RMSE en m&sup3;/s empeora un poco, y hay que reportarlo aparte
+              porque es lo que se lee en la UI.</td></tr>
+        <tr><td><b>Familia expectil</b>, no pinball</td>
+          <td>Gradiente continuo en <code>&epsilon; = 0</code>: se puede <b>entrenar</b> con ella sin
+              trucos. Y con <code>&tau; = 0,5</code> devuelve el RMSE exacto.</td>
+          <td>Produce expectiles, no cuantiles: menos interpretable para un operador que piensa en
+              &laquo;el percentil 90 del caudal&raquo;.</td></tr>
+        <tr><td><b>Modulador continuo</b>, no umbrales</td>
+          <td>Una regla de tres cajas sobre esta serie deja <b>80,7 % de los d&iacute;as sin r&eacute;gimen
+              asignado</b> y 117 d&iacute;as en dos cajas a la vez. Una m&eacute;trica que s&oacute;lo sabe
+              qu&eacute; hacer con el 20 % de los d&iacute;as es un filtro, no una evaluaci&oacute;n.</td>
+          <td>Ning&uacute;n d&iacute;a es &laquo;puramente&raquo; de un r&eacute;gimen: no queda un
+              subconjunto limpio para reportar por separado.</td></tr>
+        <tr class="hl"><td><b>El modulador mira el pron&oacute;stico</b>, no el caudal actual</td>
+          <td>Con el mismo 10 % de d&iacute;as, P(subestima) pasa de <b>17,8 % a 83,9 %</b>, y
+              <code>&tau;</code> anticipa el caudal de 8&ndash;9 d&iacute;as adelante (&sect;02).</td>
+          <td><b>Depende de un dato que Gold todav&iacute;a no tiene.</b> Hoy se corre en modo
+              or&aacute;culo (retrospectivo) o antecedente (s&oacute;lo pasado).</td></tr>
+        <tr><td><b><code>&tau;<sub>max</sub></code> se declara</b>, no se ajusta</td>
+          <td>La m&eacute;trica no se auto-justifica. El n&uacute;mero es discutible con un operador en
+              unidades de costo (5,7&times;), no de estad&iacute;stica.</td>
+          <td>Si el costo operativo cambia, cambian <b>todos</b> los n&uacute;meros publicados. Obliga a
+              reportar sensibilidad en vez de un valor &uacute;nico.</td></tr>
+        <tr><td><b>El percentil se calcula sobre la serie entera</b></td>
+          <td>Hace la se&ntilde;al comparable entre &eacute;pocas del a&ntilde;o: 50 mm en enero no
+              significan lo mismo que en julio.</td>
+          <td><b>No es estrictamente causal.</b> El rango de hoy depende del futuro de la serie. Medido:
+              <code>&Delta;&tau;</code> mediana 0,0045, m&aacute;x 0,015; <b>1,7 %</b> de los d&iacute;as
+              cambian de etiqueta. Para operar hay que congelar la referencia con TRAIN.</td></tr>
+        <tr><td><b>El mismo <code>&tau;</code> entra a la p&eacute;rdida y a la m&eacute;trica</b></td>
+          <td>Coherencia del ciclo: se entrena exactamente lo que se mide, y se selecciona por eso mismo.</td>
+          <td>Dos corridas con <code>&tau;</code> distinto <b>no son comparables</b>. Medido: cambiar la
+              fuente de lluvia mueve <code>val/gral</code> de 0,497 a 0,549 con hiperpar&aacute;metros
+              id&eacute;nticos &mdash; se movi&oacute; la vara, no el modelo.</td></tr>
+        <tr><td><b>V&#8314;, V&#8315; y FA usan cortes duros</b></td>
+          <td>Se pueden contar d&iacute;as y reportar tasas, que es lo que un operador entiende.</td>
+          <td>La lectura vuelve a ser categ&oacute;rica (&sect;05).</td></tr>
+        <tr><td><b>Lluvia media areal</b>, no la suma sobre estaciones</td>
+          <td>Serie estacionaria. La suma cruda depende de cu&aacute;ntos pluvi&oacute;metros reportaron:
+              <code>station_count</code> va de 0 a 177 seg&uacute;n la &eacute;poca.</td>
+          <td>Quedan dos fuentes v&aacute;lidas que dan <code>&tau;</code> distintos: correlacionan 0,93 y
+              V&#8314; se mueve 0,10&ndash;0,15. <b>Hay que declarar cu&aacute;l se us&oacute;</b> en cada cifra.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Las tres consecuencias que condicionan lo que viene</h3>
+    <div class="callout">
+      <h4>1 &middot; El modulador operable todav&iacute;a no existe</h4>
+      <p>
+        Los n&uacute;meros de este documento usan el modo <b>or&aacute;culo</b>: lluvia observada futura
+        como sustituto de un pron&oacute;stico perfecto. Sirve para el an&aacute;lisis retrospectivo y
+        <b>no es operable</b>. El modo antecedente s&iacute; lo es y funciona (&sect;07), pero pierde
+        justamente la se&ntilde;al que &sect;02 identifica como decisiva. El modulador completo llega
+        cuando entren las columnas de pron&oacute;stico a Gold.
+      </p>
+    </div>
+    <div class="callout">
+      <h4>2 &middot; El percentil global hay que resolverlo antes de producci&oacute;n</h4>
+      <p>
+        Es chico &mdash;1,7 % de los d&iacute;as cambian de etiqueta&mdash; pero es estructural: en tiempo
+        real el <code>&tau;</code> de ayer cambiar&iacute;a cuando llegue la lluvia de ma&ntilde;ana, y eso
+        es inadmisible en un score que se publica. La salida es congelar la distribuci&oacute;n de
+        referencia con la ventana de entrenamiento. Para el estudio retrospectivo es inofensivo: equivale a
+        estandarizar con la media de toda la muestra.
+      </p>
+    </div>
+    <div class="callout crit">
+      <h4>3 &middot; La vara se mueve con el modulador</h4>
+      <p>
+        Es la consecuencia menos obvia y la que m&aacute;s f&aacute;cil produce una comparaci&oacute;n
+        falsa. Como <code>&tau;</code> est&aacute; en la p&eacute;rdida <b>y</b> en la m&eacute;trica,
+        cualquier cambio del modulador &mdash;la fuente de lluvia, <code>&kappa;</code>, los
+        pesos&mdash; cambia el entrenamiento y la regla de medici&oacute;n al mismo tiempo. <b>Toda cifra
+        de G-RAL, V&#8314; o V&#8315; tiene que venir con la configuraci&oacute;n del modulador al
+        lado</b>, o no se puede comparar con ninguna otra.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Los invariantes</h2></div>
+  <div class="card">
+    <p>
+      Dos propiedades que no se pueden romper sin invalidar la m&eacute;trica entera. Las dos est&aacute;n
+      verificadas por tests permanentes, porque son f&aacute;ciles de romper sin darse cuenta.
+    </p>
+
+    <h3>1 &middot; El modulador s&oacute;lo lee informaci&oacute;n disponible en t&#8320;</h3>
+    <p>
+      Hay una tentaci&oacute;n evidente y conviene nombrarla para descartarla: definir el r&eacute;gimen
+      mirando <b>el caudal observado del d&iacute;a que se quiere predecir</b> (&laquo;esto fue una
+      crecida, entonces eval&uacute;o con <code>&tau; = 0,8</code>&raquo;). Eso rompe la m&eacute;trica.
+      Es el <i>dilema del pronosticador</i>: cuando la verificaci&oacute;n se condiciona sobre el resultado
+      observado, el score deja de ser propio y premia sistem&aacute;ticamente al modelo sesgado hacia el
+      extremo &mdash; un modelo que siempre pronostica crecida queda bien evaluado en los d&iacute;as de
+      crecida, que son los &uacute;nicos donde se lo mira.
+    </p>
+    <figure>
+      <svg viewBox="0 0 660 262" role="img" aria-label="Línea de tiempo: la ventana de 30 días de lluvia observada y la ventana de 14 días de lluvia pronosticada alimentan el modulador que fija tau; el caudal observado del día objetivo no puede alimentarlo.">
         <defs>
           <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
@@ -585,7 +763,7 @@ figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
         <line x1="390" y1="76" x2="390" y2="126" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
 
         <rect class="svg-box" x="60" y="132" width="490" height="48" rx="8"/>
-        <text class="svg-lbl-em" x="305" y="152" text-anchor="middle">Portón de régimen  &middot;  &tau;(t&#8320;),  w(t&#8320;)</text>
+        <text class="svg-lbl-em" x="305" y="152" text-anchor="middle">Modulador de régimen  &middot;  &tau;(t&#8320;),  w(t&#8320;)</text>
         <text class="svg-lbl" x="305" y="170" text-anchor="middle">toda su entrada está disponible en el momento de emitir</text>
 
         <path d="M 452 96 L 604 96 L 604 156 L 562 156" fill="none" class="st-crit" stroke-width="1.6"
@@ -594,271 +772,32 @@ figcaption{font-size:13px;color:var(--ink-3);margin-top:10px;max-width:74ch}
         <line x1="611" y1="119" x2="597" y2="133" class="st-crit" stroke-width="2"/>
         <text class="svg-lbl tx-crit" x="589" y="130" text-anchor="end">prohibido</text>
         <text class="svg-lbl" x="60" y="204">el caudal observado en t&#8320;+7 se conoce recién 7 días después:</text>
-        <text class="svg-lbl" x="60" y="222">si entrara al portón, un modelo sesgado a crecida podría inflar su propio puntaje</text>
+        <text class="svg-lbl" x="60" y="222">si entrara al modulador, un modelo sesgado a crecida podría inflar su propio puntaje</text>
       </svg>
       <figcaption>
-        El portón consume sólo información disponible al emitir: 30 días de observación y 14 de
-        pronóstico. La flecha tachada es la única que hay que evitar &mdash; y la formulación original
-        ya la evitaba, porque nunca propuso mirar el caudal futuro.
+        El modulador consume s&oacute;lo informaci&oacute;n disponible al emitir: 30 d&iacute;as de
+        observaci&oacute;n y 14 de pron&oacute;stico. La flecha tachada es la &uacute;nica que hay que
+        evitar. <code>gate.assert_causal()</code> rechaza por dise&ntilde;o cualquier columna
+        <code>*_t_mas_*</code> y <code>data.build_dataset()</code> lo llama en cada carga.
       </figcaption>
     </figure>
-    <div class="callout ok">
-      <h4>La formulación original ya tenía esto bien</h4>
-      <p>
-        Mirar &laquo;los últimos 10 (o 30) días&raquo; y &laquo;lo pronosticado para los próximos 5 (o 14)&raquo; es
-        exactamente la condición que hace que el score siga siendo propio: las dos señales existen en
-        <code>t&#8320;</code>. Vale la pena dejarlo escrito como <b>invariante de diseño</b>, porque es
-        fácil de romper sin darse cuenta al implementar la evaluación sobre un dataframe que ya tiene
-        las columnas <code>caudal_t_mas_&lt;h&gt;d</code> a mano.
-      </p>
-    </div>
 
-    <div class="callout">
-      <h4>Detalle de dato: la serie de lluvia del portón tiene que ser estacionaria</h4>
-      <p>
-        <code>lluvia_acumulada_mm</code> en Gold es la <b>suma</b> sobre las estaciones que reportaron
-        ese día, y <code>station_count</code> va de 0 a 177 según la época &mdash; usarla directamente haría
-        que el régimen dependa de cuántos pluviómetros había, no de cuánto llovió. El portón debe
-        alimentarse de <b>lluvia media por estación</b> (<code>lluvia_acumulada_mm / station_count</code>,
-        que es la transform <code>ratio</code> ya prevista en el plan de Rio_Search) o, mejor, de la
-        <b>grilla MERGE de CPTEC</b> (<code>lluvia_merge_*</code>, media areal real, disponible desde 1998
-        por la Decisión 033). Todos los números de este informe se calcularon con la media por estación.
-      </p>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="sec-head"><span class="sec-num">05</span><h2>El ingrediente que faltaba: la escala</h2></div>
-  <div class="card">
+    <h3>2 &middot; La serie de lluvia tiene que ser estacionaria</h3>
     <p>
-      Con la fórmula y el portón definidos se puede hacer la prueba que decide todo: <b>¿cambia algo?</b>
-      Se evaluaron cinco modelos de referencia a 7 días sobre los mismos 9.593 días, con cuatro
-      métricas: RMSE, la versión asimétrica con portón discreto, la versión con &tau; continuo, y la
-      versión continua aplicada sobre el error en logaritmo.
+      <code>lluvia_acumulada_mm</code> en Gold es la <b>suma</b> sobre las estaciones que reportaron ese
+      d&iacute;a, y <code>station_count</code> va de 0 a 177 seg&uacute;n la &eacute;poca: usarla
+      directamente har&iacute;a que el r&eacute;gimen dependa de cu&aacute;ntos pluvi&oacute;metros
+      hab&iacute;a, no de cu&aacute;nto llovi&oacute;. El modulador se alimenta de <b>lluvia media por
+      estaci&oacute;n</b> o, mejor, de la <b>grilla MERGE de CPTEC</b> &mdash; media areal real, cobertura
+      completa, disponible desde 1998.
     </p>
-    <div class="tbl"><table>
-      <thead><tr><th>Modelo de referencia</th><th class="num">RMSE</th><th class="num">asim. discreta</th>
-        <th class="num">asim. continua</th><th class="num">asim. sobre log</th></tr></thead>
-      <tbody>
-        <tr><td>climatología 30 d</td><td class="num">1.838,1</td><td class="num">1.980,0</td>
-            <td class="num">2.208,3</td><td class="num">0,727</td></tr>
-        <tr><td>persistencia &times; 0,90</td><td class="num">2.051,9</td><td class="num">2.158,9</td>
-            <td class="num">2.325,2</td><td class="num">0,691</td></tr>
-        <tr><td>persistencia</td><td class="num">2.145,0</td><td class="num">2.229,8</td>
-            <td class="num">2.353,1</td><td class="num">0,674</td></tr>
-        <tr><td>persistencia &times; 1,10</td><td class="num">2.264,7</td><td class="num">2.327,1</td>
-            <td class="num">2.405,0</td><td class="num">0,675</td></tr>
-        <tr><td>persistencia + 0,5&middot;tendencia&middot;h</td><td class="num">4.718,1</td><td class="num">4.640,4</td>
-            <td class="num">4.399,9</td><td class="num">3,188</td></tr>
-        <tr class="hl"><td>¿el ranking cambia respecto de RMSE?</td><td class="num">&mdash;</td>
-            <td class="num">no</td><td class="num">no</td><td class="num">sí</td></tr>
-      </tbody>
-    </table></div>
-    <p style="margin-top:14px">
-      Las tres primeras columnas producen <b>exactamente el mismo orden</b>. Cambiar &tau; mueve el valor
-      de la métrica pero no mueve el ranking, y una métrica que no reordena no sirve para elegir
-      campeón. La razón es la de &sect;02: en unidades crudas los errores de crecida son 43 veces más
-      grandes que los de estiaje, así que la suma de cuadrados la decide la crecida sin importar de qué
-      lado esté el error.
-    </p>
-    <div class="callout crit">
-      <h4>El problema de escala pesa más que el problema de asimetría</h4>
-      <p>
-        Es contraintuitivo respecto del planteo inicial, pero es lo que dicen los datos: <b>la asimetría
-        sola no hace nada</b> mientras la métrica siga en m³/s. Recién al estabilizar la varianza &mdash;
-        pasar el error a logaritmo, que es lo que iguala el peso de un error del 20 % en 500 m³/s con
-        uno del 20 % en 5.000 m³/s &mdash; los días de estiaje empiezan a existir para la métrica, y
-        entonces la asimetría tiene sobre qué actuar.
-      </p>
-    </div>
-  </div>
-</section>
 
-<section>
-  <div class="sec-head"><span class="sec-num">06</span><h2>La métrica propuesta</h2></div>
-  <div class="card">
+    <h3>Implementaci&oacute;n</h3>
     <p>
-      Juntando las tres correcciones en una sola expresión. Se le puede llamar <b>G-RAL</b>
-      (ganancia regime-asimétrica en logaritmo):
+      Dos funciones puras, con tests contra valores conocidos. El modulador se calcula una sola vez
+      sobre el dataset y viaja como una columna m&aacute;s.
     </p>
-    <div class="formula">
-      <span class="eq">&epsilon;(t, h)  =  ln&thinsp;max(Q<sub>obs</sub>(t+h), Q<sub>0</sub>)  &minus;  ln&thinsp;max(Q<sub>pred</sub>(t+h), Q<sub>0</sub>)</span>
-      <span class="eq">&psi;<b>&tau;</b>(&epsilon;)  =  2 &middot; |<b>&tau;</b> &minus; 1{&epsilon; &lt; 0}| &middot; &epsilon;&sup2;</span>
-      <span class="eq"><b>G-RAL</b>(h)  =  &radic;&thinsp;(  &Sigma;<sub>t</sub> w(t)&middot;&psi;<sub>&tau;(t)</sub>(&epsilon;(t,h))  /  &Sigma;<sub>t</sub> w(t)  )</span>
-      <p class="where">
-        <code>&tau;(t)</code> del portón continuo de &sect;04; <code>Q<sub>0</sub> = 100 m³/s</code>, piso
-        por debajo del p1 observado (204 m³/s), que sólo evita el log de un valor no físico;
-        <code>w(t) = 1</code> por defecto &mdash; queda como gancho por si más adelante se quiere ponderar
-        por criticidad operativa, pero <b>no se usa en la versión propuesta</b>: dos mecanismos de
-        ponderación simultáneos son imposibles de interpretar.
-      </p>
-    </div>
-
-    <h3>Qué hace, sobre los mismos modelos</h3>
-    <div class="tbl"><table>
-      <thead><tr><th>Modelo</th><th class="num">RMSE (m³/s)</th><th class="num">G-RAL</th>
-        <th class="num">subestima en días húmedos</th><th class="num">sobrestima en días secos</th>
-        <th class="num">falsa alarma (sobrestima en húmedo)</th></tr></thead>
-      <tbody>
-        <tr class="hl"><td>persistencia</td><td class="num">2.145,0</td><td class="num">0,674</td>
-            <td class="num">62,0 %</td><td class="num">65,7 %</td><td class="num">37,6 %</td></tr>
-        <tr><td>persistencia &times; 1,10</td><td class="num">2.264,7</td><td class="num">0,675</td>
-            <td class="num good">54,7 %</td><td class="num bad">79,5 %</td><td class="num">45,3 %</td></tr>
-        <tr><td>persistencia &times; 0,90</td><td class="num">2.051,9</td><td class="num">0,691</td>
-            <td class="num bad">69,5 %</td><td class="num good">50,5 %</td><td class="num">30,5 %</td></tr>
-        <tr><td>climatología 30 d</td><td class="num">1.838,1</td><td class="num">0,727</td>
-            <td class="num">60,3 %</td><td class="num bad">79,2 %</td><td class="num">39,7 %</td></tr>
-        <tr><td>persistencia + 0,5&middot;tendencia&middot;h</td><td class="num">4.718,1</td><td class="num">3,188</td>
-            <td class="num">64,3 %</td><td class="num">50,1 %</td><td class="num">&mdash;</td></tr>
-      </tbody>
-    </table></div>
-    <p style="margin-top:14px">
-      n = 9.593 días; 3.359 húmedos (&tau; &gt; 0,65), 2.868 neutros, 3.366 secos (&tau; &lt; 0,35).
-      La lectura es directa: <b>RMSE elige la climatología de 30 días</b> &mdash; un modelo que suaviza todo,
-      que subestima el 60 % de los días húmedos y sobrestima el 79 % de los secos, o sea que comete
-      los dos errores prohibidos casi siempre. G-RAL lo manda al cuarto puesto. Y
-      <code>persistencia &times; 0,90</code>, el que más subestima en régimen húmedo (69,5 %), baja del
-      segundo al tercero.
-    </p>
-
-    <h3>Las tres métricas acompañantes, que no son opcionales</h3>
-    <p>
-      Un escalar agregado nunca va a expresar &laquo;nunca subestimar&raquo;. Puede expresar &laquo;subestimar cuesta
-      caro&raquo;, que es otra cosa. La restricción dura se reporta aparte, y son las columnas que en la
-      tabla de arriba discriminan mucho mejor que el propio G-RAL:
-    </p>
-    <div class="formula">
-      <span class="eq">V&#8314;(h)  =  P( e &gt; 0  |  &tau;(t) &gt; 0,65 )      <i>subestimación en régimen húmedo &mdash; debe bajar</i></span>
-      <span class="eq">V&#8315;(h)  =  P( e &lt; 0  |  &tau;(t) &lt; 0,35 )      <i>sobrestimación en régimen seco &mdash; debe bajar</i></span>
-      <span class="eq">FA(h)  =  P( e &lt; 0  |  &tau;(t) &gt; 0,65 )      <i>falsa alarma &mdash; no debe subir sin control</i></span>
-    </div>
-    <p>
-      <code>FA</code> es el contrapeso indispensable: sin ella, la forma trivial de bajar
-      <code>V&#8314;</code> es pronosticar siempre de más, y eso tiene su propio costo operativo
-      (evacuaciones innecesarias, vertidos anticipados en Salto Grande). El criterio de campeón
-      propuesto es <b>minimizar G-RAL sujeto a que V&#8314; y V&#8315; no empeoren respecto del
-      baseline de persistencia</b>, no minimizar G-RAL a secas.
-    </p>
-  </div>
-</section>
-
-<section>
-  <div class="sec-head"><span class="sec-num">07</span><h2>Calibración: qué se declara y qué se ajusta</h2></div>
-  <div class="card">
-    <p>
-      La distinción más importante de todo el diseño: <b>&tau; codifica un costo, no un dato</b>. No se
-      estima de la serie, se declara y se defiende. Los demás parámetros son de forma y sí admiten
-      sensibilidad.
-    </p>
-    <div class="tbl"><table>
-      <thead><tr><th>Parámetro</th><th class="num">Propuesto</th><th>Cómo se justifica</th><th>¿Se ajusta?</th></tr></thead>
-      <tbody>
-        <tr class="hl"><td><code>&tau;<sub>max</sub></code></td><td class="num">0,85</td>
-          <td>Equivale a decir que subestimar en crecida plena cuesta <b>5,7&times;</b> lo que sobrestimar.
-          La identidad <code>&tau; = k/(k+1)</code> permite discutirlo con un operador en términos de
-          costo, no de estadística.</td><td><b>No.</b> Se declara + sensibilidad.</td></tr>
-        <tr><td><code>&kappa;</code> (nitidez del tanh)</td><td class="num">2,2</td>
-          <td>Produce un reparto de días de 34,6 / 29,5 / 34,5 % &mdash; ni tres cajas disfrazadas ni un
-          &tau; casi constante en 0,5.</td><td>Sensibilidad</td></tr>
-        <tr><td>peso antecedente / pronóstico</td><td class="num">0,35 / 0,65</td>
-          <td>Del hallazgo de &sect;04: la señal de pronóstico es la que aísla el riesgo de subestimar.</td>
-          <td>Sensibilidad</td></tr>
-        <tr><td><code>&gamma;</code> (decaimiento por lead)</td><td class="num">0,85</td>
-          <td>Los leads cortos son más confiables; con 0,85 el día +1 pesa 4,3 veces más que el +14.</td>
-          <td>Sensibilidad</td></tr>
-        <tr><td>ventana antecedente</td><td class="num">30 d</td>
-          <td>Memoria de humedad del suelo; es la ventana de la propuesta original.</td><td>Fijo</td></tr>
-        <tr><td>ventana de pronóstico</td><td class="num">14 d</td>
-          <td>Horizonte máximo del target, no hay decisión que tomar acá.</td><td>Fijo</td></tr>
-        <tr><td><code>Q<sub>0</sub></code> (piso del log)</td><td class="num">100 m³/s</td>
-          <td>Por debajo del p1 observado (204 m³/s): nunca se activa con datos reales, sólo protege
-          de una predicción negativa.</td><td>Fijo</td></tr>
-      </tbody>
-    </table></div>
-    <p style="margin-top:14px">
-      <b>Protocolo de sensibilidad para la tesis:</b> reportar G-RAL del campeón y de sus dos
-      competidores más cercanos para <code>&tau;<sub>max</sub> &isin; {0,70 &middot; 0,80 &middot; 0,85 &middot; 0,90}</code>.
-      Si el campeón no cambia, el resultado es robusto y se dice. Si cambia, el resultado depende del
-      parámetro y también hay que decirlo &mdash; ese es el hallazgo, no un problema a esconder.
-    </p>
-    <p>
-      Un valor de referencia útil: la curva de duración de caudales de <code>ana_74100000</code>
-      (2000&ndash;2026) da p10 = 454, p25 = 644, p50 = 1.277, p75 = 1.980, p90 = 3.182 y p99 = 10.548 m³/s.
-      Sirve para traducir cualquier umbral operativo declarado por el operador a un percentil de la serie.
-    </p>
-  </div>
-</section>
-
-<section>
-  <div class="sec-head"><span class="sec-num">08</span><h2>Tres usos distintos, tres requisitos distintos</h2></div>
-  <div class="card">
-    <p>
-      La misma función se puede usar en tres lugares, y conviene no mezclarlos porque las condiciones
-      de validez son distintas en cada uno.
-    </p>
-    <div class="tbl"><table>
-      <thead><tr><th>Uso</th><th>Qué exige</th><th>Recomendación</th></tr></thead>
-      <tbody>
-        <tr><td><b>Reportar</b><br>(tabla de resultados)</td>
-          <td>Que se pueda comparar con la literatura hidrológica.</td>
-          <td><b>Sí, ya.</b> G-RAL se agrega a la tabla de &sect;3.7 del plan
-          (<code>test/gral/h01</code>&hellip;<code>h14</code>), <b>junto a</b> RMSE, NSE y KGE &mdash;
-          nunca en lugar de ellas.</td></tr>
-        <tr><td><b>Seleccionar campeón</b></td>
-          <td>Que la métrica reordene modelos de forma estable y con el criterio operativo correcto.</td>
-          <td><b>Sí, con la restricción de &sect;06</b>: minimizar <code>val/gral/mean</code> sujeto a
-          que V&#8314; y V&#8315; no superen al baseline. Mantener <code>val/kge/mean</code> como
-          criterio secundario reportado.</td></tr>
-        <tr><td><b>Entrenar</b><br>(loss de PyTorch)</td>
-          <td>Aceptar que el modelo resultante va a ser <b>deliberadamente sesgado</b>.</td>
-          <td><b>Sí, pero como experimento explícito.</b> Un trial con <code>loss: gral</code> contra
-          el mismo modelo con <code>loss: mse</code>, comparados con las dos métricas. Esa comparación
-          es en sí misma un resultado de tesis.</td></tr>
-      </tbody>
-    </table></div>
-
-    <div class="callout">
-      <h4>Lo que hay que decir en la tesis sin rodeos</h4>
-      <p>
-        Un predictor que minimiza una pérdida asimétrica <b>no estima la media condicional</b>: estima
-        el &tau;-expectil. Va a tener sesgo positivo en régimen húmedo <i>por diseño</i>, y eso hará
-        subir su RMSE. No es un defecto del modelo ni un error de calibración &mdash; es la decisión
-        operativa hecha explícita. Por eso RMSE, NSE y KGE se siguen reportando: son las que responden
-        &laquo;¿qué tan preciso es?&raquo;, mientras G-RAL responde &laquo;¿qué tan caro sale equivocarse así?&raquo;.
-        Son preguntas distintas y las dos van en la tabla.
-      </p>
-    </div>
-
-    <h3>Implementación</h3>
-    <p>
-      Dos funciones puras, con los mismos tests de valores conocidos que el resto de las métricas
-      (&sect;3.7 del plan de Rio_Search). El portón se calcula una sola vez sobre el dataset, con Polars,
-      y viaja como una columna más:
-    </p>
-<pre class="code"><i># --- portón: una columna tau por fecha, sólo con datos disponibles en t0 ---</i>
-GAMMA, KAPPA, TAU_MAX = 0.85, 2.2, 0.85
-
-lead_w = [GAMMA**k for k in range(1, 15)]
-lead_w = [w / sum(lead_w) for w in lead_w]
-
-def pct_rank(expr):                       <i># percentil dentro de la serie, en [0, 1]</i>
-    return expr.rank(method="average") / expr.is_not_null().sum()
-
-antecedente = <b>pl.col("lluvia_media_est_mm").rolling_sum(30)</b>          <i># 30 d observados</i>
-pronostico  = <b>sum(w * pl.col(f"precip_fc_d{k}") for k, w in enumerate(lead_w, 1))</b>
-
-df = df.with_columns(
-    pct_rank(antecedente).alias("A"),
-    pct_rank(pronostico).alias("F"),
-).with_columns(
-    ((0.35 * pl.col("A") + 0.65 * pl.col("F")) * 2 - 1).mul(KAPPA).tanh().alias("r")
-).with_columns(
-    (0.5 + (TAU_MAX - 0.5) * pl.col("r"))
-    .clip(1 - TAU_MAX, TAU_MAX).alias("<b>tau</b>")
-)
-
-<i># --- pérdida: idéntica para evaluar (numpy) y para entrenar (torch) ---</i>
+    <pre class="code"><i># --- p&eacute;rdida: id&eacute;ntica para evaluar (numpy) y para entrenar (torch) ---</i>
 def <b>expectile_se</b>(e, tau):
     <i>"""psi_tau(e) = 2*|tau - 1{e&lt;0}|*e^2.  tau=0.5 devuelve e^2 exacto."""</i>
     w = torch.where(e &lt; 0, 1.0 - tau, tau)
@@ -868,99 +807,260 @@ def <b>g_ral</b>(q_obs, q_pred, tau, q_floor=100.0):
     eps = torch.log(q_obs.clamp(min=q_floor)) - torch.log(q_pred.clamp(min=q_floor))
     return expectile_se(eps, tau).mean().sqrt()
 
-<i># test obligatorio: con tau=0.5 y sin log, g_ral == rmse hasta precisión de máquina</i></pre>
+<i># test obligatorio: con tau=0.5 y sin log, g_ral == rmse hasta precisi&oacute;n de m&aacute;quina</i></pre>
     <p>
-      <code>tau</code> se ventanea junto con las features pero <b>no entra como feature</b>: es una
-      propiedad de la evaluación, no un insumo del modelo. Si entrara, el modelo aprendería a
-      reconocer cuándo lo están midiendo con qué vara.
+      C&oacute;digo vigente en <code>rio_search/metrics.py</code> (m&eacute;tricas), <code>gate.py</code>
+      (el modulador) y <code>models.py</code> (la p&eacute;rdida entrenable). Son NumPy puro, sin estado
+      y sin dependencias del arn&eacute;s.
     </p>
   </div>
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-num">09</span><h2>Lo que corresponde cuando el pronóstico sea probabilístico</h2></div>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Estado: qu&eacute; est&aacute; medido</h2></div>
   <div class="card">
+    <div class="stat-grid">
+      <div class="stat"><div class="v">0,00e+00</div><div class="l">diferencia G-RAL(&tau;=0,5) vs RMSE &mdash; test de partida</div></div>
+      <div class="stat"><div class="v">71</div><div class="l">tests en verde (m&eacute;tricas, modulador, datos, fuga)</div></div>
+      <div class="stat"><div class="v">5 &times; 5</div><div class="l">p&eacute;rdidas &times; semillas, en 5 configuraciones</div></div>
+      <div class="stat"><div class="v">285</div><div class="l">d&iacute;as de TEST &mdash; un solo a&ntilde;o hidrol&oacute;gico</div></div>
+    </div>
     <p>
-      Todo lo anterior asume un pronóstico determinístico: un número por día y horizonte. El proyecto
-      ya tiene el ensemble GEFS ingestado (Decisiones 034 y 035), y en cuanto el modelo emita una
-      distribución en vez de un punto, la respuesta correcta a esta misma pregunta cambia de familia
-      &mdash; conviene dejarlo anotado ahora para no rehacer el diseño después:
-    </p>
-    <ul>
-      <li><b>CRPS</b> reemplaza a RMSE como métrica base. Tiene la propiedad elegante de ser la
-        integral de la pérdida pinball sobre todos los cuantiles &mdash; o sea que el expectil de este
-        informe es, en cierto sentido, su versión determinística de un solo cuantil.</li>
-      <li><b>twCRPS</b> (<i>threshold-weighted CRPS</i>) es la generalización directa de lo que se
-        buscó acá: una función de peso <code>v(x)</code> sobre el eje del caudal concentra el score en
-        el rango que importa &mdash; por encima del nivel de alerta, por debajo del caudal de estiaje &mdash;
-        <b>sin dejar de ser un score propio</b>. Es la herramienta correcta para &laquo;me importan los
-        extremos&raquo; y evita tener que inventar la ponderación a mano.</li>
-      <li>El portón <code>&tau;(t)</code> de &sect;04 <b>se reutiliza tal cual</b>: pasa de modular la
-        asimetría a modular la función de peso. Ese es el argumento para construirlo bien ahora.</li>
-    </ul>
-  </div>
-</section>
-
-<section>
-  <div class="sec-head"><span class="sec-num">10</span><h2>Decisión propuesta</h2></div>
-  <div class="card">
-    <p>
-      Redactada para entrar como <b>Decisión 039</b> en <code>decisions.md</code>, con el formato del log:
+      Grilla 2&times;2 que separa los dos ingredientes: <code>mse</code> (sin ninguno), <code>mse_log</code>
+      (s&oacute;lo la escala), <code>expectile_raw</code> (s&oacute;lo la asimetr&iacute;a) y
+      <code>gral</code> (los dos). Mismos datos, mismos splits, misma semilla, misma arquitectura, mismo
+      preprocesamiento: <b>la p&eacute;rdida es lo &uacute;nico que cambia</b>. TEST = 285 d&iacute;as,
+      media sobre 8 horizontes y 5 semillas, sobre Gold delta 278.
     </p>
     <div class="tbl"><table>
-      <thead><tr><th>Campo</th><th>Contenido</th></tr></thead>
+      <thead><tr><th>P&eacute;rdida de entrenamiento</th><th class="num">RMSE m&sup3;/s</th><th class="num">NSE</th>
+        <th class="num">KGE</th><th class="num">G-RAL</th><th class="num">V&#8314;</th>
+        <th class="num">V&#8315;</th><th class="num">FA</th></tr></thead>
       <tbody>
-        <tr><td><b>Decisión</b></td><td>Se adopta <b>G-RAL</b> &mdash; pérdida expectil asimétrica sobre el
-          error en logaritmo, con &tau; continuo por día &mdash; como métrica de evaluación complementaria y
-          criterio primario de selección de campeón, acompañada de las tasas de violación V&#8314;,
-          V&#8315; y FA. RMSE, MAE, NSE, KGE y PBIAS se siguen reportando sin cambios.</td></tr>
-        <tr><td><b>Alcance</b></td><td>Target <code>caudal</code>, horizontes 1&ndash;14 d, estación
-          <code>ana_74100000</code>. Se implementa en <code>rio_search</code> como función pura con tests,
-          igual que el resto de las métricas de &sect;3.7 del plan.</td></tr>
-        <tr><td><b>Invariante</b></td><td>El portón se calcula <b>sólo</b> con información disponible en
-          <code>t&#8320;</code> (30 d de observación + 14 d de pronóstico). Ninguna columna
-          <code>*_t_mas_*d</code> puede entrar en el cálculo de &tau;. Test de regresión obligatorio.</td></tr>
-        <tr><td><b>Verificación de partida</b></td><td>Con &tau; = 0,5 en todos los días y sin transformar,
-          G-RAL debe igualar al RMSE hasta precisión de máquina. Ya verificado sobre el snapshot delta 263:
-          diferencia 0,00e+00.</td></tr>
-        <tr><td><b>Insumo de dato</b></td><td>El portón consume lluvia <b>media por estación</b> o la
-          grilla MERGE de CPTEC, nunca <code>lluvia_acumulada_mm</code> crudo (suma sobre un número
-          variable de estaciones).</td></tr>
+        <tr><td>mse</td><td class="num">1297</td><td class="num">0,39</td><td class="num">0,53</td>
+            <td class="num">0,501</td><td class="num">0,428</td><td class="num">0,513</td><td class="num">0,57</td></tr>
+        <tr><td>mae</td><td class="num">1319</td><td class="num">0,36</td><td class="num">0,37</td>
+            <td class="num">0,462</td><td class="num">0,611</td><td class="num">0,519</td><td class="num">0,39</td></tr>
+        <tr><td>mse_log &mdash; s&oacute;lo escala</td><td class="num good">1278</td><td class="num">0,40</td>
+            <td class="num">0,51</td><td class="num">0,435</td><td class="num">0,495</td>
+            <td class="num">0,401</td><td class="num">0,51</td></tr>
+        <tr><td>expectile_raw &mdash; s&oacute;lo asimetr&iacute;a</td><td class="num">1360</td><td class="num">0,32</td>
+            <td class="num good">0,59</td><td class="num">0,564</td><td class="num good">0,325</td>
+            <td class="num">0,422</td><td class="num bad">0,67</td></tr>
+        <tr class="hl"><td>gral</td><td class="num">1308</td><td class="num">0,37</td><td class="num">0,56</td>
+            <td class="num">0,435</td><td class="num">0,415</td><td class="num good">0,370</td><td class="num">0,58</td></tr>
+      </tbody>
+    </table></div>
+    <p style="margin-top:14px">
+      Desv&iacute;os entre semillas: G-RAL 0,003 a 0,016; V&#8314; y V&#8315; 0,008 a 0,034. <b>Las
+      diferencias menores a eso no se leen.</b>
+    </p>
+
+    <h3>Qu&eacute; sobrevive a cambiar la configuraci&oacute;n</h3>
+    <p>
+      Lo que resiste las cinco configuraciones probadas (snapshot viejo/corregido, 19/26 features,
+      modulador de estaciones/MERGE):
+    </p>
+    <ul>
+      <li><b>La transformaci&oacute;n logar&iacute;tmica es el factor de precisi&oacute;n</b>, y no est&aacute;
+          en discusi&oacute;n: <code>mse_log</code> gana RMSE <b>5 de 5</b>.</li>
+      <li><b>La asimetr&iacute;a compra seguridad, no precisi&oacute;n.</b> <code>gral</code> gana V&#8315;
+          <b>5/5</b> y le gana a <code>mse_log</code> en V&#8314;, V&#8315; y KGE <b>5/5</b>, a costa de unos
+          30 m&sup3;/s de RMSE.</li>
+      <li><b>El escalar agregado no la favorece de forma robusta</b>: <code>gral</code> gana el G-RAL escalar
+          s&oacute;lo <b>2 de 5</b> veces. <b>El argumento para adoptarla son las tasas de violaci&oacute;n,
+          no el agregado</b> &mdash; y conviene decirlo as&iacute; antes de que lo diga un tribunal.</li>
+      <li><b>El modulador causal funciona</b>: el modo antecedente, que es el operable hoy, sostiene el
+          resultado sin necesidad del or&aacute;culo.</li>
+    </ul>
+    <div class="callout">
+      <h4>El control que todav&iacute;a falta</h4>
+      <p>
+        Ninguna corrida separa a&uacute;n <b>&laquo;la asimetr&iacute;a ayuda&raquo;</b> de <b>&laquo;el
+        modulador ayuda&raquo;</b>. Hace falta entrenar con la misma p&eacute;rdida expectil pero con
+        <code>&tau;</code> constante &mdash; sin modulador. Sin ese control, cualquier ganancia de
+        <code>gral</code> se le puede atribuir al modulador sin evidencia. Est&aacute; en el
+        cat&aacute;logo de b&uacute;squeda como celda <b>B1.06</b> y es prioridad alta.
+      </p>
+    </div>
+    <div class="callout">
+      <h4>Cuando el pron&oacute;stico sea probabil&iacute;stico, el modulador se reusa tal cual</h4>
+      <p>
+        Todo lo anterior asume un pron&oacute;stico determin&iacute;stico: un n&uacute;mero por d&iacute;a
+        y horizonte. El proyecto ya tiene el ensemble GEFS ingestado, y cuando el modelo emita una
+        distribuci&oacute;n en vez de un punto, la familia correcta cambia: <b>CRPS</b> reemplaza a RMSE
+        como m&eacute;trica base, y <b>twCRPS</b> &mdash;<i>threshold-weighted</i> CRPS&mdash; es la
+        generalizaci&oacute;n directa de lo que hace G-RAL: una funci&oacute;n de peso sobre el eje del
+        caudal concentra el score en el rango que importa sin dejar de ser un <i>score propio</i>.
+        <b><code>&tau;(t)</code> se reutiliza sin cambios</b>: pasa de modular la asimetr&iacute;a a
+        modular esa funci&oacute;n de peso. Es el argumento para construir bien el modulador ahora.
+      </p>
+    </div>
+    <div class="callout">
+      <h4>Lo que estos n&uacute;meros no prueban</h4>
+      <p>
+        TEST son 285 d&iacute;as de <b>un solo a&ntilde;o hidrol&oacute;gico</b> y el modelo es un MLP de una
+        capa oculta, no el mejor pron&oacute;stico posible. Sirven para comparar p&eacute;rdidas con todo lo
+        dem&aacute;s fijo, no para dar por cerrada ninguna elecci&oacute;n de modelo. El cierre exige
+        walk-forward sobre varios a&ntilde;os, que es lo que define
+        <code>docs/protocolo_busqueda_modelos.md</code>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Fundamento y bibliograf&iacute;a</h2></div>
+  <div class="card">
+    <p>
+      G-RAL no se invent&oacute; de cero. Es la composici&oacute;n de tres piezas que ya exist&iacute;an por
+      separado &mdash;una familia de p&eacute;rdidas de la econometr&iacute;a, una transformaci&oacute;n
+      est&aacute;ndar de la hidrolog&iacute;a y un resultado sobre evaluaci&oacute;n de pron&oacute;sticos&mdash;
+      m&aacute;s una pieza que s&iacute; es nueva. Esta secci&oacute;n dice cu&aacute;l es cu&aacute;l, para
+      que la tesis pueda defender el aporte sin exagerarlo.
+    </p>
+
+    <h3>De d&oacute;nde sale cada pieza</h3>
+    <div class="tbl"><table>
+      <thead><tr><th>Pieza de G-RAL</th><th>De d&oacute;nde viene</th><th>&iquest;Es aporte de esta tesis?</th></tr></thead>
+      <tbody>
+        <tr><td>La p&eacute;rdida <code>&psi;<sub>&tau;</sub></code> asim&eacute;trica</td>
+            <td>Expectiles de Newey &amp; Powell (1987), econometr&iacute;a</td>
+            <td><b>No.</b> Se usa tal cual.</td></tr>
+        <tr><td>Medir el error en logaritmo</td>
+            <td>Pr&aacute;ctica establecida en calibraci&oacute;n hidrol&oacute;gica desde el NSE</td>
+            <td><b>No.</b> Es el uso cl&aacute;sico.</td></tr>
+        <tr><td>Expectiles aplicados a caudal</td>
+            <td>Tyralis, Papacharalampous &amp; Khatami (2023), 511 cuencas</td>
+            <td><b>No.</b> Ya est&aacute; publicado.</td></tr>
+        <tr><td>Asimetr&iacute;a justificada por costo de alerta</td>
+            <td>Toth (2016) para umbrales de crecida</td>
+            <td><b>No.</b> Precedente operativo.</td></tr>
+        <tr><td>Que el modulador no lea el resultado observado</td>
+            <td>Lerch et&nbsp;al. (2017), dilema del pronosticador</td>
+            <td><b>No.</b> Es un resultado conocido &mdash; pero f&aacute;cil de violar sin saberlo.</td></tr>
+        <tr class="hl"><td><b>Que <code>&tau;</code> var&iacute;e d&iacute;a a d&iacute;a seg&uacute;n una
+            se&ntilde;al ex&oacute;gena de r&eacute;gimen</b></td>
+            <td>&mdash;</td>
+            <td><b>S&iacute;. Es el aporte.</b></td></tr>
       </tbody>
     </table></div>
 
-    <h3>Lo que queda abierto</h3>
-    <ul>
-      <li><b>El valor de <code>&tau;<sub>max</sub></code>.</b> 0,85 es una propuesta razonable, no un
-        resultado. Sale bien de una conversación con quien opera: &laquo;¿cuántas veces peor es quedarse
-        corto en una crecida que pasarse?&raquo;. Mientras tanto, sensibilidad sobre cuatro valores.</li>
-      <li><b>Todo se midió con baselines, no con el modelo.</b> Persistencia y climatología alcanzan para
-        mostrar que la métrica reordena y por qué, pero la prueba definitiva es correr el BiLSTM con
-        <code>loss: mse</code> y con <code>loss: gral</code> y comparar. Es el primer experimento de la
-        Fase 3 de Rio_Search.</li>
-      <li><b>El pronóstico usado en el portón fue un oráculo.</b> Los porcentajes de &sect;04 usan lluvia
-        observada futura como sustituto del pronóstico. Con GEFS/ECMWF real, la señal se degrada &mdash;
-        hay que recalcular esa tabla cuando las columnas de <code>forecast</code> entren a Gold
-        (Fase 4 del roadmap) y verificar que el portón sigue separando.</li>
-      <li><b>Un solo punto de predicción.</b> Todo es <code>ana_74100000</code>. Salto Grande aguas abajo
-        tiene régimen regulado y la asimetría ahí probablemente sea distinta &mdash; en un embalse operado,
-        sobrestimar también tiene costo de vertido.</li>
-    </ul>
+    <div class="callout ok">
+      <h4>D&oacute;nde est&aacute; el aporte, dicho con precisi&oacute;n</h4>
+      <p>
+        La literatura usa el expectil como <b>estimador de un funcional de la
+        distribuci&oacute;n</b>: se fija un nivel &tau; y se estima ese expectil, t&iacute;picamente varios
+        niveles a la vez para construir una banda de incertidumbre. Ac&aacute; se usa como <b>funci&oacute;n
+        de costo declarada</b>: un solo expectil, cuyo nivel <code>&tau;(t)</code> <b>no lo elige el
+        modelador sino el estado de la cuenca</b>, medido con informaci&oacute;n disponible en
+        t&#8320;. Son dos usos distintos y leg&iacute;timos de la misma p&eacute;rdida. Decirlo as&iacute;
+        evita dos errores opuestos: presentar como nuevo lo que ya existe, y no reclamar lo que
+        s&iacute; es propio.
+      </p>
+    </div>
+    <div class="callout">
+      <h4>Lo que falta comprobar antes de reclamar novedad</h4>
+      <p>
+        La b&uacute;squeda bibliogr&aacute;fica que sostiene esta secci&oacute;n se hizo el 2026-09-09 y
+        <b>no es una revisi&oacute;n sistem&aacute;tica</b>. No encontr&eacute; trabajos que hagan variar el
+        nivel del expectil con una covariable ex&oacute;gena en hidrolog&iacute;a, pero <i>no haber
+        encontrado</i> no es <i>no existir</i>. Antes de escribir la palabra &laquo;novedoso&raquo; en la
+        tesis corresponde: (a) una b&uacute;squeda sistem&aacute;tica con protocolo declarado, (b) revisar
+        la literatura de <i>time-varying quantiles</i> y CAViaR en finanzas, donde el nivel variable s&iacute;
+        se estudia y podr&iacute;a haber un precedente formal trasladable.
+      </p>
+    </div>
+
+    <h3>Bibliograf&iacute;a</h3>
+    <p>
+      Quince trabajos, con los metadatos verificados contra la fuente el 2026-09-09. Viven en
+      <code>research/catalog/*.yaml</code> con su rol declarado; los cinco que sostienen
+      directamente el dise&ntilde;o tienen nota de lectura en <code>research/notes/</code>.
+      <code>research/export_bib.py</code> genera <code>thesis/common/references.bib</code>, donde la
+      clave de cita es el <span class="slug">slug</span> que acompa&ntilde;a a cada entrada.
+    </p>
+    <p class="refgrp">Origen de la función: la familia expectil</p>
+    <div class="ref">
+      <p class="cite"><b>Newey, W. K. &amp; Powell, J. L.</b> <span class="yr">(1987)</span>. Asymmetric Least Squares Estimation and Testing. <span class="venue">Econometrica 55(4), 819&ndash;847</span>. <a href="https://doi.org/10.2307/1911031">doi:10.2307/1911031</a> &middot; <span class="slug">newey-powell-1987</span></p>
+      <p class="rol"><b>La fuente primaria de &psi;<sub>&tau;</sub>.</b> Define el expectil como minimizador de una p&eacute;rdida de m&iacute;nimos cuadrados asim&eacute;tricos &mdash; es exactamente la f&oacute;rmula de &sect;01. Que el expectil 0,5 sea la media es la propiedad definitoria de la familia, y de ah&iacute; sale la identidad con el RMSE.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Koenker, R. &amp; Bassett, G.</b> <span class="yr">(1978)</span>. Regression Quantiles. <span class="venue">Econometrica 46(1), 33&ndash;50</span>. <a href="https://doi.org/10.2307/1913643">doi:10.2307/1913643</a> &middot; <span class="slug">koenker-bassett-1978</span></p>
+      <p class="rol">La familia alternativa, la que <b>no</b> se eligi&oacute;. Su p&eacute;rdida pinball tiene gradiente discontinuo en cero: sirve para evaluar, pero entrenar con ella exige trucos.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Ehm, W., Gneiting, T., Jordan, A. &amp; Kr&uuml;ger, F.</b> <span class="yr">(2016)</span>. Of quantiles and expectiles: consistent scoring functions, Choquet representations and forecast rankings. <span class="venue">J. R. Stat. Soc. B 78(3), 505&ndash;562</span>. <a href="https://doi.org/10.1111/rssb.12154">doi:10.1111/rssb.12154</a> &middot; <span class="slug">ehm-2016-quantiles-expectiles</span></p>
+      <p class="rol">El puente te&oacute;rico entre las dos familias: qu&eacute; funciones de score son <i>consistentes</i> para un expectil. Es la condici&oacute;n formal que hace defendible usar G-RAL para ordenar modelos y no s&oacute;lo para describirlos.</p>
+    </div>
+    <p class="refgrp">Expectiles en hidrolog&iacute;a: el precedente directo</p>
+    <div class="ref">
+      <p class="cite"><b>Tyralis, H., Papacharalampous, G. &amp; Khatami, S.</b> <span class="yr">(2023)</span>. Expectile-based hydrological modelling for uncertainty estimation: Life after mean. <span class="venue">Journal of Hydrology 617(B), 128986</span>. <a href="https://doi.org/10.1016/j.jhydrol.2022.128986">doi:10.1016/j.jhydrol.2022.128986</a> &middot; <span class="slug">tyralis-2023-expectile-hydrological</span></p>
+      <p class="rol"><b>El trabajo m&aacute;s cercano que existe.</b> Calibra modelos GR con p&eacute;rdida expectil en 511 cuencas de EE.UU. La diferencia est&aacute; abajo, en &laquo;D&oacute;nde est&aacute; el aporte&raquo;: ellos usan niveles <b>fijos</b> para estimar incertidumbre; ac&aacute; el nivel <b>var&iacute;a por d&iacute;a</b> y codifica costo.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Toth, E.</b> <span class="yr">(2016)</span>. Estimation of flood warning runoff thresholds in ungauged basins with asymmetric error functions. <span class="venue">Hydrology and Earth System Sciences 20(6), 2383&ndash;2394</span>. <a href="https://doi.org/10.5194/hess-20-2383-2016">doi:10.5194/hess-20-2383-2016</a> &middot; <span class="slug">toth-2016-asymmetric-flood-warning</span></p>
+      <p class="rol"><b>El precedente operativo.</b> Entrena redes con funciones de error asim&eacute;tricas para umbrales de alerta, con el mismo argumento de costo. Y mide el mismo intercambio que paga G-RAL: reduce mucho los errores de un lado, aumenta los del otro, y la precisi&oacute;n global sigue siendo aceptable.</p>
+    </div>
+    <p class="refgrp">Por qu&eacute; el modulador no puede mirar el resultado</p>
+    <div class="ref">
+      <p class="cite"><b>Lerch, S., Thorarinsdottir, T. L., Ravazzolo, F. &amp; Gneiting, T.</b> <span class="yr">(2017)</span>. Forecaster's Dilemma: Extreme Events and Forecast Evaluation. <span class="venue">Statistical Science 32(1), 106&ndash;127</span>. <a href="https://doi.org/10.1214/16-STS588">doi:10.1214/16-STS588</a> &middot; <span class="slug">lerch-2017-forecasters-dilemma</span></p>
+      <p class="rol"><b>El fundamento del Invariante 1</b> (&sect;07). Demuestra que condicionar la verificaci&oacute;n sobre el resultado observado rompe la propiedad de score propio, y que el efecto no es ruido sino <b>inversi&oacute;n del ranking</b>: premia al modelo sesgado al extremo. Es literalmente lo que <code>gate.assert_causal()</code> impide.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Gneiting, T. &amp; Raftery, A. E.</b> <span class="yr">(2007)</span>. Strictly Proper Scoring Rules, Prediction, and Estimation. <span class="venue">J. Am. Stat. Assoc. 102(477), 359&ndash;378</span>. <a href="https://doi.org/10.1198/016214506000001437">doi:10.1198/016214506000001437</a> &middot; <span class="slug">gneiting-raftery-2007-scoring-rules</span></p>
+      <p class="rol">La referencia can&oacute;nica de scores propios: el marco en el que se discute si G-RAL es manipulable o no.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Gneiting, T. &amp; Ranjan, R.</b> <span class="yr">(2011)</span>. Comparing Density Forecasts Using Threshold- and Quantile-Weighted Scoring Rules. <span class="venue">J. Bus. Econ. Stat. 29(3), 411&ndash;422</span>. <a href="https://doi.org/10.1198/jbes.2010.08110">doi:10.1198/jbes.2010.08110</a> &middot; <span class="slug">gneiting-ranjan-2011-weighted-scoring</span></p>
+      <p class="rol">El camino cuando el pron&oacute;stico sea probabil&iacute;stico. Introduce el <b>twCRPS</b>: una funci&oacute;n de peso que concentra el score donde importa <b>sin</b> perder la propiedad de score propio. Es donde <code>&tau;(t)</code> se reusa tal cual.</p>
+    </div>
+    <p class="refgrp">La escala logar&iacute;tmica</p>
+    <div class="ref">
+      <p class="cite"><b>Santos, L., Thirel, G. &amp; Perrin, C.</b> <span class="yr">(2018)</span>. Technical note: Pitfalls in using log-transformed flows within the KGE criterion. <span class="venue">Hydrology and Earth System Sciences 22, 4583&ndash;4591</span>. <a href="https://doi.org/10.5194/hess-22-4583-2018">doi:10.5194/hess-22-4583-2018</a> &middot; <span class="slug">santos-2018-log-kge-pitfalls</span></p>
+      <p class="rol"><b>Una advertencia que hay que atender al citar resultados.</b> El log <i>dentro</i> del KGE sesga la evaluaci&oacute;n. Este proyecto no lo hace &mdash;el log va dentro de un criterio cuadr&aacute;tico, que es el uso cl&aacute;sico, y el KGE se calcula sobre caudal sin transformar&mdash; pero conviene decirlo expl&iacute;citamente.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Thirel, G., Santos, L., Delaigue, O. &amp; Perrin, C.</b> <span class="yr">(2024)</span>. On the use of streamflow transformations for hydrological model calibration. <span class="venue">Hydrology and Earth System Sciences 28, 4837&ndash;4860</span>. <a href="https://doi.org/10.5194/hess-28-4837-2024">doi:10.5194/hess-28-4837-2024</a> &middot; <span class="slug">thirel-2024-streamflow-transformations</span></p>
+      <p class="rol">Compara transformaciones del caudal para calibrar y concluye que log, Box-Cox y potencia 0,2 son las mejores de prop&oacute;sito general. Respalda la elecci&oacute;n del log y <b>nombra a sus competidoras</b>, que es la celda B3.03 del cat&aacute;logo de b&uacute;squeda.</p>
+    </div>
+    <p class="refgrp">M&eacute;tricas hidrol&oacute;gicas de referencia</p>
+    <div class="ref">
+      <p class="cite"><b>Nash, J. E. &amp; Sutcliffe, J. V.</b> <span class="yr">(1970)</span>. River flow forecasting through conceptual models part I &mdash; A discussion of principles. <span class="venue">Journal of Hydrology 10(3), 282&ndash;290</span>. <a href="https://doi.org/10.1016/0022-1694(70)90255-6">doi:10.1016/0022-1694(70)90255-6</a> &middot; <span class="slug">nash-sutcliffe-1970</span></p>
+      <p class="rol">Origen del NSE, una de las m&eacute;tricas que G-RAL acompa&ntilde;a y nunca reemplaza.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Gupta, H. V., Kling, H., Yilmaz, K. K. &amp; Martinez, G. F.</b> <span class="yr">(2009)</span>. Decomposition of the mean squared error and NSE performance criteria: Implications for improving hydrological modelling. <span class="venue">Journal of Hydrology 377(1-2), 80&ndash;91</span>. <a href="https://doi.org/10.1016/j.jhydrol.2009.08.003">doi:10.1016/j.jhydrol.2009.08.003</a> &middot; <span class="slug">gupta-2009-kge</span></p>
+      <p class="rol">Origen del KGE. Su descomposici&oacute;n en correlaci&oacute;n, sesgo y variabilidad es la lectura que explica por qu&eacute; <code>gral</code> mejora KGE aunque empeore RMSE.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Kratzert, F., Klotz, D., Shalev, G., Klambauer, G., Hochreiter, S. &amp; Nearing, G.</b> <span class="yr">(2019)</span>. Towards learning universal, regional, and local hydrological behaviors via machine learning applied to large-sample datasets. <span class="venue">Hydrology and Earth System Sciences 23(12), 5089&ndash;5110</span>. <a href="https://doi.org/10.5194/hess-23-5089-2019">doi:10.5194/hess-23-5089-2019</a> &middot; <span class="slug">kratzert-2019-universal-regional-local</span></p>
+      <p class="rol">Estado del arte en lluvia-escorrent&iacute;a con LSTM, y <b>el precedente de entrenar con la m&eacute;trica hidrol&oacute;gica</b> (NSE promediado por cuenca) en vez de MSE. Es el mismo argumento de esta tesis aplicado a otra m&eacute;trica &mdash; y es la celda B1.10 del cat&aacute;logo.</p>
+    </div>
+    <p class="refgrp">El costo operativo y el contexto local</p>
+    <div class="ref">
+      <p class="cite"><b>Matte, S., Boucher, M.-A., Boucher, V. &amp; Fortier Filion, T.-C.</b> <span class="yr">(2017)</span>. Moving beyond the cost&ndash;loss ratio: economic assessment of streamflow forecasts for a risk-averse decision maker. <span class="venue">Hydrology and Earth System Sciences 21, 2967&ndash;2986</span>. <a href="https://doi.org/10.5194/hess-21-2967-2017">doi:10.5194/hess-21-2967-2017</a> &middot; <span class="slug">matte-2017-beyond-cost-loss</span></p>
+      <p class="rol">De d&oacute;nde sale el razonamiento de costo. El cociente <code>&tau;/(1&minus;&tau;)</code> es pariente del cociente costo/p&eacute;rdida cl&aacute;sico; este trabajo muestra sus l&iacute;mites &mdash;supone un decisor neutral al riesgo&mdash; y es la referencia para defender <code>&tau;<sub>max</sub> = 0,85</code> ante un tribunal.</p>
+    </div>
+    <div class="ref">
+      <p class="cite"><b>Talento, S. &amp; Terra, R.</b> <span class="yr">(2013)</span>. Basis for a streamflow forecasting system to Rinc&oacute;n del Bonete and Salto Grande (Uruguay). <span class="venue">Theoretical and Applied Climatology 114, 73&ndash;93</span>. <a href="https://doi.org/10.1007/s00704-012-0822-8">doi:10.1007/s00704-012-0822-8</a> &middot; <span class="slug">talento-2013-salto-grande</span></p>
+      <p class="rol">Contexto regional: sistema de pron&oacute;stico de caudal para Salto Grande, el embalse cuya operaci&oacute;n motiva toda la asimetr&iacute;a de esta tesis.</p>
+    </div>
   </div>
 </section>
 
 </main>
 
-<footer class="foot"><div class="wrap">
-  <p>
-    Todos los números salen del snapshot local de <code>weather.gold.training_dataset_v0</code>
-    (delta 263, sha256 <code>e2ff0ee6&hellip;</code>, 9.732 filas, 2000-01-01 &rarr; 2026-08-23) y son
-    reproducibles sobre ese archivo. Los baselines son persistencia sobre
-    <code>caudal_actual_m3s</code> y media móvil de 30 días; los targets, las columnas
-    <code>caudal_t_mas_&lt;h&gt;d</code> ya verificadas sin fuga en <code>gold_quality_report.md</code> &sect;4.
-    Las series de lluvia se normalizaron por <code>station_count</code>.
-  </p>
-  <p style="margin-bottom:0">
-    Documento de decisión &mdash; Río Uruguay Hydro Pipeline &middot; 2026-08-28.
-  </p>
-</div></footer>
+<footer class="foot">
+  <div class="wrap">
+    <p>
+      <b>G-RAL &mdash; funci&oacute;n de ganancia por r&eacute;gimen.</b> Especificaci&oacute;n de la
+      m&eacute;trica de evaluaci&oacute;n y entrenamiento del pronóstico de caudal en
+      <code>ana_74100000</code>. Implementada en <code>rio_search/metrics.py</code> y
+      <code>rio_search/gate.py</code>; el protocolo que la usa para buscar modelos est&aacute; en
+      <code>docs/protocolo_busqueda_modelos.md</code> (Decisi&oacute;n 045). Todos los n&uacute;meros de
+      este documento se calcularon sobre el snapshot Gold delta 278 con la lluvia media por estaci&oacute;n
+      como fuente del modulador, salvo donde se indique otra cosa.
+    </p>
+  </div>
+</footer>

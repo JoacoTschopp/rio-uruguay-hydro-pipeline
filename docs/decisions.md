@@ -848,12 +848,12 @@ y daba la falsa impresión de cobertura casi completa.
   `alta_frontera` — mismo join que ya usa el agregado de caudal. La columna sigue llamándose
   igual porque su intención (lluvia relevante para el punto de predicción) no cambió; lo que
   cambió es que ahora sí la cumple.
-* **La cobertura viaja como columna, no como portón.** Cuatro columnas nuevas en
+* **La cobertura viaja como columna, no como modulador.** Cuatro columnas nuevas en
   `weather.gold.training_dataset_v0`: `lluvia_agregado_alta_frontera_station_count`,
   `lluvia_agregado_alta_frontera_cobertura_pct` (contra el universo de 22 estaciones mapeadas),
   y los acumulados móviles `lluvia_agregado_alta_frontera_acum_3d_mm` /
   `_acum_7d_mm`, que faltaban (roadmap: "acumulados y ventanas móviles").
-* **`lluvia_is_usable` queda deprecada** (siempre `NULL`): era el resultado del portón que se
+* **`lluvia_is_usable` queda deprecada** (siempre `NULL`): era el resultado del modulador que se
   elimina. Se conserva la columna en el esquema en vez de borrarla, porque Delta no permite un
   `ADD COLUMNS` no idempotente ni un `DROP COLUMN` barato en este workspace, y no hay lectores
   externos que dependan de dropearla.
@@ -867,7 +867,7 @@ y daba la falsa impresión de cobertura casi completa.
 
 ### Justificación
 
-Un portón que mide una sola cifra sobre 522 estaciones heterogéneas no puede representar la
+Un modulador que mide una sola cifra sobre 522 estaciones heterogéneas no puede representar la
 calidad real de ninguna de ellas individualmente: puede pasar con estaciones del target vacías
 (como se descubrió acá) o fallar con estaciones del target perfectas si el resto de la red tiene
 un mal día. El principio que ya rige las otras ocho reglas de consolidación (R1-R7, R9) —no
@@ -875,7 +875,7 @@ perder información buena por un criterio grueso, exponer la calidad real como d
 decidir por el usuario final— se aplica igual acá.
 
 Corregir el alcance de `lluvia_acumulada_mm` en el mismo cambio (en vez de en un paso aparte) es
-necesario porque ambos bugs se enmascaraban mutuamente: con el portón global activo, cualquier
+necesario porque ambos bugs se enmascaraban mutuamente: con el modulador global activo, cualquier
 intento de leer la cobertura real de `alta_frontera` en particular hubiera dado un número
 optimista y falso.
 
@@ -1908,7 +1908,7 @@ Bronze → Silver → Gold.
    —el único que existe— y lo declara; el entrenamiento, semanas después, ya ve el definitivo.
 5. **Silver agrega por `(fecha, subcuenca, fuente)`:** media areal (`prec_media_mm`, `temp_media_c`,
    `temp_max_c`, `temp_min_c` como medias areales de las tres variables), máximos, `cobertura_pct`
-   (= puntos con dato / puntos de la sub-cuenca, R8: cobertura como columna, sin portón), densidad de
+   (= puntos con dato / puntos de la sub-cuenca, R8: cobertura como columna, sin modulador), densidad de
    observaciones (`pluviometros`, `puntos_con_pluviometro`, `nobs_total`). Bronze tiene
    `CLUSTER BY (fecha)` y el `MERGE` acota por rango de fechas para podar.
 6. **Gold suma 12 columnas de `alta_frontera`**, que **conviven** con las de estación (no las
@@ -2820,7 +2820,7 @@ Cinco brechas, todas cerradas el 2026-09-05:
 
 ### Dos mediciones que cambiaron el diseño
 
-**La fuente de lluvia del portón no es un detalle de configuración.** Los hiperparámetros
+**La fuente de lluvia del modulador no es un detalle de configuración.** Los hiperparámetros
 que venían de la búsqueda bayesiana se habían encontrado con `lluvia_media_est_mm`. Con los
 mismos hiperparámetros y la grilla MERGE, `val/gral` pasa de 0,4969 a 0,5488 — **cuatro
 veces el umbral de ruido** — y el perfil de régimen se da vuelta (V⁺ 0,365 → 0,530;
