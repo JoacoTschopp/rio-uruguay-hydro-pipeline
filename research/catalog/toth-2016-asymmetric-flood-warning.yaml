@@ -1,0 +1,19 @@
+slug: toth-2016-asymmetric-flood-warning
+title: >-
+  Estimation of flood warning runoff thresholds in ungauged basins with asymmetric error functions
+authors:
+  - "Toth, Elena"
+year: 2016
+venue: "Hydrology and Earth System Sciences"
+volume: "20"
+number: "6"
+pages: "2383--2394"
+doi: "10.5194/hess-20-2383-2016"
+bibtype: article
+tipo: paper
+tags: [asimetria, hidrologia, alerta-crecida, precedente-operativo]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  Precedente operativo de la asimetría en alerta de crecidas: entrena redes con función de error asimétrica porque fallar la alarma cuesta más que la falsa alarma. Mide el intercambio exacto que G-RAL también paga.

@@ -1,0 +1,22 @@
+slug: ehm-2016-quantiles-expectiles
+title: >-
+  Of quantiles and expectiles: consistent scoring functions, Choquet representations and forecast rankings
+authors:
+  - "Ehm, Werner"
+  - "Gneiting, Tilmann"
+  - "Jordan, Alexander"
+  - "Krüger, Fabian"
+year: 2016
+venue: "Journal of the Royal Statistical Society: Series B"
+volume: "78"
+number: "3"
+pages: "505--562"
+doi: "10.1111/rssb.12154"
+bibtype: article
+tipo: paper
+tags: [expectil, cuantil, scoring-consistente, elicitabilidad]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  El puente teórico entre las dos familias. Establece qué funciones de score son consistentes para un expectil, que es la condición que hace defendible usar G-RAL para rankear modelos.

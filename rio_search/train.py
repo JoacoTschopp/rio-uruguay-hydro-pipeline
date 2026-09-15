@@ -1,0 +1,472 @@
+"""Arnés de entrenamiento y evaluación con pérdida seleccionable.
+
+    python -m rio_search.train --model mlp --loss gral
+    python -m rio_search.train --compare            # corre la grilla 2x2 completa
+
+El experimento que justifica el arnés es una grilla 2×2 que **separa los dos
+ingredientes** de G-RAL, porque el informe encontró que no aportan lo mismo:
+
+                      escala cruda (m³/s)      escala log
+    simétrica         mse                      mse_log
+    asimétrica (τ)    expectile_raw            gral
+
+`mse` es el entrenamiento actual del proyecto. `gral` es la propuesta.
+`mse_log` aísla el efecto de la transformación, y `expectile_raw` el de la
+asimetría sola — que según la evidencia retrospectiva no alcanza.
+
+Cada configuración entrena con **todo lo demás idéntico**: mismos datos, mismos
+splits, misma semilla, misma arquitectura, mismo preprocesamiento. Lo único que
+cambia es la pérdida.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+
+def _utf8_console() -> None:
+    """La consola de Windows arranca en cp1252 y no puede escribir τ ni →.
+
+    Sin esto el arnés muere con UnicodeEncodeError después de haber entrenado,
+    que es la peor forma de fallar. `errors="replace"` garantiza que en una
+    terminal vieja se degrade a un signo de pregunta en vez de romperse.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+from . import data as data_mod
+from . import gate as gate_mod
+from . import metrics as metrics_mod
+from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, LinearCore,
+                     MLPCore, PersistenceBaseline)
+
+__all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
+
+#: Cada entrada es (nombre de la pérdida elemento a elemento, transformación del
+#: target). La transformación log es la que estabiliza la varianza entre estiaje
+#: y crecida; la pérdida expectil es la que introduce la asimetría.
+LOSS_CONFIGS: dict[str, tuple[str, str]] = {
+    "mse":           ("mse",       "none"),
+    "mae":           ("mae",       "none"),
+    "mse_log":       ("mse",       "log"),
+    "expectile_raw": ("expectile", "none"),
+    "gral":          ("expectile", "log"),
+}
+
+
+# --------------------------------------------------------------------------
+# Preprocesamiento — todo se ajusta con TRAIN únicamente
+# --------------------------------------------------------------------------
+
+@dataclass
+class Preprocessor:
+    """Imputación + escalado de features, y transformación + escalado del target.
+
+    Los estadísticos salen sólo de TRAIN. El target se estandariza para que el
+    optimizador converja, y eso no altera la asimetría: escalar por una constante
+    positiva no cambia el signo del error, que es lo único que mira τ.
+    """
+
+    target_transform: str = "none"
+    q_floor: float = metrics_mod.Q_FLOOR
+    x_median: np.ndarray | None = None
+    x_mean: np.ndarray | None = None
+    x_std: np.ndarray | None = None
+    y_mean: float | None = None
+    y_std: float | None = None
+
+    def _t(self, y):
+        if self.target_transform == "log":
+            return np.log(np.maximum(y, self.q_floor))
+        return y
+
+    def _t_inv(self, z):
+        if self.target_transform == "log":
+            return np.exp(z)
+        return z
+
+    def fit(self, X, Y):
+        self.x_median = np.nanmedian(X, axis=0)
+        self.x_median = np.where(np.isfinite(self.x_median), self.x_median, 0.0)
+        Xi = self._impute(X)
+        self.x_mean = Xi.mean(axis=0)
+        std = Xi.std(axis=0)
+        self.x_std = np.where(std > 1e-12, std, 1.0)
+
+        ty = self._t(Y[np.isfinite(Y)])
+        self.y_mean = float(ty.mean())
+        self.y_std = float(ty.std()) or 1.0
+        return self
+
+    def _impute(self, X):
+        out = np.array(X, dtype=float, copy=True)
+        bad = ~np.isfinite(out)
+        if bad.any():
+            out[bad] = np.take(self.x_median, np.where(bad)[1])
+        return out
+
+    def transform_x(self, X):
+        return (self._impute(X) - self.x_mean) / self.x_std
+
+    def transform_y(self, Y):
+        with np.errstate(invalid="ignore"):
+            return (self._t(Y) - self.y_mean) / self.y_std
+
+    def inverse_y(self, Z):
+        return self._t_inv(Z * self.y_std + self.y_mean)
+
+    def imputed_fraction(self, X) -> float:
+        X = np.asarray(X, dtype=float)
+        return float(np.mean(~np.isfinite(X)))
+
+
+# --------------------------------------------------------------------------
+# Evaluación
+# --------------------------------------------------------------------------
+
+def _evaluate_split(y_true, y_pred, tau, horizons) -> dict:
+    """Métricas por horizonte y agregadas. `y_*` son (n, n_horizontes) en m³/s."""
+    per_h = {}
+    for j, h in enumerate(horizons):
+        per_h[f"h{h:02d}"] = metrics_mod.evaluate(y_true[:, j], y_pred[:, j], tau)
+    agg = {}
+    for key in ("rmse", "mae", "nse", "kge", "gral", "pbias",
+                "v_plus", "v_minus", "fa_wet", "fa_dry"):
+        vals = [m[key] for m in per_h.values() if key in m and np.isfinite(m[key])]
+        agg[key] = float(np.mean(vals)) if vals else float("nan")
+    return {"mean": agg, "per_horizon": per_h}
+
+
+# --------------------------------------------------------------------------
+# Corrida
+# --------------------------------------------------------------------------
+
+def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
+                   hidden: int = 64, epochs: int = 600, lr: float = 0.01,
+                   l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
+                   eval_tau=None, on_epoch=None, verbose: bool = False,
+                   evaluar_test: bool = True) -> dict:
+    """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
+
+    `eval_tau` separa el τ con el que se **entrena** (`ds.tau`) del τ con el que
+    se **mide** (por defecto el mismo). Hace falta en el barrido de τ_max: si la
+    evaluación usara el τ de cada corrida, el umbral de "día húmedo" se movería
+    junto con el parámetro y V+ se compararía sobre conjuntos de días distintos
+    en cada fila. Con un τ de referencia fijo, las filas son comparables.
+
+    `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
+    forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
+    una sola vez, al final, sobre la configuración campeona. Mientras el bloque
+    exista en el JSON, la regla depende de que quien lo lee se abstenga; sin el
+    bloque, no hay nada de qué abstenerse.
+    """
+    if loss not in LOSS_CONFIGS:
+        raise KeyError(f"pérdida desconocida: {loss}. Opciones: {list(LOSS_CONFIGS)}")
+    loss_name, transform = LOSS_CONFIGS[loss]
+    loss_fn = LOSSES[loss_name]
+
+    tr, va, te = splits.train, splits.val, splits.test
+    pre = Preprocessor(target_transform=transform).fit(ds.X[tr], ds.Y[tr])
+
+    Xtr, Xva, Xte = (pre.transform_x(ds.X[m]) for m in (tr, va, te))
+    Ztr, Zva = pre.transform_y(ds.Y[tr]), pre.transform_y(ds.Y[va])
+
+    core_cls = {"mlp": MLPCore, "linear": LinearCore}[model]
+    kw = dict(loss=loss_fn, epochs=epochs, lr=lr, l2=l2, patience=patience,
+              seed=seed, verbose=verbose)
+    core = core_cls(hidden=hidden, **kw) if model == "mlp" else core_cls(**kw)
+
+    t0 = time.perf_counter()
+    core.fit(Xtr, Ztr, tau=ds.tau[tr] if loss_fn.uses_tau else None,
+             X_val=Xva, Y_val=Zva, tau_val=ds.tau[va] if loss_fn.uses_tau else None,
+             on_epoch=on_epoch)
+    fit_seconds = time.perf_counter() - t0
+
+    out = {
+        "model": model, "loss": loss, "elementwise_loss": loss_name,
+        "target_transform": transform, "hidden": hidden if model == "mlp" else None,
+        "lr": lr, "l2": l2, "patience": patience, "epochs_max": epochs,
+        "seed": seed, "epochs_run": len(core.history), "best_epoch": core.best_epoch,
+        "pruned": core.pruned,
+        "time_fit_s": round(fit_seconds, 3),
+        "imputed_fraction_train": round(pre.imputed_fraction(ds.X[tr]), 4),
+        "splits": splits.describe(ds.fecha),
+    }
+    tau_eval = ds.tau if eval_tau is None else np.asarray(eval_tau, dtype=float)
+    out["eval_tau_is_train_tau"] = eval_tau is None
+    out["test_evaluado"] = bool(evaluar_test)
+    a_evaluar = [("val", va, Xva)] + ([("test", te, Xte)] if evaluar_test else [])
+    for name, m, X in a_evaluar:
+        pred = pre.inverse_y(core.predict(X))
+        pred = np.maximum(pred, 0.0)
+        out[name] = _evaluate_split(ds.Y[m], pred, tau_eval[m], ds.horizons)
+    return out
+
+
+def run_baselines(ds, splits, *, evaluar_test: bool = True) -> dict:
+    """Persistencia, persistencia amortiguada y climatología, sobre los mismos splits."""
+    n_h = len(ds.horizons)
+    preds = {
+        "persistencia": PersistenceBaseline().predict(ds.q_actual, n_h),
+        "persistencia x 0.90": DampedPersistence(0.90).predict(ds.q_actual, n_h),
+        "persistencia x 1.10": DampedPersistence(1.10).predict(ds.q_actual, n_h),
+        "climatologia 30 d": ClimatologyBaseline(30).predict(ds.q_actual, n_h),
+    }
+    splits_a_medir = [("val", splits.val)] + ([("test", splits.test)] if evaluar_test else [])
+    out = {}
+    for name, p in preds.items():
+        row = {"model": name, "loss": None}
+        for split_name, m in splits_a_medir:
+            row[split_name] = _evaluate_split(ds.Y[m], p[m], ds.tau[m], ds.horizons)
+        out[name] = row
+    return out
+
+
+def _aggregate_seeds(runs: list[dict], split: str) -> dict:
+    """Media y desvío entre semillas de cada métrica agregada.
+
+    Con 285 días de TEST y una sola semilla, una diferencia de 0,01 en una tasa
+    de violación es ruido de inicialización. Reportar el desvío entre semillas es
+    lo que separa un resultado de un número.
+    """
+    keys = runs[0][split]["mean"].keys()
+    out = {}
+    for k in keys:
+        vals = np.array([r[split]["mean"][k] for r in runs], dtype=float)
+        vals = vals[np.isfinite(vals)]
+        out[k] = float(vals.mean()) if vals.size else float("nan")
+        out[f"{k}_sd"] = float(vals.std(ddof=1)) if vals.size > 1 else 0.0
+    return out
+
+
+def run_experiment_seeds(ds, splits, *, seeds, **kw) -> dict:
+    """Corre la misma configuración con varias semillas y agrega."""
+    runs = [run_experiment(ds, splits, seed=s, **kw) for s in seeds]
+    merged = dict(runs[0])
+    merged["seeds"] = list(seeds)
+    merged["n_seeds"] = len(seeds)
+    for split in ("val", "test"):
+        if split not in runs[0]:            # corrida con evaluar_test=False
+            merged.pop(split, None)
+            continue
+        merged[split] = {"mean": _aggregate_seeds(runs, split),
+                         "per_seed": [r[split]["mean"] for r in runs],
+                         "per_horizon": runs[0][split]["per_horizon"]}
+    merged["time_fit_s"] = round(sum(r["time_fit_s"] for r in runs), 3)
+    return merged
+
+
+def run_comparison(ds, splits, *, model: str = "mlp", losses=None,
+                   seeds=(20260828,), **kw) -> dict:
+    losses = list(losses or LOSS_CONFIGS)
+    results = {"dataset": {
+        "n": len(ds), "desde": str(ds.fecha.min().date()), "hasta": str(ds.fecha.max().date()),
+        "n_features": ds.X.shape[1], "features": ds.feature_names,
+        "horizons": list(ds.horizons), "tau_mode": ds.tau_mode,
+        "tau_reparto": {
+            "humedo_pct": round(100 * float(np.mean(ds.tau > metrics_mod.WET_THRESHOLD)), 1),
+            "neutro_pct": round(100 * float(np.mean(
+                (ds.tau >= metrics_mod.DRY_THRESHOLD) & (ds.tau <= metrics_mod.WET_THRESHOLD))), 1),
+            "seco_pct": round(100 * float(np.mean(ds.tau < metrics_mod.DRY_THRESHOLD)), 1),
+        },
+    }, "splits": splits.describe(ds.fecha),
+        "baselines": run_baselines(ds, splits, evaluar_test=kw.get("evaluar_test", True)),
+        "models": {}}
+    results["seeds"] = list(seeds)
+    for loss in losses:
+        print(f"  entrenando {model} con loss={loss} "
+              f"({len(seeds)} semilla{'s' if len(seeds) > 1 else ''}) ...", flush=True)
+        results["models"][loss] = run_experiment_seeds(
+            ds, splits, model=model, loss=loss, seeds=seeds, **kw)
+    return results
+
+
+# --------------------------------------------------------------------------
+# Reporte de consola
+# --------------------------------------------------------------------------
+
+def _fmt(v, nd=3):
+    """Formato inequívoco: nunca separador de miles, que en es-AR se confunde
+    con la coma decimal (`1.699` se lee como 1,699 y son 1699 m³/s)."""
+    if v is None or not np.isfinite(v):
+        return "—"
+    return f"{v:.{nd}f}"
+
+
+def _fmt_sd(v, sd, nd=3):
+    if v is None or not np.isfinite(v):
+        return "—"
+    return f"{v:.{nd}f}" + (f"±{sd:.{nd}f}" if sd else "")
+
+
+def _row(label: str, m: dict) -> str:
+    g = lambda k: m.get(f"{k}_sd", 0.0)
+    return (f"{label:22s}{_fmt(m['rmse'], 0):>12s}{_fmt(m['nse'], 2):>8s}{_fmt(m['kge'], 2):>8s}"
+            f"{_fmt_sd(m['gral'], g('gral')):>15s}"
+            f"{_fmt_sd(m['v_plus'], g('v_plus')):>15s}"
+            f"{_fmt_sd(m['v_minus'], g('v_minus')):>15s}"
+            f"{_fmt(m['fa_wet'], 2):>9s}")
+
+
+def print_table(results: dict, split: str = "test") -> None:
+    hdr = (f"{'modelo / pérdida':22s}{'RMSE m3/s':>12s}{'NSE':>8s}{'KGE':>8s}"
+           f"{'G-RAL':>15s}{'V+ húm':>15s}{'V− seco':>15s}{'FA húm':>9s}")
+    print("\n" + "=" * len(hdr))
+    print(f"  SPLIT: {split.upper()}   (media sobre los 8 horizontes)")
+    print("=" * len(hdr))
+    print(hdr)
+    print("-" * len(hdr))
+
+    rows = []
+    for name, r in results["baselines"].items():
+        rows.append((name, r[split]["mean"]))
+    print("  " + "· baselines ·")
+    for name, m in rows:
+        print(_row(name, m))
+    print("  " + "· modelos entrenados ·")
+    for loss, r in results["models"].items():
+        print(_row(f"{r['model']} · {loss}", r[split]["mean"]))
+    print("-" * len(hdr))
+    print("  V+ = P(subestima | régimen húmedo)   V− = P(sobrestima | régimen seco)")
+    print("  FA = P(sobrestima | régimen húmedo), la falsa alarma que contrapesa a V+")
+
+
+def _rankings(results: dict, split: str = "test") -> dict:
+    items = [(f"{r['model']}·{loss}", r[split]["mean"]) for loss, r in results["models"].items()]
+    items += [(n, r[split]["mean"]) for n, r in results["baselines"].items()]
+    out = {}
+    for key in ("rmse", "gral", "kge"):
+        valid = [(n, m[key]) for n, m in items if np.isfinite(m[key])]
+        reverse = key == "kge"          # en KGE, más es mejor
+        out[key] = [n for n, _ in sorted(valid, key=lambda kv: kv[1], reverse=reverse)]
+    return out
+
+
+# --------------------------------------------------------------------------
+# CLI
+# --------------------------------------------------------------------------
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--model", choices=["mlp", "linear"], default="mlp")
+    p.add_argument("--loss", choices=list(LOSS_CONFIGS), default="mse")
+    p.add_argument("--compare", action="store_true",
+                   help="corre todas las pérdidas de LOSS_CONFIGS y compara")
+    p.add_argument("--target", choices=["caudal", "nivel"], default="caudal")
+    p.add_argument("--tau-mode", choices=["oracle", "antecedent", "forecast"], default="oracle")
+    p.add_argument("--tau-max", type=float, default=gate_mod.DEFAULT_PARAMS.tau_max)
+    p.add_argument("--hidden", type=int, default=64)
+    p.add_argument("--epochs", type=int, default=600)
+    p.add_argument("--lr", type=float, default=0.01)
+    p.add_argument("--l2", type=float, default=1e-4)
+    p.add_argument("--seed", type=int, default=20260828)
+    p.add_argument("--seeds", type=int, default=1,
+                   help="cuántas semillas correr por configuración (media +- desvío)")
+    p.add_argument("--patience", type=int, default=60,
+                   help="épocas sin mejorar en VAL antes de cortar (early stopping)")
+    p.add_argument("--train-start", default=None,
+                   help="piso temporal de TRAIN, p. ej. 2008-01-01. Por defecto, el "
+                        "principio de la serie")
+    p.add_argument("--snapshot", default=None)
+    p.add_argument("--legacy", action="store_true",
+                   help="permitir un snapshot previo a las Decisiones 039/040 "
+                        "(sólo para comparar contra los resultados viejos)")
+    p.add_argument("--gate-rain", default="auto",
+                   help="columna de lluvia del modulador: auto | lluvia_merge_alta_frontera_mm "
+                        "| lluvia_media_est_mm")
+    p.add_argument("--groups", default=None,
+                   help="grupos de features separados por coma; por defecto "
+                        + ",".join(data_mod.DEFAULT_GROUPS))
+    p.add_argument("--out", default=None, help="ruta del JSON de resultados")
+    p.add_argument("--split", choices=["val", "test"], default=None,
+                   help="split a reportar en la tabla (default: test, o val con --no-test)")
+    p.add_argument("--no-test", action="store_true",
+                   help="no calcular TEST. Lo pide el protocolo de búsqueda: TEST se mira "
+                        "una sola vez, sobre la configuración campeona. Sin el bloque en el "
+                        "JSON, la regla no depende de la disciplina de quien lo lee")
+    p.add_argument("--verbose", action="store_true")
+    args = p.parse_args(argv)
+    _utf8_console()
+
+    if args.no_test and args.split == "test":
+        p.error("--split test es incompatible con --no-test: no se puede reportar "
+                "un split que no se calculó")
+    if args.split is None:
+        args.split = "val" if args.no_test else "test"
+
+    params = gate_mod.GateParams(tau_max=args.tau_max)
+    print(f"cargando snapshot Gold ...", flush=True)
+    groups = tuple(g.strip() for g in args.groups.split(",")) if args.groups else data_mod.DEFAULT_GROUPS
+    ds = data_mod.build_dataset(target=args.target, tau_mode=args.tau_mode,
+                                gate_params=params, snapshot_path=args.snapshot,
+                                groups=groups, permitir_legacy=args.legacy,
+                                gate_rain_col=args.gate_rain)
+    splits = data_mod.make_splits(ds.fecha, train_start=args.train_start)
+    print(f"  {len(ds)} días · {ds.X.shape[1]} features · τ modo {ds.tau_mode} "
+          f"(τ_max = {params.tau_max})")
+    for name, info in splits.describe(ds.fecha).items():
+        print(f"  {name:5s} n={info['n']:5d}  {info['desde']} → {info['hasta']}")
+
+    kw = dict(hidden=args.hidden, epochs=args.epochs, lr=args.lr, l2=args.l2,
+              patience=args.patience, verbose=args.verbose,
+              evaluar_test=not args.no_test)
+    seeds = [args.seed + i for i in range(max(1, args.seeds))]
+    if args.compare:
+        results = run_comparison(ds, splits, model=args.model, seeds=seeds, **kw)
+    else:
+        results = {"dataset": {"n": len(ds), "tau_mode": ds.tau_mode},
+                   "splits": splits.describe(ds.fecha), "seeds": seeds,
+                   "baselines": run_baselines(ds, splits, evaluar_test=not args.no_test),
+                   "models": {args.loss: run_experiment_seeds(
+                       ds, splits, model=args.model, loss=args.loss, seeds=seeds, **kw)}}
+    results["rankings"] = _rankings(results, args.split)
+    results["gate_params"] = params.as_dict()
+    # Qué versión del dato produjo estos números. Sin esto, un JSON de resultados
+    # no se puede fechar contra las correcciones de Gold.
+    manifest = data_mod.read_manifest(
+        Path(args.snapshot) if args.snapshot else data_mod.DEFAULT_SNAPSHOT)
+    results["snapshot"] = {
+        "path": str(args.snapshot or data_mod.DEFAULT_SNAPSHOT),
+        "delta_version": (manifest or {}).get("delta_version"),
+        "exported_at": (manifest or {}).get("exported_at"),
+        "sha256": ((manifest or {}).get("file_sha256") or "")[:12] or None,
+        "gate_rain": args.gate_rain,
+        "groups": list(groups),
+    }
+    # Lo que define el corte temporal y el criterio de corte del entrenamiento. Sin
+    # esto, dos JSON con los mismos hiperparámetros pueden no ser comparables.
+    results["run_config"] = {"train_start": args.train_start, "patience": args.patience,
+                             "test_evaluado": not args.no_test}
+
+    print_table(results, args.split)
+    print(f"\n  ranking por RMSE : {' < '.join(results['rankings']['rmse'])}")
+    print(f"  ranking por G-RAL: {' < '.join(results['rankings']['gral'])}")
+
+    out_path = Path(args.out) if args.out else (
+        data_mod.REPO_ROOT / "rio_search" / "results" /
+        f"{args.model}_{'compare' if args.compare else args.loss}_{args.tau_mode}"
+        f"{'_legacy' if args.legacy else ''}{'_grid' if args.groups and 'cptec' in args.groups else ''}.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str),
+                        encoding="utf-8")
+    try:                                     # --out puede apuntar fuera del repo
+        mostrar = out_path.resolve().relative_to(data_mod.REPO_ROOT)
+    except ValueError:
+        mostrar = out_path.resolve()
+    print(f"\n  resultados → {mostrar}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

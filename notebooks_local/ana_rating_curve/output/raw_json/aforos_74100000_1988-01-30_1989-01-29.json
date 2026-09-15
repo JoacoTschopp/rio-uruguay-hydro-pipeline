@@ -1,0 +1,74 @@
+[
+  {
+    "Area_Molhada (m2)": "3662.0",
+    "Cota (cm)": "525.0",
+    "Data_Hora_Dado": "1988-04-27 07:00:00.0",
+    "Data_Ultima_Alteracao": null,
+    "Largura (m)": "593.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "6.18",
+    "Vazao (m3/s)": "6331.0",
+    "Vel_Media (m/s)": "1.729",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1452.0",
+    "Cota (cm)": "167.0",
+    "Data_Hora_Dado": "1988-07-21 07:00:00.0",
+    "Data_Ultima_Alteracao": null,
+    "Largura (m)": "576.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "2.52",
+    "Vazao (m3/s)": "673.0",
+    "Vel_Media (m/s)": "0.463",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1845.0",
+    "Cota (cm)": "240.0",
+    "Data_Hora_Dado": "1989-01-17 07:00:00.0",
+    "Data_Ultima_Alteracao": null,
+    "Largura (m)": "578.0",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "3.19",
+    "Vazao (m3/s)": "1536.0",
+    "Vel_Media (m/s)": "0.833",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1452.0",
+    "Cota (cm)": "167.0",
+    "Data_Hora_Dado": "1988-07-21 07:00:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "576.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "2.52",
+    "Vazao (m3/s)": "673.0",
+    "Vel_Media (m/s)": "0.463",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "3662.0",
+    "Cota (cm)": "525.0",
+    "Data_Hora_Dado": "1988-04-27 07:00:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "593.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "6.18",
+    "Vazao (m3/s)": "6331.0",
+    "Vel_Media (m/s)": "1.729",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1845.0",
+    "Cota (cm)": "240.0",
+    "Data_Hora_Dado": "1989-01-17 07:00:00.0",
+    "Data_Ultima_Alteracao": "2017-12-06 00:00:00.0",
+    "Largura (m)": "578.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "3.19",
+    "Vazao (m3/s)": "1536.0",
+    "Vel_Media (m/s)": "0.833",
+    "codigoestacao": "74100000"
+  }
+]

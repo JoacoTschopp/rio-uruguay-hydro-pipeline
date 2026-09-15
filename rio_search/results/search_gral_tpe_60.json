@@ -1,0 +1,907 @@
+{
+  "config": {
+    "model": "mlp",
+    "loss": "gral",
+    "metric_objetivo": "val/gral",
+    "sampler": "tpe",
+    "trials_pedidos": 60,
+    "seed": 20260828,
+    "seeds_final": 5,
+    "espacio": {
+      "hidden": [
+        "int",
+        16,
+        256,
+        true
+      ],
+      "lr": [
+        "float",
+        0.0001,
+        0.1,
+        true
+      ],
+      "l2": [
+        "float",
+        1e-07,
+        0.1,
+        true
+      ],
+      "epochs": [
+        "int",
+        200,
+        1500,
+        false
+      ],
+      "patience": [
+        "int",
+        20,
+        150,
+        false
+      ]
+    }
+  },
+  "resumen": {
+    "completados": 41,
+    "podados": 19,
+    "tiempo_total_s": 134.9,
+    "mejor_valor_val": 0.48769660344345445
+  },
+  "mejor": {
+    "numero": 59,
+    "params": {
+      "hidden": 38,
+      "lr": 0.04920758516153447,
+      "l2": 0.00021691434746401022,
+      "epochs": 378,
+      "patience": 81
+    },
+    "val": {
+      "val_rmse": 979.7930125021035,
+      "val_nse": 0.24507374527535497,
+      "val_kge": 0.5471978114762075,
+      "val_v_plus": 0.3700873362445415,
+      "val_v_minus": 0.6939655172413792,
+      "best_epoch": 26,
+      "time_fit_s": 0.716
+    }
+  },
+  "final_multisemilla": {
+    "val": {
+      "rmse": 1029.8161256612943,
+      "rmse_sd": 40.509183424935124,
+      "mae": 624.2090257633375,
+      "mae_sd": 27.752569680471062,
+      "nse": 0.17617248550234332,
+      "nse_sd": 0.06221613801998027,
+      "kge": 0.49259741637462956,
+      "kge_sd": 0.03228193715474012,
+      "gral": 0.4969492314617149,
+      "gral_sd": 0.009604911169832014,
+      "pbias": 14.628874434352706,
+      "pbias_sd": 3.109735047036353,
+      "v_plus": 0.3650655021834061,
+      "v_plus_sd": 0.014825673186058189,
+      "v_minus": 0.7465517241379309,
+      "v_minus_sd": 0.06568150913379467,
+      "fa_wet": 0.6349344978165938,
+      "fa_wet_sd": 0.014825673186058194,
+      "fa_dry": 0.253448275862069,
+      "fa_dry_sd": 0.06568150913379463
+    },
+    "test": {
+      "rmse": 1340.2374783696018,
+      "rmse_sd": 23.19184334348212,
+      "mae": 692.4269236710375,
+      "mae_sd": 13.619414828353763,
+      "nse": 0.3397574269717178,
+      "nse_sd": 0.022431968873738665,
+      "kge": 0.5076169454701593,
+      "kge_sd": 0.020095787810905708,
+      "gral": 0.45116080936538294,
+      "gral_sd": 0.011939661159024334,
+      "pbias": -5.411745199883693,
+      "pbias_sd": 2.348573568499987,
+      "v_plus": 0.4758264462809918,
+      "v_plus_sd": 0.038491630179562426,
+      "v_minus": 0.39005021141649043,
+      "v_minus_sd": 0.025086147642339116,
+      "fa_wet": 0.5241735537190082,
+      "fa_wet_sd": 0.038491630179562385,
+      "fa_dry": 0.6099497885835096,
+      "fa_dry_sd": 0.025086147642339095
+    },
+    "seeds": [
+      20260828,
+      20260829,
+      20260830,
+      20260831,
+      20260832
+    ]
+  },
+  "historia": [
+    {
+      "numero": 0,
+      "valor": 0.502639438484612,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 234,
+        "lr": 0.015558549573002432,
+        "l2": 3.299197567019482e-06,
+        "epochs": 1267,
+        "patience": 136
+      }
+    },
+    {
+      "numero": 1,
+      "valor": 0.4944186652203679,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 23,
+        "lr": 0.02023574866605118,
+        "l2": 0.0004941461583750484,
+        "epochs": 856,
+        "patience": 100
+      }
+    },
+    {
+      "numero": 2,
+      "valor": 0.5016436028703802,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 87,
+        "lr": 0.0011444587502743887,
+        "l2": 0.004307702253947806,
+        "epochs": 684,
+        "patience": 121
+      }
+    },
+    {
+      "numero": 3,
+      "valor": 0.4960328345665437,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 199,
+        "lr": 0.029259763374550544,
+        "l2": 6.625118924616549e-07,
+        "epochs": 1464,
+        "patience": 28
+      }
+    },
+    {
+      "numero": 4,
+      "valor": 0.5169644797447122,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 82,
+        "lr": 0.00017955697671461922,
+        "l2": 2.5208350557629244e-07,
+        "epochs": 484,
+        "patience": 21
+      }
+    },
+    {
+      "numero": 5,
+      "valor": 0.5139442733670362,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 136,
+        "lr": 0.000482345863295474,
+        "l2": 0.08155170527651855,
+        "epochs": 587,
+        "patience": 107
+      }
+    },
+    {
+      "numero": 6,
+      "valor": 0.5262908077042108,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 26,
+        "lr": 0.0006378774181148203,
+        "l2": 3.965330197144579e-06,
+        "epochs": 436,
+        "patience": 139
+      }
+    },
+    {
+      "numero": 7,
+      "valor": 0.5109302197762653,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 18,
+        "lr": 0.0018843771998627828,
+        "l2": 0.00014935298174870965,
+        "epochs": 317,
+        "patience": 95
+      }
+    },
+    {
+      "numero": 8,
+      "valor": 0.5054480946675783,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 16,
+        "lr": 0.0015311418254098559,
+        "l2": 8.235939009976013e-05,
+        "epochs": 809,
+        "patience": 36
+      }
+    },
+    {
+      "numero": 9,
+      "valor": 0.511520149934424,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 195,
+        "lr": 0.0025403398116880527,
+        "l2": 0.09935493033434908,
+        "epochs": 1390,
+        "patience": 50
+      }
+    },
+    {
+      "numero": 10,
+      "valor": 0.5061602494764582,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 41,
+        "lr": 0.07873844241541128,
+        "l2": 0.00045921665049170876,
+        "epochs": 1022,
+        "patience": 71
+      }
+    },
+    {
+      "numero": 11,
+      "valor": 0.5023429291013123,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 48,
+        "lr": 0.01947490177425836,
+        "l2": 1.5781751793730097e-07,
+        "epochs": 1122,
+        "patience": 73
+      }
+    },
+    {
+      "numero": 12,
+      "valor": 0.4882414323898091,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 52,
+        "lr": 0.01548450896174892,
+        "l2": 7.400608759497913e-06,
+        "epochs": 1498,
+        "patience": 75
+      }
+    },
+    {
+      "numero": 13,
+      "valor": 0.4329007731239601,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 35,
+        "lr": 0.006889303139344144,
+        "l2": 2.397341318973234e-05,
+        "epochs": 964,
+        "patience": 86
+      }
+    },
+    {
+      "numero": 14,
+      "valor": 0.42482364956551383,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 64,
+        "lr": 0.0060984811770186075,
+        "l2": 0.002179579156298715,
+        "epochs": 1246,
+        "patience": 60
+      }
+    },
+    {
+      "numero": 15,
+      "valor": 0.4411690891245061,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 25,
+        "lr": 0.0914052344611606,
+        "l2": 1.0635106950322778e-05,
+        "epochs": 219,
+        "patience": 104
+      }
+    },
+    {
+      "numero": 16,
+      "valor": 0.5011068644559951,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 27,
+        "lr": 0.007368152821982229,
+        "l2": 0.005436582997086304,
+        "epochs": 838,
+        "patience": 81
+      }
+    },
+    {
+      "numero": 17,
+      "valor": 0.4988341220199367,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 55,
+        "lr": 0.03867190088850484,
+        "l2": 0.0004183685904710364,
+        "epochs": 1247,
+        "patience": 117
+      }
+    },
+    {
+      "numero": 18,
+      "valor": 0.49477459780390265,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 34,
+        "lr": 0.010397686665997207,
+        "l2": 1.6855582487701759e-06,
+        "epochs": 843,
+        "patience": 55
+      }
+    },
+    {
+      "numero": 19,
+      "valor": 0.43975134605052424,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 94,
+        "lr": 0.0037940308914827642,
+        "l2": 3.2071123226602105e-05,
+        "epochs": 1495,
+        "patience": 95
+      }
+    },
+    {
+      "numero": 20,
+      "valor": 0.5007708280295353,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 19,
+        "lr": 0.048673489919075004,
+        "l2": 0.029153432637298013,
+        "epochs": 1066,
+        "patience": 118
+      }
+    },
+    {
+      "numero": 21,
+      "valor": 0.5025548010424938,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 33,
+        "lr": 0.013511957764675836,
+        "l2": 3.714687797647679e-06,
+        "epochs": 854,
+        "patience": 51
+      }
+    },
+    {
+      "numero": 22,
+      "valor": 0.4320868229648151,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 36,
+        "lr": 0.010725785576459933,
+        "l2": 8.890536873550709e-07,
+        "epochs": 658,
+        "patience": 60
+      }
+    },
+    {
+      "numero": 23,
+      "valor": 0.4883334572390118,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 22,
+        "lr": 0.02485016688781802,
+        "l2": 1.2063841500572375e-06,
+        "epochs": 904,
+        "patience": 39
+      }
+    },
+    {
+      "numero": 24,
+      "valor": 0.49174771539402756,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 23,
+        "lr": 0.0299441558047553,
+        "l2": 4.123364468381221e-07,
+        "epochs": 1154,
+        "patience": 42
+      }
+    },
+    {
+      "numero": 25,
+      "valor": 0.5054221075023699,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 70,
+        "lr": 0.0530571426436728,
+        "l2": 1.0528989027444579e-07,
+        "epochs": 1143,
+        "patience": 39
+      }
+    },
+    {
+      "numero": 26,
+      "valor": 0.5054248434303179,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 21,
+        "lr": 0.03381780976978519,
+        "l2": 4.098199244979787e-07,
+        "epochs": 1397,
+        "patience": 44
+      }
+    },
+    {
+      "numero": 27,
+      "valor": 0.49287981782072166,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 119,
+        "lr": 0.022844487615383057,
+        "l2": 1.170538585105342e-05,
+        "epochs": 1347,
+        "patience": 67
+      }
+    },
+    {
+      "numero": 28,
+      "valor": 0.44011230231250215,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 45,
+        "lr": 0.004605749722664112,
+        "l2": 1.371386643844943e-06,
+        "epochs": 1172,
+        "patience": 30
+      }
+    },
+    {
+      "numero": 29,
+      "valor": 0.5023982730302939,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 29,
+        "lr": 0.014049510541229918,
+        "l2": 7.062958466874761e-06,
+        "epochs": 948,
+        "patience": 41
+      }
+    },
+    {
+      "numero": 30,
+      "valor": 0.5036458930005556,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 55,
+        "lr": 0.06036377355656209,
+        "l2": 1.957880591974878e-06,
+        "epochs": 1192,
+        "patience": 150
+      }
+    },
+    {
+      "numero": 31,
+      "valor": 0.4930465059444285,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 119,
+        "lr": 0.024631607458002375,
+        "l2": 1.8591058601381498e-05,
+        "epochs": 1338,
+        "patience": 72
+      }
+    },
+    {
+      "numero": 32,
+      "valor": 0.5001957041100308,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 133,
+        "lr": 0.01960982655220142,
+        "l2": 6.487157001064849e-06,
+        "epochs": 1359,
+        "patience": 65
+      }
+    },
+    {
+      "numero": 33,
+      "valor": 0.4990808164084001,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 248,
+        "lr": 0.03330022619662156,
+        "l2": 5.824035672876012e-05,
+        "epochs": 1302,
+        "patience": 82
+      }
+    },
+    {
+      "numero": 34,
+      "valor": 0.4891410779966373,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 22,
+        "lr": 0.023117651655490835,
+        "l2": 8.553428384294022e-07,
+        "epochs": 1438,
+        "patience": 66
+      }
+    },
+    {
+      "numero": 35,
+      "valor": 0.4226022770044463,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 22,
+        "lr": 0.009766639406740028,
+        "l2": 4.3270310856164044e-07,
+        "epochs": 1451,
+        "patience": 20
+      }
+    },
+    {
+      "numero": 36,
+      "valor": 0.49456757914002714,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 16,
+        "lr": 0.016885174474072645,
+        "l2": 3.403545774871974e-07,
+        "epochs": 1496,
+        "patience": 45
+      }
+    },
+    {
+      "numero": 37,
+      "valor": 0.49517404764436834,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 29,
+        "lr": 0.03962170428242662,
+        "l2": 8.39234534562603e-07,
+        "epochs": 746,
+        "patience": 30
+      }
+    },
+    {
+      "numero": 38,
+      "valor": 0.5069791834635182,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 20,
+        "lr": 0.06313164167556751,
+        "l2": 2.771359725652872e-06,
+        "epochs": 995,
+        "patience": 56
+      }
+    },
+    {
+      "numero": 39,
+      "valor": 0.5020294993177175,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 24,
+        "lr": 0.0290537851993303,
+        "l2": 1.96608789591592e-07,
+        "epochs": 1077,
+        "patience": 35
+      }
+    },
+    {
+      "numero": 40,
+      "valor": 0.4201313859360203,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 18,
+        "lr": 0.014565698196345298,
+        "l2": 7.423602950682444e-07,
+        "epochs": 1243,
+        "patience": 88
+      }
+    },
+    {
+      "numero": 41,
+      "valor": 0.49364725044004354,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 173,
+        "lr": 0.024619062290713676,
+        "l2": 1.071130437005986e-05,
+        "epochs": 1424,
+        "patience": 64
+      }
+    },
+    {
+      "numero": 42,
+      "valor": 0.49780418565453943,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 99,
+        "lr": 0.02287477070802718,
+        "l2": 4.36886378412385e-06,
+        "epochs": 1288,
+        "patience": 67
+      }
+    },
+    {
+      "numero": 43,
+      "valor": 0.4158388370034852,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 75,
+        "lr": 0.009355015137882106,
+        "l2": 1.5364287342826353e-06,
+        "epochs": 1348,
+        "patience": 76
+      }
+    },
+    {
+      "numero": 44,
+      "valor": 0.5580507782324752,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 110,
+        "lr": 0.0004242085486702227,
+        "l2": 1.5049721259026982e-05,
+        "epochs": 1428,
+        "patience": 48
+      }
+    },
+    {
+      "numero": 45,
+      "valor": 0.5003964113076637,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 158,
+        "lr": 0.016391062035836672,
+        "l2": 3.887835368395122e-05,
+        "epochs": 1307,
+        "patience": 25
+      }
+    },
+    {
+      "numero": 46,
+      "valor": 0.8745307064203183,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 41,
+        "lr": 0.00010948352934438088,
+        "l2": 0.00015756137447919482,
+        "epochs": 925,
+        "patience": 77
+      }
+    },
+    {
+      "numero": 47,
+      "valor": 0.5038768349011609,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 16,
+        "lr": 0.04399586889561117,
+        "l2": 5.122194406086525e-07,
+        "epochs": 549,
+        "patience": 90
+      }
+    },
+    {
+      "numero": 48,
+      "valor": 0.4288576823323645,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 30,
+        "lr": 0.005600311558080757,
+        "l2": 5.982698319505726e-06,
+        "epochs": 1209,
+        "patience": 54
+      }
+    },
+    {
+      "numero": 49,
+      "valor": 0.42867419368363163,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 211,
+        "lr": 0.0028270726314846128,
+        "l2": 1.0375923982233747e-07,
+        "epochs": 1394,
+        "patience": 60
+      }
+    },
+    {
+      "numero": 50,
+      "valor": 0.4322562528934003,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 24,
+        "lr": 0.07515963701080793,
+        "l2": 2.2331031064448134e-07,
+        "epochs": 1066,
+        "patience": 34
+      }
+    },
+    {
+      "numero": 51,
+      "valor": 0.42152224052796733,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 110,
+        "lr": 0.026285268018957236,
+        "l2": 2.140919626490301e-05,
+        "epochs": 1345,
+        "patience": 69
+      }
+    },
+    {
+      "numero": 52,
+      "valor": 0.497809414443743,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 136,
+        "lr": 0.023571203965354347,
+        "l2": 0.00011114020610576087,
+        "epochs": 1457,
+        "patience": 74
+      }
+    },
+    {
+      "numero": 53,
+      "valor": 0.49192793012733044,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 123,
+        "lr": 0.09936565893494995,
+        "l2": 2.767579369510625e-06,
+        "epochs": 1358,
+        "patience": 81
+      }
+    },
+    {
+      "numero": 54,
+      "valor": 0.408504565662349,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 81,
+        "lr": 0.012164955364025598,
+        "l2": 1.2473477342726787e-05,
+        "epochs": 1496,
+        "patience": 95
+      }
+    },
+    {
+      "numero": 55,
+      "valor": 0.5000153183526816,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 26,
+        "lr": 0.01979112098458306,
+        "l2": 1.2366315498417694e-06,
+        "epochs": 905,
+        "patience": 72
+      }
+    },
+    {
+      "numero": 56,
+      "valor": 0.4106837028116603,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 59,
+        "lr": 0.007519981893281827,
+        "l2": 2.1263671969582036e-06,
+        "epochs": 1268,
+        "patience": 107
+      }
+    },
+    {
+      "numero": 57,
+      "valor": 0.41460436964383734,
+      "estado": "PRUNED",
+      "params": {
+        "hidden": 171,
+        "lr": 0.0375280581914346,
+        "l2": 1.9186943385523605e-05,
+        "epochs": 1126,
+        "patience": 61
+      }
+    },
+    {
+      "numero": 58,
+      "valor": 0.5033647860714607,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 48,
+        "lr": 0.02882580509215104,
+        "l2": 4.349226078257411e-06,
+        "epochs": 745,
+        "patience": 53
+      }
+    },
+    {
+      "numero": 59,
+      "valor": 0.48769660344345445,
+      "estado": "COMPLETE",
+      "params": {
+        "hidden": 38,
+        "lr": 0.04920758516153447,
+        "l2": 0.00021691434746401022,
+        "epochs": 378,
+        "patience": 81
+      }
+    }
+  ],
+  "importancias": {
+    "_no_disponible": "Tried to import 'sklearn' but failed. Please make sure that the package is installed correctly to use this feature. Actual error: No module named 'sklearn'."
+  },
+  "baselines": {
+    "persistencia": {
+      "rmse": 1648.0862964687485,
+      "mae": 792.0169922116581,
+      "nse": 0.0005144380921582037,
+      "kge": 0.4887847247445377,
+      "gral": 0.5152740322005456,
+      "pbias": -0.615132704675261,
+      "v_plus": 0.5268595041322314,
+      "v_minus": 0.5797766913319239,
+      "fa_wet": 0.47314049586776863,
+      "fa_dry": 0.4202233086680761
+    },
+    "persistencia x 0.90": {
+      "rmse": 1588.7129257469032,
+      "mae": 761.4100886961755,
+      "nse": 0.07217178329697584,
+      "kge": 0.4635863835400864,
+      "gral": 0.531191616948933,
+      "pbias": -10.553619434207732,
+      "v_plus": 0.6477272727272727,
+      "v_minus": 0.4870837737843552,
+      "fa_wet": 0.35227272727272724,
+      "fa_dry": 0.5129162262156448
+    },
+    "persistencia x 1.10": {
+      "rmse": 1742.542191085003,
+      "mae": 854.9588104684649,
+      "nse": -0.11641758121517824,
+      "kge": 0.4732982075236624,
+      "gral": 0.520647226136392,
+      "pbias": 9.32335402485722,
+      "v_plus": 0.44111570247933884,
+      "v_minus": 0.653904598308668,
+      "fa_wet": 0.5588842975206612,
+      "fa_dry": 0.34609540169133196
+    },
+    "climatologia 30 d": {
+      "rmse": 1542.6193446350267,
+      "mae": 765.5867314290541,
+      "nse": 0.13705539621074872,
+      "kge": 0.23871409567124252,
+      "gral": 0.6227529758291503,
+      "pbias": -6.034228990458278,
+      "v_plus": 0.5495867768595042,
+      "v_minus": 0.7494714587737844,
+      "fa_wet": 0.45041322314049587,
+      "fa_dry": 0.25052854122621565
+    }
+  },
+  "snapshot": {
+    "delta_version": 278,
+    "exported_at": "2026-08-30T11:54:32.693208+00:00",
+    "gate_rain": "lluvia_media_est_mm",
+    "groups": [
+      "caudal_estado",
+      "caudal_agregado_alta_frontera",
+      "lluvia_ratio",
+      "estacionalidad"
+    ]
+  }
+}

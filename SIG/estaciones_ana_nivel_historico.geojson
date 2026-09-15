@@ -1,0 +1,446 @@
+{
+  "type": "FeatureCollection",
+  "name": "estaciones_ana_nivel_historico",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -51.8578,
+          -27.5619
+        ]
+      },
+      "properties": {
+        "codigoestacao": "72680000",
+        "nombre": "PASSO COLOMBELLI",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1939-10-26 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 31567,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -53.2297,
+          -27.1756
+        ]
+      },
+      "properties": {
+        "codigoestacao": "74100000",
+        "nombre": "IRAÍ",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1941-07-02 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 41901,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -49.84,
+          -27.7022
+        ]
+      },
+      "properties": {
+        "codigoestacao": "71300000",
+        "nombre": "RIO BONITO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1942-03-01 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 42251,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -50.0611,
+          -28.09
+        ]
+      },
+      "properties": {
+        "codigoestacao": "70300000",
+        "nombre": "FAZENDA MINEIRA",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1942-03-15 12:00:00",
+        "ultimo_registro": "2026-02-28 12:00:00",
+        "n_registros": 30382,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -50.4428,
+          -28.1614
+        ]
+      },
+      "properties": {
+        "codigoestacao": "70500000",
+        "nombre": "COXILHA RICA",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1944-10-25 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 29432,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -52.1825,
+          -26.9486
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73300000",
+        "nombre": "BONITO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1951-08-09 12:00:00",
+        "ultimo_registro": "2026-02-28 12:00:00",
+        "n_registros": 27192,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -52.3258,
+          -26.5606
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73600000",
+        "nombre": "ABELARDO LUZ",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1953-04-23 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 25744,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -53.0089,
+          -26.9244
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73900000",
+        "nombre": "SAUDADES",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1953-04-27 12:00:00",
+        "ultimo_registro": "2026-05-24 19:30:00.0",
+        "n_registros": 30088,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -51.7547,
+          -27.8786
+        ]
+      },
+      "properties": {
+        "codigoestacao": "72430000",
+        "nombre": "PASSO DO GRANZOTTO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1957-05-14 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 25003,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -49.7786,
+          -27.8028
+        ]
+      },
+      "properties": {
+        "codigoestacao": "71200000",
+        "nombre": "VILA CANOAS",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1957-06-01 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 36660,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -51.8853,
+          -27.7067
+        ]
+      },
+      "properties": {
+        "codigoestacao": "72630000",
+        "nombre": "PASSO SANTA TEREZA",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1957-10-17 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 25001,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -49.6269,
+          -27.8297
+        ]
+      },
+      "properties": {
+        "codigoestacao": "71250000",
+        "nombre": "PONTE DO RIO JOÃO PAULO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1959-09-01 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 24102,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -50.3019,
+          -28.4394
+        ]
+      },
+      "properties": {
+        "codigoestacao": "70200000",
+        "nombre": "INVERNADA VELHA",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1964-06-08 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 22401,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -52.5228,
+          -27.1656
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73350000",
+        "nombre": "BARCA IRANI",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1969-09-17 12:00:00",
+        "ultimo_registro": "2025-10-31 12:00:00",
+        "n_registros": 20402,
+        "activa_2026": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -52.9544,
+          -27.0419
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73960000",
+        "nombre": "BARRA DO CHAPECÓ AUX.",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1972-03-01 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 30912,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -52.7503,
+          -26.76
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73765000",
+        "nombre": "PASSO QUILOMBO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1976-01-13 12:00:00",
+        "ultimo_registro": "2026-02-28 12:00:00",
+        "n_registros": 18115,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -51.2581,
+          -27.0881
+        ]
+      },
+      "properties": {
+        "codigoestacao": "72810000",
+        "nombre": "TANGARÁ",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1976-03-12 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 29740,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -49.8025,
+          -28.3694
+        ]
+      },
+      "properties": {
+        "codigoestacao": "70100000",
+        "nombre": "DESPRAIADO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1976-04-21 12:00:00",
+        "ultimo_registro": "2026-03-31 12:00:00",
+        "n_registros": 18137,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -51.0756,
+          -26.8958
+        ]
+      },
+      "properties": {
+        "codigoestacao": "72715000",
+        "nombre": "RIO DAS ANTAS",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1976-04-24 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 28666,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -52.7344,
+          -26.8175
+        ]
+      },
+      "properties": {
+        "codigoestacao": "73770000",
+        "nombre": "PORTO FAE NOVO",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1979-01-16 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 28630,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -50.1128,
+          -27.5078
+        ]
+      },
+      "properties": {
+        "codigoestacao": "71350001",
+        "nombre": "ENCRUZILHADA II",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1984-07-01 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 26797,
+        "activa_2026": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -51.4811,
+          -27.1594
+        ]
+      },
+      "properties": {
+        "codigoestacao": "72849000",
+        "nombre": "JOAÇABA I",
+        "tipo_estacion": "Fluviometrica",
+        "subcuenca": "alta_frontera",
+        "primer_registro": "1985-12-11 12:00:00",
+        "ultimo_registro": "2026-08-04 23:45:00.0",
+        "n_registros": 26118,
+        "activa_2026": true
+      }
+    }
+  ]
+}

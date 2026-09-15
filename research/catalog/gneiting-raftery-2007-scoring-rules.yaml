@@ -1,0 +1,20 @@
+slug: gneiting-raftery-2007-scoring-rules
+title: >-
+  Strictly Proper Scoring Rules, Prediction, and Estimation
+authors:
+  - "Gneiting, Tilmann"
+  - "Raftery, Adrian E."
+year: 2007
+venue: "Journal of the American Statistical Association"
+volume: "102"
+number: "477"
+pages: "359--378"
+doi: "10.1198/016214506000001437"
+bibtype: article
+tipo: paper
+tags: [scoring-propio, fundamento, probabilistico]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  La referencia canónica de scores propios. Define el marco en el que se discute si G-RAL es manipulable o no, y de dónde sale el CRPS del camino probabilístico.

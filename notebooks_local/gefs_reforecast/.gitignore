@@ -1,0 +1,10 @@
+# Datos y estado regenerables (re-descargando de GEFS o re-bajando desde el Volume de
+# Databricks): no tiene sentido versionarlos. Mismo criterio que ana_historic_backfill/.gitignore
+# e inmet_backfill/.gitignore.
+output_json/
+output_json_staged/
+gefs_backfill_state.json
+tmp_grib/
+backfill.lock
+*.log
+__pycache__/

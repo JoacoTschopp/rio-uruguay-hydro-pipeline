@@ -1,0 +1,366 @@
+<title>Export CSV de ANA &mdash; qu&eacute; trae y c&oacute;mo usarlo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#eef2f5; --surface:#ffffff; --surface-2:#f5f8fa; --surface-3:#eaeff3;
+  --ink:#0e1f2b; --ink-2:#3a4b57; --ink-3:#647581; --line:#d6dfe6; --line-2:#c3cfd8;
+  --caudal:#0e7490; --rio:#1d4ed8;
+  --ok:#15803d; --ok-bg:#dcf3e4; --warn:#b45309; --warn-bg:#fbedd6; --crit:#b91c1c; --crit-bg:#f8dcdc;
+  --out:#71818c; --out-bg:#e7ecf0;
+  --shadow:0 1px 2px rgba(14,31,43,.06),0 8px 24px -12px rgba(14,31,43,.18);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --rio:#7aa0ff;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --out:#7e91a0; --out-bg:#182731;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --ground:#0b141c; --surface:#111e28; --surface-2:#152430; --surface-3:#1b2e3b;
+  --ink:#e9f1f5; --ink-2:#a7bac6; --ink-3:#74899a; --line:#24404f; --line-2:#2f4f61;
+  --caudal:#3bb4cc; --rio:#7aa0ff;
+  --ok:#5ec888; --ok-bg:#123324; --warn:#e0a45a; --warn-bg:#3a2a12; --crit:#ef8a8a; --crit-bg:#3a1717;
+  --out:#7e91a0; --out-bg:#182731;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;text-wrap:balance;line-height:1.15;margin:0}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.93em}
+.mast{border-bottom:1px solid var(--line);background:linear-gradient(160deg,var(--surface),var(--surface-2) 60%,var(--surface-3))}
+.mast .wrap{padding:52px 24px 36px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--caudal);font-weight:600;margin:0 0 18px}
+.mast h1{font-size:clamp(1.9rem,4.6vw,3rem);font-weight:600;letter-spacing:-.015em}
+.mast h1 em{font-style:italic;color:var(--caudal)}
+.lede{margin:18px 0 0;max-width:68ch;font-size:1.06rem;color:var(--ink-2)}
+.metaline{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:24px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.chip b{color:var(--ink);font-weight:600}
+section{padding:40px 0}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--caudal);font-weight:600;
+  border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+.sec-head h2{font-size:1.5rem;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px 26px;box-shadow:var(--shadow)}
+.card+.card{margin-top:16px}
+p{margin:0 0 14px;color:var(--ink-2)} p:last-child{margin-bottom:0}
+ul{margin:0 0 14px;padding-left:22px;color:var(--ink-2)} li{margin-bottom:7px}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:6px}
+th{text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace}
+tr:last-child td{border-bottom:none}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.tag-ok{background:var(--ok-bg);color:var(--ok)}
+.tag-dup{background:var(--out-bg);color:var(--out)}
+.tag-no{background:var(--out-bg);color:var(--ink-3)}
+.callout{border-left:3px solid var(--crit);background:var(--crit-bg);border-radius:0 10px 10px 0;padding:16px 18px;margin:18px 0}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+.callout.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+.callout h4{margin:0 0 6px;font-family:"IBM Plex Sans",sans-serif;font-size:14.5px;font-weight:600;color:var(--ink)}
+.callout p,.callout ul{color:var(--ink-2);margin:0}
+.callout ul{margin-top:8px}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+  overflow-x:auto;font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-2);margin:0 0 14px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
+.stat{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.stat .v{font-family:"IBM Plex Mono",monospace;font-size:1.45rem;font-weight:600;color:var(--caudal)}
+.stat .l{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+.chart{width:100%;height:auto;display:block;margin-top:8px}
+.bar{fill:var(--caudal);opacity:.88} .bar:hover{opacity:1}
+.bar-overflow{fill:var(--warn)} .bar-daily{fill:var(--out)} .bar-hf{fill:var(--caudal)}
+.bar-val{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--ink-2)}
+.axis-lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;fill:var(--ink-3)}
+.axis-title{font-size:12px;fill:var(--ink-3)}
+.legend{display:flex;gap:18px;margin-top:10px;font-size:12.5px;color:var(--ink-3);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.foot{border-top:1px solid var(--line);padding:28px 0;color:var(--ink-3);font-size:13px}
+</style>
+
+<header class="mast"><div class="wrap">
+  <p class="eyebrow">R&iacute;o Uruguay &middot; estaci&oacute;n objetivo 74100000</p>
+  <h1>El export CSV de ANA: qu&eacute; trae, c&oacute;mo leerlo y <em>qu&eacute; resuelve</em></h1>
+  <p class="lede">
+    An&aacute;lisis del ZIP descargado de Hidroweb el 2026-08-28. Responde qu&eacute; archivo sirve,
+    c&oacute;mo extraerlo, y las tres preguntas abiertas: el hueco de datos, la multi-medici&oacute;n
+    intrad&iacute;a, y qu&eacute; valor conviene tomar como referencia diaria.
+  </p>
+  <div class="metaline">
+    <span class="chip">7 archivos &middot; <b>229 KB</b></span>
+    <span class="chip">Cotas: <b>1941-07-02 &rarr; 2026-03-31</b></span>
+    <span class="chip">Generado: <b>2026-08-28</b></span>
+  </div>
+</div></header>
+
+<main class="wrap">
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>Qu&eacute; archivo tiene lo que necesitamos</h2></div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Archivo</th><th>Contenido</th><th class="num">Filas</th><th>Cobertura</th><th>Veredicto</th></tr></thead>
+      <tbody>
+<tr><td class="mono"><b>74100000_Cotas.csv</b></td><td>Nivel (cm)</td><td class="num">2.579</td>
+  <td>1941-07-02 &rarr; 2026-03-31</td><td><span class="tag tag-ok">Lo que necesitamos</span></td></tr>
+<tr><td class="mono"><b>74100000_Vazoes.csv</b></td><td>Caudal (m&sup3;/s)</td><td class="num">750</td>
+  <td>1948-08-03 &rarr; 2026-03-31</td><td><span class="tag tag-ok">Lo que necesitamos</span></td></tr>
+<tr><td class="mono">74100000_CurvaDescarga.csv</td><td>Curvas de aforo (coef. por tramo)</td><td class="num">28</td>
+  <td>1948 &rarr; vigente</td><td><span class="tag tag-dup">Ya lo tenemos (API)</span></td></tr>
+<tr><td class="mono">74100000_ResumoDescarga.csv</td><td>Aforos (mediciones de caudal)</td><td class="num">524</td>
+  <td>hist&oacute;rico</td><td><span class="tag tag-dup">Ya lo tenemos (API)</span></td></tr>
+<tr><td class="mono">74100000_Sedimentos.csv</td><td>Sedimentos en suspensi&oacute;n</td><td class="num">98</td>
+  <td>hist&oacute;rico</td><td><span class="tag tag-no">Fuera de alcance</span></td></tr>
+<tr><td class="mono">74100000_QualAgua.csv</td><td>Calidad de agua</td><td class="num">~490</td>
+  <td>hist&oacute;rico</td><td><span class="tag tag-no">Fuera de alcance</span></td></tr>
+<tr><td class="mono">74100000_PerfilTransversal.csv</td><td>Perfil batim&eacute;trico del cauce</td><td class="num">18</td>
+  <td>hist&oacute;rico</td><td><span class="tag tag-no">Fuera de alcance</span></td></tr>
+</tbody>
+    </table>
+    <p style="margin-top:16px">
+      Los dos que importan son <code>Cotas.csv</code> (nivel, el insumo del target) y
+      <code>Vazoes.csv</code> (caudal, <b>el target mismo</b>, ya calculado por ANA con su curva oficial).
+      <code>CurvaDescarga</code> y <code>ResumoDescarga</code> traen lo mismo que ya bajamos por la API
+      de curvas de aforo &mdash; sirven como verificaci&oacute;n cruzada, no como fuente nueva.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>C&oacute;mo extraerlos</h2></div>
+  <div class="card">
+    <p>El formato <b>no</b> es el CSV plano que hoy lee el pipeline. Tiene cuatro trampas:</p>
+    <ul>
+      <li><b>Pre&aacute;mbulo institucional</b> de <b>15 l&iacute;neas</b> (14 en <code>CurvaDescarga</code>)
+        antes del header real &mdash; hay que saltearlas buscando la l&iacute;nea que arranca con <code>EstacaoCodigo</code>.</li>
+      <li><b>Separador <code>;</code></b>, no coma.</li>
+      <li><b>Encoding <code>latin-1</code></b> (acentos portugueses); leerlo como UTF-8 rompe.</li>
+      <li><b>Decimal con coma</b> (<code>"675,0"</code>) y entrecomillado &mdash; hay que normalizar antes de castear.</li>
+    </ul>
+    <p>Los datos vienen en formato bolet&iacute;n mensual: <b>una fila por mes</b>, con columnas
+      <code>Cota01</code>..<code>Cota31</code> (y <code>Cota01Status</code>..<code>Cota31Status</code>).
+      Para obtener la serie diaria hay que hacer <i>unpivot</i>, exactamente el patr&oacute;n que ya usa
+      <code>Historic_Nivel_ANA.ipynb</code>.</p>
+<pre>lines = open(path, encoding="latin-1").read().splitlines()
+i = next(k for k, l in enumerate(lines) if l.startswith("EstacaoCodigo"))
+rows = csv.DictReader(io.StringIO("\n".join(lines[i:])), delimiter=";")
+# luego unpivot Cota01..Cota31 -> (fecha, valor), decimal con coma -> punto</pre>
+    <p><b>78 columnas</b> contra las 37 del CSV que hoy est&aacute; en el Volume. Las tres nuevas que
+      cambian todo: <code>NivelConsistencia</code>, <code>hora</code> y <code>MediaDiaria</code>.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Qu&eacute; datos contiene realmente</h2></div>
+  <div class="card">
+    <h3 style="font-size:1.05rem;margin-bottom:10px">Dos niveles de consistencia, no uno</h3>
+    <p>ANA publica cada mes hasta <b>dos veces</b>: <code>NivelConsistencia=1</code> (bruto, sin revisar)
+      y <code>=2</code> (consistido, validado por ANA). <b>924 meses</b> tienen ambos.
+      Si se cargan sin filtrar, <b>cada d&iacute;a de esos meses se duplica</b>.</p>
+    <table>
+      <thead><tr><th>Nivel</th><th class="num">D&iacute;as</th><th>Rango</th><th>Estructura horaria</th></tr></thead>
+      <tbody>
+        <tr><td><b>2 &mdash; Consistido</b></td><td class="num">29.842</td><td>1941-07-02 &rarr; <b>2023-12-31</b></td>
+          <td>siempre media diaria (sin hora)</td></tr>
+        <tr><td><b>1 &mdash; Bruto</b></td><td class="num">28.238</td><td>1941-07-02 &rarr; <b>2026-03-31</b></td>
+          <td>mixta: media diaria, y/o 07:00 + 17:00</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:14px">La consistencia <b>corta en 2023-12-31</b>: de 2024 en adelante s&oacute;lo hay
+      dato bruto. Y en <b>1.365 d&iacute;as</b> el valor bruto y el consistido <b>diﬁeren</b> &mdash;
+      la elecci&oacute;n entre uno y otro no es cosm&eacute;tica.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="font-size:1.05rem;margin-bottom:10px">La &laquo;media diaria&raquo; es el promedio de dos lecturas</h3>
+    <p>Verificado sobre <b>9.264 d&iacute;as</b> que traen las tres columnas: la media diaria de ANA es
+      <b>exactamente <code>(07:00 + 17:00) / 2</code></b> &mdash; coincidencia exacta en el 82,4% y
+      diferencia &le; 0,5 cm (puro redondeo) en el resto. <b>Cero</b> casos que difieran m&aacute;s.</p>
+    <div class="callout warn">
+      <h4>No es una media diaria real, es un promedio de dos puntos</h4>
+      <p>Contrastado contra la telemetr&iacute;a de 15 minutos en los 58 d&iacute;as que se solapan:
+        esas dos lecturas capturan una <b>mediana del 20% del rango diario real</b>, y la media
+        resultante tiene un <b>sesgo de &minus;18,6 cm</b> (|error| mediano 18,0 cm, m&aacute;ximo 60,9 cm)
+        contra la media verdadera de 96 lecturas. El nombre &laquo;media diaria&raquo; induce a error.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Qu&eacute; fechas tienen una medici&oacute;n y cu&aacute;les m&aacute;s de una</h2></div>
+  <div class="card">
+    <div class="callout">
+      <h4>Correcci&oacute;n a mi informe anterior: la alta frecuencia arranca en 2019, no en 2026</h4>
+      <p>En el informe previo report&eacute; que la telemetr&iacute;a empezaba el 2026-01-31. Eso era cierto
+        para <code>weather.bronze.nivel_ana</code>, pero <b>no</b> para el dato disponible: la tabla
+        <code>weather.bronze.ana_rio_uruguai</code> (todas las estaciones) tiene lecturas cada 15 minutos
+        para el target <b>desde el 2019-01-09</b> &mdash; <b>2.752 d&iacute;as</b>, no 178. La limitaci&oacute;n
+        era de nuestro landing dedicado, no de la fuente.</p>
+    </div>
+    <table>
+      <thead><tr><th>Tramo</th><th>Frecuencia</th><th>D&oacute;nde vive</th><th class="num">D&iacute;as</th></tr></thead>
+      <tbody>
+        <tr><td><b>1941-07-02 &rarr; 1994-12</b></td><td>1 lectura/d&iacute;a (media diaria)</td>
+          <td>CSV bolet&iacute;n</td><td class="num">~19.500</td></tr>
+        <tr><td><b>1995-01 &rarr; 2018-12</b></td><td>2 lecturas/d&iacute;a (07:00 y 17:00) en el bruto;<br>
+          s&oacute;lo la media en el consistido</td><td>CSV bolet&iacute;n</td><td class="num">~8.700</td></tr>
+        <tr><td><b>2019-01-09 &rarr; hoy</b></td><td><b>~96 lecturas/d&iacute;a</b> (cada 15 min)</td>
+          <td><code>ana_rio_uruguai</code></td><td class="num">2.752</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:16px">Lecturas promedio por d&iacute;a, mes a mes (2018 en adelante). El salto de
+      2019-01 es la puesta en marcha de la telemetr&iacute;a; los dos huecos de 2021 son ca&iacute;das reales
+      de la estaci&oacute;n.</p>
+    <svg viewBox="0 0 860 200" class="chart" role="img" aria-label="Lecturas promedio por día y por mes, 2018 a 2026"><line x1="46" y1="16" x2="844" y2="16" stroke="var(--line)" stroke-width="1"/><text x="38" y="20" text-anchor="end" class="axis-lbl">97</text><line x1="46" y1="160.0" x2="844" y2="160.0" stroke="var(--line-2)" stroke-width="1.5"/><rect class="bar bar-daily" x="46.0" y="158.5" width="6.2" height="1.5"><title>2018-01: 1 lecturas/día</title></rect><text x="49.1" y="176.0" text-anchor="middle" class="axis-lbl">2018</text><rect class="bar bar-daily" x="53.7" y="158.5" width="6.2" height="1.5"><title>2018-02: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="61.4" y="158.5" width="6.2" height="1.5"><title>2018-03: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="69.1" y="158.5" width="6.2" height="1.5"><title>2018-04: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="76.8" y="158.5" width="6.2" height="1.5"><title>2018-05: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="84.4" y="158.5" width="6.2" height="1.5"><title>2018-06: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="92.1" y="158.5" width="6.2" height="1.5"><title>2018-07: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="99.8" y="158.5" width="6.2" height="1.5"><title>2018-08: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="107.5" y="158.5" width="6.2" height="1.5"><title>2018-09: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="115.2" y="158.5" width="6.2" height="1.5"><title>2018-10: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="122.9" y="158.5" width="6.2" height="1.5"><title>2018-11: 1 lecturas/día</title></rect><rect class="bar bar-daily" x="130.6" y="158.5" width="6.2" height="1.5"><title>2018-12: 1 lecturas/día</title></rect><rect class="bar bar-hf" x="138.2" y="52.8" width="6.2" height="107.2"><title>2019-01: 72.2 lecturas/día</title></rect><text x="141.3" y="176.0" text-anchor="middle" class="axis-lbl">2019</text><rect class="bar bar-hf" x="145.9" y="16.1" width="6.2" height="143.9"><title>2019-02: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="153.6" y="16.0" width="6.2" height="144.0"><title>2019-03: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="161.3" y="16.1" width="6.2" height="143.9"><title>2019-04: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="169.0" y="77.5" width="6.2" height="82.5"><title>2019-05: 55.6 lecturas/día</title></rect><rect class="bar bar-hf" x="176.7" y="16.3" width="6.2" height="143.7"><title>2019-06: 96.8 lecturas/día</title></rect><rect class="bar bar-hf" x="184.4" y="16.0" width="6.2" height="144.0"><title>2019-07: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="192.1" y="16.0" width="6.2" height="144.0"><title>2019-08: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="199.8" y="16.0" width="6.2" height="144.0"><title>2019-09: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="207.4" y="16.0" width="6.2" height="144.0"><title>2019-10: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="215.1" y="16.0" width="6.2" height="144.0"><title>2019-11: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="222.8" y="16.0" width="6.2" height="144.0"><title>2019-12: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="230.5" y="16.0" width="6.2" height="144.0"><title>2020-01: 97 lecturas/día</title></rect><text x="233.6" y="176.0" text-anchor="middle" class="axis-lbl">2020</text><rect class="bar bar-hf" x="238.2" y="16.0" width="6.2" height="144.0"><title>2020-02: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="245.9" y="16.0" width="6.2" height="144.0"><title>2020-03: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="253.6" y="16.0" width="6.2" height="144.0"><title>2020-04: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="261.2" y="16.0" width="6.2" height="144.0"><title>2020-05: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="268.9" y="16.0" width="6.2" height="144.0"><title>2020-06: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="276.6" y="16.0" width="6.2" height="144.0"><title>2020-07: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="284.3" y="16.1" width="6.2" height="143.9"><title>2020-08: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="292.0" y="16.6" width="6.2" height="143.4"><title>2020-09: 96.6 lecturas/día</title></rect><rect class="bar bar-hf" x="299.7" y="18.8" width="6.2" height="141.2"><title>2020-10: 95.1 lecturas/día</title></rect><rect class="bar bar-hf" x="307.4" y="20.9" width="6.2" height="139.1"><title>2020-11: 93.7 lecturas/día</title></rect><rect class="bar bar-hf" x="315.1" y="16.6" width="6.2" height="143.4"><title>2020-12: 96.6 lecturas/día</title></rect><rect class="bar bar-hf" x="322.8" y="16.3" width="6.2" height="143.7"><title>2021-01: 96.8 lecturas/día</title></rect><text x="325.8" y="176.0" text-anchor="middle" class="axis-lbl">2021</text><rect class="bar bar-hf" x="330.4" y="16.0" width="6.2" height="144.0"><title>2021-02: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="338.1" y="16.0" width="6.2" height="144.0"><title>2021-03: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="345.8" y="16.0" width="6.2" height="144.0"><title>2021-04: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="353.5" y="42.0" width="6.2" height="118.0"><title>2021-05: 79.5 lecturas/día</title></rect><rect class="bar bar-hf" x="361.2" y="155.5" width="6.2" height="4.5"><title>2021-06: 3 lecturas/día</title></rect><rect class="bar bar-hf" x="368.9" y="155.4" width="6.2" height="4.6"><title>2021-07: 3.1 lecturas/día</title></rect><rect class="bar bar-hf" x="376.6" y="44.7" width="6.2" height="115.3"><title>2021-08: 77.7 lecturas/día</title></rect><rect class="bar bar-hf" x="384.2" y="16.1" width="6.2" height="143.9"><title>2021-09: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="391.9" y="16.0" width="6.2" height="144.0"><title>2021-10: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="399.6" y="16.7" width="6.2" height="143.3"><title>2021-11: 96.5 lecturas/día</title></rect><rect class="bar bar-hf" x="407.3" y="17.9" width="6.2" height="142.1"><title>2021-12: 95.7 lecturas/día</title></rect><rect class="bar bar-hf" x="415.0" y="16.1" width="6.2" height="143.9"><title>2022-01: 96.9 lecturas/día</title></rect><text x="418.1" y="176.0" text-anchor="middle" class="axis-lbl">2022</text><rect class="bar bar-hf" x="422.7" y="16.0" width="6.2" height="144.0"><title>2022-02: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="430.4" y="19.9" width="6.2" height="140.1"><title>2022-03: 94.4 lecturas/día</title></rect><rect class="bar bar-hf" x="438.1" y="16.0" width="6.2" height="144.0"><title>2022-04: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="445.8" y="16.1" width="6.2" height="143.9"><title>2022-05: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="453.4" y="16.0" width="6.2" height="144.0"><title>2022-06: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="461.1" y="16.0" width="6.2" height="144.0"><title>2022-07: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="468.8" y="16.0" width="6.2" height="144.0"><title>2022-08: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="476.5" y="16.0" width="6.2" height="144.0"><title>2022-09: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="484.2" y="16.0" width="6.2" height="144.0"><title>2022-10: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="491.9" y="16.9" width="6.2" height="143.1"><title>2022-11: 96.4 lecturas/día</title></rect><rect class="bar bar-hf" x="499.6" y="16.9" width="6.2" height="143.1"><title>2022-12: 96.4 lecturas/día</title></rect><rect class="bar bar-hf" x="507.2" y="16.1" width="6.2" height="143.9"><title>2023-01: 96.9 lecturas/día</title></rect><text x="510.3" y="176.0" text-anchor="middle" class="axis-lbl">2023</text><rect class="bar bar-hf" x="514.9" y="16.1" width="6.2" height="143.9"><title>2023-02: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="522.6" y="16.0" width="6.2" height="144.0"><title>2023-03: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="530.3" y="16.0" width="6.2" height="144.0"><title>2023-04: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="538.0" y="16.0" width="6.2" height="144.0"><title>2023-05: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="545.7" y="16.0" width="6.2" height="144.0"><title>2023-06: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="553.4" y="16.0" width="6.2" height="144.0"><title>2023-07: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="561.1" y="16.0" width="6.2" height="144.0"><title>2023-08: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="568.8" y="16.0" width="6.2" height="144.0"><title>2023-09: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="576.4" y="16.0" width="6.2" height="144.0"><title>2023-10: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="584.1" y="17.0" width="6.2" height="143.0"><title>2023-11: 96.3 lecturas/día</title></rect><rect class="bar bar-hf" x="591.8" y="16.1" width="6.2" height="143.9"><title>2023-12: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="599.5" y="16.7" width="6.2" height="143.3"><title>2024-01: 96.5 lecturas/día</title></rect><text x="602.6" y="176.0" text-anchor="middle" class="axis-lbl">2024</text><rect class="bar bar-hf" x="607.2" y="16.6" width="6.2" height="143.4"><title>2024-02: 96.6 lecturas/día</title></rect><rect class="bar bar-hf" x="614.9" y="16.0" width="6.2" height="144.0"><title>2024-03: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="622.6" y="16.0" width="6.2" height="144.0"><title>2024-04: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="630.2" y="16.0" width="6.2" height="144.0"><title>2024-05: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="637.9" y="16.0" width="6.2" height="144.0"><title>2024-06: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="645.6" y="16.0" width="6.2" height="144.0"><title>2024-07: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="653.3" y="16.0" width="6.2" height="144.0"><title>2024-08: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="661.0" y="16.1" width="6.2" height="143.9"><title>2024-09: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="668.7" y="16.0" width="6.2" height="144.0"><title>2024-10: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="676.4" y="16.1" width="6.2" height="143.9"><title>2024-11: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="684.1" y="17.2" width="6.2" height="142.8"><title>2024-12: 96.2 lecturas/día</title></rect><rect class="bar bar-hf" x="691.8" y="16.0" width="6.2" height="144.0"><title>2025-01: 97 lecturas/día</title></rect><text x="694.8" y="176.0" text-anchor="middle" class="axis-lbl">2025</text><rect class="bar bar-hf" x="699.4" y="16.0" width="6.2" height="144.0"><title>2025-02: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="707.1" y="16.0" width="6.2" height="144.0"><title>2025-03: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="714.8" y="16.0" width="6.2" height="144.0"><title>2025-04: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="722.5" y="16.0" width="6.2" height="144.0"><title>2025-05: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="730.2" y="16.0" width="6.2" height="144.0"><title>2025-06: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="737.9" y="16.0" width="6.2" height="144.0"><title>2025-07: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="745.6" y="16.0" width="6.2" height="144.0"><title>2025-08: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="753.2" y="16.1" width="6.2" height="143.9"><title>2025-09: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="760.9" y="16.0" width="6.2" height="144.0"><title>2025-10: 97 lecturas/día</title></rect><rect class="bar bar-hf" x="768.6" y="16.4" width="6.2" height="143.6"><title>2025-11: 96.7 lecturas/día</title></rect><rect class="bar bar-hf" x="776.3" y="16.1" width="6.2" height="143.9"><title>2025-12: 96.9 lecturas/día</title></rect><rect class="bar bar-hf" x="784.0" y="16.0" width="6.2" height="144.0"><title>2026-01: 97 lecturas/día</title></rect><text x="787.1" y="176.0" text-anchor="middle" class="axis-lbl">2026</text><rect class="bar bar-hf" x="791.7" y="17.6" width="6.2" height="142.4"><title>2026-02: 95.9 lecturas/día</title></rect><rect class="bar bar-hf" x="799.4" y="25.2" width="6.2" height="134.8"><title>2026-03: 90.8 lecturas/día</title></rect><rect class="bar bar-hf" x="807.1" y="17.5" width="6.2" height="142.5"><title>2026-04: 96 lecturas/día</title></rect><rect class="bar bar-hf" x="814.8" y="17.5" width="6.2" height="142.5"><title>2026-05: 96 lecturas/día</title></rect><rect class="bar bar-hf" x="822.4" y="17.5" width="6.2" height="142.5"><title>2026-06: 96 lecturas/día</title></rect><rect class="bar bar-hf" x="830.1" y="21.5" width="6.2" height="138.5"><title>2026-07: 93.3 lecturas/día</title></rect><rect class="bar bar-hf" x="837.8" y="17.5" width="6.2" height="142.5"><title>2026-08: 96 lecturas/día</title></rect></svg>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--out)"></span>1 lectura/d&iacute;a</span>
+      <span><span class="swatch" style="background:var(--caudal)"></span>Telemetr&iacute;a (~96/d&iacute;a)</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Variabilidad intrad&iacute;a real &mdash; ahora sobre 7 a&ntilde;os</h2></div>
+  <div class="card">
+    <p>Recalculado sobre los <b>2.337 d&iacute;as</b> con al menos 24 lecturas (2019-01-09 &rarr; 2026-08-25),
+      contra los 177 del informe anterior. Los n&uacute;meros se sostienen y ahora tienen respaldo estad&iacute;stico serio.</p>
+    <div class="stat-grid">
+      <div class="stat"><div class="v">27.4 cm</div><div class="l">Desv&iacute;o est&aacute;ndar mediano/d&iacute;a</div></div>
+      <div class="stat"><div class="v">29.8 cm</div><div class="l">Promedio</div></div>
+      <div class="stat"><div class="v">48.9 cm</div><div class="l">Percentil 90</div></div>
+      <div class="stat"><div class="v">264 cm</div><div class="l">M&aacute;ximo</div></div>
+      <div class="stat"><div class="v">96 cm</div><div class="l">Rango diario mediano</div></div>
+      <div class="stat"><div class="v">2.337</div><div class="l">D&iacute;as analizados</div></div>
+    </div>
+    <svg viewBox="0 0 860 300" class="chart" role="img" aria-label="Histograma del desvío estándar intradía, 2.337 días de telemetría 2019-2026"><line x1="46" y1="252.0" x2="844" y2="252.0" stroke="var(--line)" stroke-width="1"/><text x="38" y="256.0" text-anchor="end" class="axis-lbl">0</text><line x1="46" y1="193.0" x2="844" y2="193.0" stroke="var(--line)" stroke-width="1"/><text x="38" y="197.0" text-anchor="end" class="axis-lbl">71</text><line x1="46" y1="134.0" x2="844" y2="134.0" stroke="var(--line)" stroke-width="1"/><text x="38" y="138.0" text-anchor="end" class="axis-lbl">142</text><line x1="46" y1="75.0" x2="844" y2="75.0" stroke="var(--line)" stroke-width="1"/><text x="38" y="79.0" text-anchor="end" class="axis-lbl">214</text><line x1="46" y1="16.0" x2="844" y2="16.0" stroke="var(--line)" stroke-width="1"/><text x="38" y="20.0" text-anchor="end" class="axis-lbl">285</text><line x1="46" y1="252.0" x2="844" y2="252.0" stroke="var(--line-2)" stroke-width="1.5"/><rect class="bar" x="46.0" y="135.2" width="55.8" height="116.8" rx="3"><title>0–5 cm: 141 días</title></rect><text x="73.9" y="129.2" text-anchor="middle" class="bar-val">141</text><text x="73.9" y="270.0" text-anchor="middle" class="axis-lbl">0–5</text><rect class="bar" x="107.8" y="147.7" width="55.8" height="104.3" rx="3"><title>5–10 cm: 126 días</title></rect><text x="135.8" y="141.7" text-anchor="middle" class="bar-val">126</text><text x="135.8" y="270.0" text-anchor="middle" class="axis-lbl">5–10</text><rect class="bar" x="169.7" y="70.7" width="55.8" height="181.3" rx="3"><title>10–15 cm: 219 días</title></rect><text x="197.6" y="64.7" text-anchor="middle" class="bar-val">219</text><text x="197.6" y="270.0" text-anchor="middle" class="axis-lbl">10–15</text><rect class="bar" x="231.5" y="16.0" width="55.8" height="236.0" rx="3"><title>15–20 cm: 285 días</title></rect><text x="259.5" y="10.0" text-anchor="middle" class="bar-val">285</text><text x="259.5" y="270.0" text-anchor="middle" class="axis-lbl">15–20</text><rect class="bar" x="293.4" y="37.5" width="55.8" height="214.5" rx="3"><title>20–25 cm: 259 días</title></rect><text x="321.3" y="31.5" text-anchor="middle" class="bar-val">259</text><text x="321.3" y="270.0" text-anchor="middle" class="axis-lbl">20–25</text><rect class="bar" x="355.2" y="28.4" width="55.8" height="223.6" rx="3"><title>25–30 cm: 270 días</title></rect><text x="383.2" y="22.4" text-anchor="middle" class="bar-val">270</text><text x="383.2" y="270.0" text-anchor="middle" class="axis-lbl">25–30</text><rect class="bar" x="417.1" y="31.7" width="55.8" height="220.3" rx="3"><title>30–35 cm: 266 días</title></rect><text x="445.0" y="25.7" text-anchor="middle" class="bar-val">266</text><text x="445.0" y="270.0" text-anchor="middle" class="axis-lbl">30–35</text><rect class="bar" x="478.9" y="72.3" width="55.8" height="179.7" rx="3"><title>35–40 cm: 217 días</title></rect><text x="506.8" y="66.3" text-anchor="middle" class="bar-val">217</text><text x="506.8" y="270.0" text-anchor="middle" class="axis-lbl">35–40</text><rect class="bar" x="540.8" y="82.2" width="55.8" height="169.8" rx="3"><title>40–45 cm: 205 días</title></rect><text x="568.7" y="76.2" text-anchor="middle" class="bar-val">205</text><text x="568.7" y="270.0" text-anchor="middle" class="axis-lbl">40–45</text><rect class="bar" x="602.6" y="139.4" width="55.8" height="112.6" rx="3"><title>45–50 cm: 136 días</title></rect><text x="630.5" y="133.4" text-anchor="middle" class="bar-val">136</text><text x="630.5" y="270.0" text-anchor="middle" class="axis-lbl">45–50</text><rect class="bar" x="664.5" y="183.3" width="55.8" height="68.7" rx="3"><title>50–55 cm: 83 días</title></rect><text x="692.4" y="177.3" text-anchor="middle" class="bar-val">83</text><text x="692.4" y="270.0" text-anchor="middle" class="axis-lbl">50–55</text><rect class="bar" x="726.3" y="222.2" width="55.8" height="29.8" rx="3"><title>55–60 cm: 36 días</title></rect><text x="754.2" y="216.2" text-anchor="middle" class="bar-val">36</text><text x="754.2" y="270.0" text-anchor="middle" class="axis-lbl">55–60</text><rect class="bar bar-overflow" x="788.2" y="174.2" width="55.8" height="77.8" rx="3"><title>60+ cm: 94 días</title></rect><text x="816.1" y="168.2" text-anchor="middle" class="bar-val">94</text><text x="816.1" y="270.0" text-anchor="middle" class="axis-lbl">60+</text><text x="445.0" y="294.0" text-anchor="middle" class="axis-title">Desvío estándar intradía (cm)</text></svg>
+    <p style="margin-top:10px;font-size:13.5px">
+      Bins de 5 cm; la &uacute;ltima barra agrupa los 94 d&iacute;as por encima de 60 cm.
+      La forma es la misma que con 177 d&iacute;as &mdash; una distribuci&oacute;n unimodal centrada en
+      ~27 cm con cola derecha de crecidas.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Los tres problemas, resueltos</h2></div>
+
+  <div class="card">
+    <h3 style="font-size:1.05rem;margin-bottom:10px">A &mdash; El hueco de nov/dic 2025</h3>
+    <div class="callout ok">
+      <h4>No hace falta descargar nada: el dato ya est&aacute; en Databricks</h4>
+      <p><code>weather.bronze.ana_rio_uruguai</code> tiene, para el target, <b>2.902 filas en noviembre
+        y 3.003 en diciembre de 2025</b> &mdash; cobertura completa. El hueco existe s&oacute;lo en
+        <code>weather.bronze.nivel_ana</code>, y como <code>ETL_Silver_Level_Daily</code> lee de esa tabla,
+        Gold queda con <code>nivel_rio_actual_cm</code> en <code>NULL</code> mientras
+        <code>caudal_actual_m3s</code> s&iacute; tiene dato (viene por el otro camino).</p>
+    </div>
+    <p>Esto es exactamente el <b>hallazgo #1 de la Decisi&oacute;n 036</b> (&laquo;93 d&iacute;as con nivel
+      NULL y caudal con dato, divergencia entre dos pipelines de Silver&raquo;) &mdash; ahora con causa
+      ra&iacute;z identificada: <b>dos tablas Bronze para la misma estaci&oacute;n</b>, una completa y
+      una con huecos, y Silver leyendo la incompleta.</p>
+    <p><b>Arreglo, en orden de preferencia:</b></p>
+    <ul>
+      <li><b>Apuntar <code>ETL_Silver_Level_Daily</code> a <code>ana_rio_uruguai</code></b> filtrando por
+        <code>codigoestacao = 74100000</code>. Elimina la clase entera de bug, no s&oacute;lo esta
+        instancia, y de paso desbloquea los 7 a&ntilde;os de telemetr&iacute;a.</li>
+      <li>O rellenar <code>nivel_ana</code> desde <code>ana_rio_uruguai</code> &mdash; m&aacute;s conservador,
+        pero deja las dos tablas conviviendo y el bug puede repetirse.</li>
+    </ul>
+    <p>El CSV nuevo <b>tambi&eacute;n</b> cubre nov/dic 2025 (30 y 31 d&iacute;as), as&iacute; que sirve como
+      verificaci&oacute;n independiente del arreglo &mdash; pero no es la v&iacute;a necesaria.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="font-size:1.05rem;margin-bottom:10px">B &mdash; La multi-medici&oacute;n intrad&iacute;a</h3>
+    <p>No es un problema de datos sucios: son <b>tres reg&iacute;menes de muestreo distintos</b> conviviendo
+      en la misma serie (1/d&iacute;a, 2/d&iacute;a, 96/d&iacute;a). La agregaci&oacute;n a diario tiene que ser
+      expl&iacute;cita y declarar de d&oacute;nde sale cada fila.</p>
+    <p><b>Regla de deduplicaci&oacute;n propuesta</b>, en este orden:</p>
+    <ul>
+      <li><b>Consistido gana sobre bruto</b> cuando ambos existen (hasta 2023-12-31). Es el dato que ANA
+        valid&oacute;; afecta a 1.365 d&iacute;as donde difieren.</li>
+      <li><b>Dentro del mismo nivel</b>, agregar todas las lecturas del d&iacute;a a una media, y publicar
+        junto al valor un <code>lecturas_dia</code> que diga cu&aacute;ntas la respaldan.</li>
+      <li>Nunca mezclar la &laquo;media diaria&raquo; de ANA con las instant&aacute;neas 07:00/17:00 del
+        mismo d&iacute;a &mdash; la primera es funci&oacute;n de las otras dos, sumarlas cuenta el dato dos veces.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3 style="font-size:1.05rem;margin-bottom:10px">C &mdash; Qu&eacute; valor tomar como referencia</h3>
+    <p><b>Recomendaci&oacute;n: la media de todas las lecturas del d&iacute;a</b>, con una columna que declare
+      cu&aacute;ntas fueron. Por qu&eacute; la media y no otra cosa:</p>
+    <ul>
+      <li><b>Contra el m&aacute;ximo o el m&iacute;nimo:</b> ambos dependen brutalmente de la frecuencia de
+        muestreo &mdash; con 2 lecturas se captura el 20% del rango real. Un target definido por el
+        m&aacute;ximo tendr&iacute;a un salto artificial en 2019 al pasar de 2 a 96 lecturas.</li>
+      <li><b>Contra el valor de una hora fija</b> (ej. siempre 07:00): s&oacute;lo existe 1995&ndash;2026 y
+        desperdicia el resto de las lecturas.</li>
+      <li><b>La media es la &uacute;nica que degrada suavemente</b> al cambiar la frecuencia: sigue siendo
+        el mismo estimador, s&oacute;lo con m&aacute;s o menos precisi&oacute;n.</li>
+    </ul>
+    <div class="callout warn">
+      <h4>El salto de r&eacute;gimen de 2019 hay que declararlo, no esconderlo</h4>
+      <p>Aunque la media degrada suavemente, el sesgo medido de <b>&minus;18,6 cm</b> entre la media de
+        2 lecturas y la de 96 no es despreciable frente a la se&ntilde;al. Recomiendo publicar
+        <code>nivel_lecturas_dia</code> como columna en Gold, para que el modelado pueda tratar el tramo
+        pre-2019 y post-2019 con distinta confianza &mdash; mismo criterio que <code>caudal_confiable</code>
+        y las columnas <code>_cobertura_pct</code> (regla R8, Decisi&oacute;n 023).</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Bonus: nuestra curva de aforo coincide con la oficial</h2></div>
+  <div class="card">
+    <p>Aprovechando que <code>Vazoes.csv</code> trae el caudal calculado por ANA con su curva oficial,
+      lo compar&eacute; contra el que produce nuestro pipeline (<code>caudal_actual_m3s</code>,
+      Decisi&oacute;n 017) sobre los <b>9.586 d&iacute;as</b> en com&uacute;n:</p>
+    <div class="stat-grid">
+      <div class="stat"><div class="v">98,0%</div><div class="l">D&iacute;as con coincidencia exacta</div></div>
+      <div class="stat"><div class="v">0,00%</div><div class="l">MAPE mediano</div></div>
+      <div class="stat"><div class="v">0,00</div><div class="l">|diferencia| mediana (m&sup3;/s)</div></div>
+      <div class="stat"><div class="v">9.586</div><div class="l">D&iacute;as comparados</div></div>
+    </div>
+    <p>Es una validaci&oacute;n externa fuerte de la Decisi&oacute;n 017: la implementaci&oacute;n de la curva
+      reproduce el c&aacute;lculo oficial de ANA. El 2% que difiere concentra las diferencias grandes
+      (m&aacute;ximo 1.817 m&sup3;/s) &mdash; vale revisar si coincide con los d&iacute;as marcados
+      <code>caudal_extrapolado</code>, pero no invalida el grueso de la serie.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Qu&eacute; hacer con el CSV</h2></div>
+  <div class="card">
+    <p>Dado que el hueco se resuelve sin &eacute;l, el CSV queda como <b>fuente de verificaci&oacute;n</b>,
+      no como v&iacute;a de ingesta. Lo que s&iacute; aporta y no tenemos en Databricks:</p>
+    <ul>
+      <li><b>El nivel de consistencia</b> (bruto vs consistido) &mdash; hoy Bronze no lo distingue.
+        Los 1.365 d&iacute;as donde difieren son dato que estamos tomando sin saber cu&aacute;l versi&oacute;n es.</li>
+      <li><b>Los <code>Status</code> por d&iacute;a</b> (real / estimado / dudoso / r&eacute;gua seca) &mdash;
+        permitir&iacute;a filtrar valores dudosos, hoy invisibles.</li>
+      <li><b>El caudal oficial de ANA</b> como serie de contraste permanente.</li>
+    </ul>
+    <p>Si se decide ingerirlo, el patr&oacute;n natural es el que ya usa el repo para fuentes locales:
+      descargar y aplanar en local, subir s&oacute;lo el JSON resultante al Volume, y que Bronze lo mergee
+      &mdash; sin tocar nada de lo que hoy corre.</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot"><div class="wrap">
+  Fuente: <code>Estacao_74100000_CSV_2026-08-28T19_05_52.154Z.zip</code> (Hidroweb / ANA), contrastado
+  contra <code>weather.bronze.ana_rio_uruguai</code>, <code>weather.bronze.nivel_ana</code> y
+  <code>weather.gold.training_dataset_v0</code> v&iacute;a SQL contra el warehouse serverless. 2026-08-28.
+</div></footer>

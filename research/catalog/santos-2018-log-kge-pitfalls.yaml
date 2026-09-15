@@ -1,0 +1,20 @@
+slug: santos-2018-log-kge-pitfalls
+title: >-
+  Technical note: Pitfalls in using log-transformed flows within the KGE criterion
+authors:
+  - "Santos, Léonard"
+  - "Thirel, Guillaume"
+  - "Perrin, Charles"
+year: 2018
+venue: "Hydrology and Earth System Sciences"
+volume: "22"
+pages: "4583--4591"
+doi: "10.5194/hess-22-4583-2018"
+bibtype: article
+tipo: paper
+tags: [log, KGE, advertencia, riesgo-metodologico]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  ADVERTENCIA QUE APLICA. El log dentro del KGE produce evaluación sesgada. Este proyecto usa log dentro de un criterio cuadrático (donde sí es el uso clásico) y reporta KGE sobre caudal SIN transformar — hay que decirlo explícitamente.

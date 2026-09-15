@@ -1,0 +1,50 @@
+[
+  {
+    "Area_Molhada (m2)": "1031.832",
+    "Cota (cm)": "103.0",
+    "Data_Hora_Dado": "2020-03-16 08:56:00.0",
+    "Data_Ultima_Alteracao": "2020-07-14 00:00:00.0",
+    "Largura (m)": "555.634",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "1.85",
+    "Vazao (m3/s)": "194.836",
+    "Vel_Media (m/s)": "0.189",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1932.152",
+    "Cota (cm)": "267.0",
+    "Data_Hora_Dado": "2021-01-22 13:36:00.0",
+    "Data_Ultima_Alteracao": "2021-04-22 00:00:00.0",
+    "Largura (m)": "568.187",
+    "Nivel_Consistencia": "1",
+    "Profundidade (m)": "3.4",
+    "Vazao (m3/s)": "1709.903",
+    "Vel_Media (m/s)": "0.885",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1030.0",
+    "Cota (cm)": "103.0",
+    "Data_Hora_Dado": "2020-03-16 08:56:00.0",
+    "Data_Ultima_Alteracao": "2024-04-03 00:00:00.0",
+    "Largura (m)": "556.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "1.85",
+    "Vazao (m3/s)": "195.0",
+    "Vel_Media (m/s)": "0.189",
+    "codigoestacao": "74100000"
+  },
+  {
+    "Area_Molhada (m2)": "1930.0",
+    "Cota (cm)": "267.0",
+    "Data_Hora_Dado": "2021-01-22 13:36:00.0",
+    "Data_Ultima_Alteracao": "2024-04-03 00:00:00.0",
+    "Largura (m)": "568.0",
+    "Nivel_Consistencia": "2",
+    "Profundidade (m)": "3.4",
+    "Vazao (m3/s)": "1710.0",
+    "Vel_Media (m/s)": "0.885",
+    "codigoestacao": "74100000"
+  }
+]

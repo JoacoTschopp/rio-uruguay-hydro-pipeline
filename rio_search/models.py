@@ -1,0 +1,346 @@
+"""Modelos y funciones de pérdida, en NumPy puro.
+
+La pieza que importa acá es que **la función de pérdida es un parámetro**, no
+algo cableado en el modelo: el mismo `MLPCore` se entrena con error cuadrático o
+con la pérdida expectil asimétrica cambiando un argumento. Esa es la condición
+para poder responder la pregunta de la tesis — ¿entrenar con G-RAL cambia el
+comportamiento del modelo en los regímenes que importan? — con todo lo demás
+idéntico: mismos datos, mismos splits, misma semilla, misma arquitectura.
+
+Todas las pérdidas son elemento a elemento sobre `e = y − ŷ` y exponen su
+gradiente respecto de ŷ, que es lo que consume el optimizador.
+
+No usa PyTorch a propósito: el arnés tiene que correr sin GPU ni instalación
+extra. Cuando Rio_Search levante su entorno `uv` con torch (Fase 0 del plan),
+`ExpectileLoss` se traduce a tres líneas de tensores y las métricas de
+`rio_search.metrics` se importan tal cual.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import numpy as np
+
+__all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "LOSSES",
+           "LinearCore", "MLPCore", "PersistenceBaseline", "ClimatologyBaseline",
+           "DampedPersistence"]
+
+
+# --------------------------------------------------------------------------
+# Pérdidas
+# --------------------------------------------------------------------------
+
+class Loss:
+    """Interfaz: `value` y `grad` elemento a elemento sobre `e = y − ŷ`."""
+
+    name = "base"
+    uses_tau = False
+
+    def value(self, e: np.ndarray, tau: np.ndarray | None = None) -> np.ndarray:
+        raise NotImplementedError
+
+    def grad(self, e: np.ndarray, tau: np.ndarray | None = None) -> np.ndarray:
+        """∂L/∂ŷ, no ∂L/∂e — de ahí los signos negativos."""
+        raise NotImplementedError
+
+
+class SquaredLoss(Loss):
+    """Error cuadrático. Es `ExpectileLoss` con τ = 0,5, escrito aparte para
+    que el camino por defecto no dependa del modulador."""
+
+    name = "mse"
+
+    def value(self, e, tau=None):
+        return e ** 2
+
+    def grad(self, e, tau=None):
+        return -2.0 * e
+
+
+class AbsoluteLoss(Loss):
+    name = "mae"
+
+    def value(self, e, tau=None):
+        return np.abs(e)
+
+    def grad(self, e, tau=None):
+        return -np.sign(e)
+
+
+class ExpectileLoss(Loss):
+    """ψ_τ(e) = 2·|τ − 1{e<0}|·e².
+
+    Con `e = observado − predicho`, τ > 0,5 castiga más la subestimación. El
+    gradiente es continuo en e = 0 (tiende a 0 por los dos lados), a diferencia
+    de la pérdida pinball: por eso esta familia sirve para entrenar y la otra no,
+    sin trucos.
+    """
+
+    name = "expectile"
+    uses_tau = True
+
+    def _w(self, e, tau):
+        if tau is None:
+            raise ValueError("ExpectileLoss necesita tau")
+        return np.where(e < 0.0, 1.0 - tau, tau)
+
+    def value(self, e, tau=None):
+        return 2.0 * self._w(e, tau) * e ** 2
+
+    def grad(self, e, tau=None):
+        return -4.0 * self._w(e, tau) * e
+
+
+LOSSES: dict[str, Loss] = {
+    "mse": SquaredLoss(),
+    "mae": AbsoluteLoss(),
+    "expectile": ExpectileLoss(),
+}
+
+
+# --------------------------------------------------------------------------
+# Optimizador
+# --------------------------------------------------------------------------
+
+@dataclass
+class Adam:
+    lr: float = 0.01
+    beta1: float = 0.9
+    beta2: float = 0.999
+    eps: float = 1e-8
+    _m: dict = field(default_factory=dict, repr=False)
+    _v: dict = field(default_factory=dict, repr=False)
+    _t: int = field(default=0, repr=False)
+
+    def step(self, params: dict[str, np.ndarray], grads: dict[str, np.ndarray]) -> None:
+        self._t += 1
+        for k, g in grads.items():
+            if k not in self._m:
+                self._m[k] = np.zeros_like(g)
+                self._v[k] = np.zeros_like(g)
+            self._m[k] = self.beta1 * self._m[k] + (1 - self.beta1) * g
+            self._v[k] = self.beta2 * self._v[k] + (1 - self.beta2) * g ** 2
+            m_hat = self._m[k] / (1 - self.beta1 ** self._t)
+            v_hat = self._v[k] / (1 - self.beta2 ** self._t)
+            params[k] -= self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
+
+
+# --------------------------------------------------------------------------
+# Modelos entrenables
+# --------------------------------------------------------------------------
+
+class _GradientModel:
+    """Base con el bucle de entrenamiento común (full-batch + early stopping)."""
+
+    def __init__(self, *, loss: Loss, epochs: int = 600, lr: float = 0.01,
+                 l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
+                 verbose: bool = False):
+        self.loss = loss
+        self.epochs = epochs
+        self.lr = lr
+        self.l2 = l2
+        self.patience = patience
+        self.seed = seed
+        self.verbose = verbose
+        self.params: dict[str, np.ndarray] = {}
+        self.history: list[dict] = []
+        self.best_epoch: int | None = None
+        self.pruned: bool = False
+
+    # --- a implementar por cada arquitectura ---
+    def _init_params(self, n_in: int, n_out: int, rng) -> dict:
+        raise NotImplementedError
+
+    def _forward(self, X, params):
+        raise NotImplementedError
+
+    def _backward(self, X, cache, G, params) -> dict:
+        raise NotImplementedError
+
+    def _weight_keys(self) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    # --- común ---
+    def _mean_loss(self, X, Y, tau, mask, params) -> float:
+        yhat, _ = self._forward(X, params)
+        e = np.where(mask, Y - yhat, 0.0)
+        return float(np.sum(self.loss.value(e, tau) * mask) / max(mask.sum(), 1))
+
+    def fit(self, X, Y, tau=None, *, mask=None,
+            X_val=None, Y_val=None, tau_val=None, mask_val=None,
+            on_epoch=None):
+        """Entrena full-batch con early stopping sobre VAL.
+
+        `mask` es booleana (n, n_horizontes): False donde el target no es
+        observable — la cola de la serie no tiene target a 14 días, y hay días
+        sueltos sin caudal. Esas celdas no aportan pérdida ni gradiente, en vez
+        de descartar la fila entera y perder los horizontes que sí existen.
+
+        `on_epoch(epoch, val_loss) -> bool` se llama al final de cada época y, si
+        devuelve True, corta el entrenamiento. Es el enganche que usa el podado de
+        Optuna: un trial que ya se ve peor que la mediana no necesita terminar.
+        Devolver True corta igual que el early stopping, dejando los mejores pesos.
+        """
+        rng = np.random.default_rng(self.seed)
+        n, n_in = X.shape
+        n_out = Y.shape[1]
+        self.params = self._init_params(n_in, n_out, rng)
+        opt = Adam(lr=self.lr)
+
+        if self.loss.uses_tau and tau is None:
+            raise ValueError(f"la pérdida {self.loss.name!r} necesita tau")
+        mask = np.isfinite(Y) if mask is None else (np.asarray(mask, bool) & np.isfinite(Y))
+        Y = np.where(mask, Y, 0.0)
+        n_valid = max(int(mask.sum()), 1)
+
+        tau_b = None if tau is None else np.broadcast_to(
+            np.asarray(tau, float).reshape(-1, 1), Y.shape)
+        if X_val is not None:
+            mask_val = np.isfinite(Y_val) if mask_val is None else (
+                np.asarray(mask_val, bool) & np.isfinite(Y_val))
+            Y_val = np.where(mask_val, Y_val, 0.0)
+        tau_val_b = None if tau_val is None else np.broadcast_to(
+            np.asarray(tau_val, float).reshape(-1, 1), Y_val.shape)
+
+        best = np.inf
+        best_params = {k: v.copy() for k, v in self.params.items()}
+        stale = 0
+        scale = 1.0 / n_valid
+
+        for epoch in range(1, self.epochs + 1):
+            yhat, cache = self._forward(X, self.params)
+            e = np.where(mask, Y - yhat, 0.0)
+            G = self.loss.grad(e, tau_b) * mask * scale
+            grads = self._backward(X, cache, G, self.params)
+            for k in self._weight_keys():
+                grads[k] = grads[k] + self.l2 * self.params[k]
+            opt.step(self.params, grads)
+
+            train_loss = float(np.sum(self.loss.value(e, tau_b) * mask) / n_valid)
+            row = {"epoch": epoch, "train_loss": train_loss}
+            if X_val is not None:
+                row["val_loss"] = self._mean_loss(X_val, Y_val, tau_val_b, mask_val, self.params)
+                monitor = row["val_loss"]
+            else:
+                monitor = train_loss
+            self.history.append(row)
+
+            if monitor < best - 1e-9:
+                best, stale = monitor, 0
+                best_params = {k: v.copy() for k, v in self.params.items()}
+                self.best_epoch = epoch
+            else:
+                stale += 1
+                if stale >= self.patience:
+                    break
+
+            if on_epoch is not None and on_epoch(epoch, monitor):
+                self.pruned = True
+                break
+            if self.verbose and epoch % 50 == 0:
+                print(f"  epoch {epoch:4d}  {row}")
+
+        self.params = best_params
+        return self
+
+    def predict(self, X) -> np.ndarray:
+        yhat, _ = self._forward(X, self.params)
+        return yhat
+
+
+class LinearCore(_GradientModel):
+    """Regresión lineal multi-salida con regularización L2, por gradiente.
+
+    Se entrena por gradiente y no en forma cerrada justamente para que acepte
+    cualquier pérdida, incluida la asimétrica.
+    """
+
+    name = "linear"
+
+    def _init_params(self, n_in, n_out, rng):
+        return {"W": np.zeros((n_in, n_out)), "b": np.zeros(n_out)}
+
+    def _forward(self, X, params):
+        return X @ params["W"] + params["b"], None
+
+    def _backward(self, X, cache, G, params):
+        return {"W": X.T @ G, "b": G.sum(axis=0)}
+
+    def _weight_keys(self):
+        return ("W",)
+
+
+class MLPCore(_GradientModel):
+    """Perceptrón multicapa de una capa oculta con tanh."""
+
+    name = "mlp"
+
+    def __init__(self, hidden: int = 64, **kw):
+        super().__init__(**kw)
+        self.hidden = hidden
+
+    def _init_params(self, n_in, n_out, rng):
+        # Xavier: mantiene la varianza estable a través de la tanh
+        s1 = np.sqrt(1.0 / n_in)
+        s2 = np.sqrt(1.0 / self.hidden)
+        return {
+            "W1": rng.normal(0, s1, size=(n_in, self.hidden)),
+            "b1": np.zeros(self.hidden),
+            "W2": rng.normal(0, s2, size=(self.hidden, n_out)),
+            "b2": np.zeros(n_out),
+        }
+
+    def _forward(self, X, params):
+        h = np.tanh(X @ params["W1"] + params["b1"])
+        return h @ params["W2"] + params["b2"], h
+
+    def _backward(self, X, cache, G, params):
+        h = cache
+        dW2 = h.T @ G
+        db2 = G.sum(axis=0)
+        dh = G @ params["W2"].T
+        dz1 = dh * (1.0 - h ** 2)
+        return {"W1": X.T @ dz1, "b1": dz1.sum(axis=0), "W2": dW2, "b2": db2}
+
+    def _weight_keys(self):
+        return ("W1", "W2")
+
+
+# --------------------------------------------------------------------------
+# Baselines (no se entrenan; son la referencia del skill score)
+# --------------------------------------------------------------------------
+
+class PersistenceBaseline:
+    """ŷ(t+h) = Q(t) para todo h. La referencia estándar en hidrología."""
+
+    name = "persistencia"
+
+    def predict(self, q_actual, n_horizons: int) -> np.ndarray:
+        return np.repeat(np.asarray(q_actual, float).reshape(-1, 1), n_horizons, axis=1)
+
+
+class DampedPersistence:
+    """ŷ(t+h) = Q(t) · factor. Sirve para exhibir el sesgo que RMSE no ve."""
+
+    def __init__(self, factor: float = 0.9):
+        self.factor = factor
+        self.name = f"persistencia x {factor:g}"
+
+    def predict(self, q_actual, n_horizons: int) -> np.ndarray:
+        return self.factor * np.repeat(
+            np.asarray(q_actual, float).reshape(-1, 1), n_horizons, axis=1)
+
+
+class ClimatologyBaseline:
+    """ŷ(t+h) = media móvil de los últimos `window` días de caudal observado."""
+
+    def __init__(self, window: int = 30):
+        self.window = window
+        self.name = f"climatología {window} d"
+
+    def predict(self, q_series, n_horizons: int) -> np.ndarray:
+        import pandas as pd
+        m = pd.Series(np.asarray(q_series, float)).rolling(
+            self.window, min_periods=max(1, int(0.7 * self.window))).mean().to_numpy()
+        return np.repeat(m.reshape(-1, 1), n_horizons, axis=1)

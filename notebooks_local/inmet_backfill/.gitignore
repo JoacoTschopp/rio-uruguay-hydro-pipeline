@@ -1,0 +1,8 @@
+# Datos y estado regenerables (re-descargando de INMET o re-bajando desde el Volume de
+# Databricks): no tiene sentido versionarlos. Mismo criterio que ana_historic_backfill/.gitignore.
+output_json/
+inmet_backfill_state.json
+backfill.lock
+sync.log
+download.log
+__pycache__/

@@ -1,0 +1,6 @@
+# Cache del parquet/manifest bajados del Volume y los snapshots exportados: se
+# regeneran corriendo export_gold_dataset.py, no tiene sentido versionarlos.
+cache/
+output/
+__pycache__/
+.pytest_cache/
