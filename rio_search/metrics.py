@@ -24,7 +24,7 @@ import numpy as np
 __all__ = [
     "rmse", "mae", "mape", "nse", "kge", "pbias", "r2",
     "expectile_se", "gral", "violation_rates", "skill_score", "evaluate",
-    "WET_THRESHOLD", "DRY_THRESHOLD", "Q_FLOOR",
+    "dm_test", "WET_THRESHOLD", "DRY_THRESHOLD", "Q_FLOOR",
 ]
 
 #: Por encima de este τ el día se considera de régimen húmedo al reportar
@@ -213,6 +213,54 @@ def gral(y_true, y_pred, tau, *, log: bool = True, q_floor: float = Q_FLOOR) -> 
     else:
         eps = yt - yp
     return float(np.sqrt(np.mean(expectile_se(eps, tau_c))))
+
+
+def dm_test(loss1, loss2, h: int = 1) -> dict:
+    """Test de Diebold-Mariano sobre dos series de pérdida **por día**.
+
+    `loss1` y `loss2` son la pérdida diaria de cada pronóstico — la que sea
+    (ψ_τ, error cuadrático en log): el test no elige la pérdida, la recibe.
+    H0: E[d] = 0 con d_t = loss1_t − loss2_t. La varianza de d̄ es HAC de
+    Newey-West con `h − 1` rezagos y pesos de Bartlett — los errores a h pasos
+    son MA(h−1) incluso para un pronóstico óptimo (Diebold & Mariano 1995) — y
+    el estadístico lleva la corrección de muestra chica de
+    Harvey-Leybourne-Newbold (1997).
+
+    **dm > 0 significa que el primer pronóstico pierde** (su pérdida media es
+    mayor). La p es bilateral y sale de la normal estándar: con un VAL de un año
+    (n ≥ 285) la diferencia con la t de Student es irrelevante, y el repo no
+    carga scipy para eso.
+
+    Complementa al umbral de ruido del corredor, no lo reemplaza: aquél cubre el
+    ruido de inicialización entre semillas; éste, el ruido de la muestra
+    temporal, que es el que queda cuando las semillas ya están promediadas.
+    """
+    import math
+
+    l1 = np.asarray(loss1, dtype=float).ravel()
+    l2 = np.asarray(loss2, dtype=float).ravel()
+    if l1.shape != l2.shape:
+        raise ValueError("las dos series de pérdida deben tener la misma longitud")
+    if h < 1:
+        raise ValueError("h debe ser >= 1")
+    ok = np.isfinite(l1) & np.isfinite(l2)
+    d = l1[ok] - l2[ok]
+    n = int(d.size)
+    salida = {"dm": float("nan"), "p": float("nan"), "n": n, "mean_d": float("nan")}
+    if n < max(2 * h, 10):
+        return salida                       # con tan pocos días el test no dice nada
+
+    dbar = float(d.mean())
+    dc = d - dbar
+    var = float(np.mean(dc * dc))
+    for k in range(1, h):
+        var += 2.0 * (1.0 - k / h) * float(np.mean(dc[k:] * dc[:-k]))
+    var = max(var, 1e-300) / n              # Bartlett garantiza var >= 0; el piso
+    dm = dbar / math.sqrt(var)              # evita el 0/0 de dos series idénticas
+    dm *= math.sqrt((n + 1 - 2 * h + h * (h - 1) / n) / n)      # HLN 1997
+    salida.update(dm=float(dm), p=float(math.erfc(abs(dm) / math.sqrt(2.0))),
+                  mean_d=dbar)
+    return salida
 
 
 def violation_rates(

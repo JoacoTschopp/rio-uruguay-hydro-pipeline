@@ -139,6 +139,51 @@ def test_tau_fuera_de_rango_falla():
         raise AssertionError(f"τ = {bad} debería haber fallado")
 
 
+# --------------------------------------------------------------------------
+# Diebold-Mariano (B11.03)
+# --------------------------------------------------------------------------
+
+def test_dm_series_identicas_no_difieren():
+    l = np.random.default_rng(1).gamma(2.0, 1.0, 400)
+    r = M.dm_test(l, l.copy(), h=14)
+    assert r["dm"] == 0.0 and r["p"] == 1.0 and r["n"] == 400
+
+
+def test_dm_detecta_una_diferencia_clara():
+    rng = np.random.default_rng(2)
+    base = rng.gamma(2.0, 1.0, 400)
+    peor = base + 1.0 + rng.normal(0, 0.05, 400)
+    r = M.dm_test(peor, base, h=1)
+    assert r["dm"] > 3.0 and r["p"] < 0.01, "el primero pierde: dm > 0"
+    r_inv = M.dm_test(base, peor, h=1)
+    assert abs(r_inv["dm"] + r["dm"]) < 1e-9, "antisimétrico al invertir el par"
+
+
+def test_dm_la_autocorrelacion_ensancha_la_varianza():
+    """Con d autocorrelado positivo, ignorar los rezagos infla el estadístico:
+    h = 14 tiene que ser más conservador que h = 1."""
+    rng = np.random.default_rng(3)
+    ar = np.zeros(600)
+    for t in range(1, 600):
+        ar[t] = 0.8 * ar[t - 1] + rng.normal()
+    d = ar + 0.3                       # diferencia media positiva y persistente
+    r1 = M.dm_test(d, np.zeros(600), h=1)
+    r14 = M.dm_test(d, np.zeros(600), h=14)
+    assert abs(r14["dm"]) < abs(r1["dm"])
+
+
+def test_dm_ignora_los_dias_sin_dato():
+    l1 = np.array([1.0, np.nan, 2.0, 3.0] * 30)
+    l2 = np.array([1.5, 2.0, np.nan, 2.5] * 30)
+    r = M.dm_test(l1, l2, h=1)
+    assert r["n"] == 60                # sólo los pares completos
+
+
+def test_dm_con_muy_pocos_dias_no_opina():
+    r = M.dm_test(np.ones(8), np.zeros(8), h=1)
+    assert np.isnan(r["dm"]) and np.isnan(r["p"])
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

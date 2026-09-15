@@ -1346,13 +1346,18 @@ bloques:
     nombre: significancia entre finalistas
     slug: diebold_mariano
     prioridad: P2
-    estado: falta
-    valor: "test de Diebold-Mariano sobre las series de error, con corrección de autocorrelación"
-    implementar: {donde: rio_search/metrics.py, que: "dm_test(e1, e2, h) con varianza HAC", depende_de: [], esfuerzo: medio}
+    estado: implementado
+    valor: "test de Diebold-Mariano sobre las pérdidas diarias, con varianza HAC (Newey-West, h−1 rezagos) y corrección HLN"
+    cmd: -m rio_search.dm --seeds 5 --hac-h 14 --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 60
     referencia: >-
-      Diebold & Mariano 1995. Es el test estándar para decir si dos pronósticos difieren de
-      verdad. El desvío entre semillas (§5.1) cubre el ruido de inicialización; DM cubre el
-      ruido de la muestra temporal, que es el que queda.
+      Diebold & Mariano 1995; Harvey, Leybourne & Newbold 1997. Es el test estándar para
+      decir si dos pronósticos difieren de verdad. El desvío entre semillas (§5.1) cubre el
+      ruido de inicialización; DM cubre el ruido de la muestra temporal, que es el que queda.
+      `metrics.dm_test` recibe pérdidas por día (ψ_τ en log y el cuadrático simétrico de
+      control); el driver `rio_search.dm` promedia las predicciones entre semillas y corre
+      el ancla contra los finalistas **en VAL** — la pasada sobre TEST es del cierre (B11.02),
+      una sola vez y sobre el campeón ya elegido.
 
   - id: B11.04
     nombre: lectura por horizonte y por régimen

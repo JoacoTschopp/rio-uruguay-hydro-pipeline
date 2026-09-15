@@ -279,7 +279,10 @@ def tipo_de_celda(celda: dict) -> str:
     for modulo, tipo in (("rio_search.train", "train"),
                          ("rio_search.search", "search"),
                          ("rio_search.walkforward", "walkforward"),
-                         ("rio_search.sensitivity", "sensitivity")):
+                         ("rio_search.sensitivity", "sensitivity"),
+                         # dm produce un JSON de diagnóstico sin objetivo único,
+                         # igual que un barrido: se lee como sensitivity
+                         ("rio_search.dm", "sensitivity")):
         if modulo in cmd:
             return tipo
     return "guarda"          # pytest, audit, export_gold_dataset
@@ -326,7 +329,7 @@ def extraer_metricas(datos: dict, tipo: str, celda: dict, objetivo: str) -> dict
                                 for v, r in (datos.get("resumen") or {}).items()}
         else:
             fuera["resumen"] = {"grid": datos.get("grid"), "modos": datos.get("modes"),
-                                "split": datos.get("split")}
+                                "dm": datos.get("pares"), "split": datos.get("split")}
         return fuera
 
     val = _bloque_val(datos, tipo, celda)
