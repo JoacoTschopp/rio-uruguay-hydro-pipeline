@@ -7,6 +7,9 @@ La documentación tiene tres funciones separadas, y cada archivo cumple una sola
 | Función | Archivos |
 | --- | --- |
 | **Qué queremos construir y cómo seguimos** | `roadmap.md` (dataset), `rio_search_plan.md` (modelado: app Rio_Search, research, tesis) |
+| **Cómo se ejecuta la búsqueda de modelos** | `protocolo_busqueda_modelos.md` + `../rio_search/experiments/matrix.yaml` |
+| **Qué métrica se optimiza y de dónde sale** | `funcion_ganancia_regimen.html` (especificación de G-RAL) |
+| **Bibliografía de la tesis** | `../research/` — catálogo, notas y `references.bib` generado |
 | **Por qué se eligió cada enfoque** | `decisions.md` |
 | **Qué existe hoy** | `dataset_definition.md`, `data_sources.md`, `current_pipeline_inventory.md`, `silver_gold_implementation_status.md` |
 
@@ -21,8 +24,10 @@ consolidado quedó absorbido en `decisions.md` y en los documentos de estado.
 3. `data_sources.md` — catálogo de fuentes ingestadas y candidatas: APIs, rutas, tablas Bronze, frecuencias, estado.
 4. `current_pipeline_inventory.md` — qué hay hoy en Databricks: notebooks, jobs, capas, brechas.
 5. `silver_gold_implementation_status.md` — estado real desplegado de jobs, tablas y validaciones Silver/Gold.
-6. `decisions.md` — log de decisiones técnicas y metodológicas (ADR-style), Decisiones 001–038. Sin decisiones abiertas al 2026-08-27.
+6. `decisions.md` — log de decisiones técnicas y metodológicas (ADR-style), Decisiones 001–045. Sin decisiones abiertas al 2026-09-05.
 7. `rio_search_plan.md` — plan de implementación de **Rio_Search** (Decisión 038): arquitectura Onion + DDD, MLflow en Databricks, BiLSTM baseline, UI React, `research/` y `thesis/`, 10 fases con criterio de cierre.
+8. `funcion_ganancia_regimen.html` — especificación de **G-RAL**, la función de ganancia por régimen: qué es, cómo funciona el modulador que produce τ, qué parámetros se pueden mover, las decisiones tomadas con sus consecuencias, y el fundamento bibliográfico (§09).
+9. `protocolo_busqueda_modelos.md` — procedimiento normativo para **ejecutar** la búsqueda de modelos: reglas invariantes, ciclo de 7 fases, cómo se lee un resultado, cuándo se para y qué se re-corre cuando cambia el dataset. Su catálogo de combinaciones es `rio_search/experiments/matrix.yaml`.
 
 ## Mapa rápido
 
@@ -34,7 +39,10 @@ consolidado quedó absorbido en `decisions.md` y en los documentos de estado.
 | `data_sources.md` | ¿De dónde vienen los datos y qué tablas existen? |
 | `current_pipeline_inventory.md` | ¿Qué procesos corren hoy y qué falta? |
 | `silver_gold_implementation_status.md` | ¿Qué quedó desplegado y validado en Databricks? |
+| `protocolo_busqueda_modelos.md` | ¿Cómo corre un agente la búsqueda, cómo lee cada resultado y cuándo la da por cerrada? |
 | `decisions.md` | ¿Por qué se eligió cada enfoque? |
+| `funcion_ganancia_regimen.html` | ¿Qué métrica se optimiza, cómo funciona y de dónde sale? |
+| `../research/` | ¿Qué papers sostienen cada decisión metodológica? |
 | `dataset_caudal_report.html` | Informe visual del estado del dataset (se actualiza al concluir el roadmap) |
 
 ## Estado actual del pipeline
