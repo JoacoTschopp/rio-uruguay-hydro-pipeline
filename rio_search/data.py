@@ -340,7 +340,22 @@ def build_dataset(
     if gate_rain_col not in df.columns:
         raise KeyError(f"la fuente de lluvia del modulador no está en el snapshot: {gate_rain_col}")
     gate_mod.assert_causal([gate_rain_col])
+    # Modo forecast (B8.05): el único operable que usa futuro. La fila t trae el
+    # pronóstico ECMWF emitido en t para t+1..t+15; el modulador consume los
+    # primeros fc_days leads. Donde el pronóstico no existe (antes de 2006-11 y
+    # el hueco de 2017), τ queda NaN y la fila se filtra como cualquier otra.
+    forecast_rain = None
+    if tau_mode == "forecast":
+        fc_cols = [f"ecmwf_cf_tp_mm_d{k}" for k in range(1, params.fc_days + 1)]
+        faltan_fc = [c for c in fc_cols if c not in df.columns]
+        if faltan_fc:
+            raise KeyError(
+                "tau_mode='forecast' necesita las columnas de pronóstico de Gold "
+                f"(Fase 4 del roadmap): faltan {faltan_fc}")
+        gate_mod.assert_causal(fc_cols)
+        forecast_rain = df[fc_cols].to_numpy(dtype=float)
     gate_out = gate_mod.build_tau(df[gate_rain_col].to_numpy(),
+                                  forecast_rain=forecast_rain,
                                   mode=tau_mode, params=params)
 
     q_col = "caudal_actual_m3s"

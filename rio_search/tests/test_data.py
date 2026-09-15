@@ -128,6 +128,74 @@ def test_sin_manifest_no_falla():
     D._assert_manifest_vigente(p)
 
 
+# --------------------------------------------------------------------------
+# Modo forecast del modulador (B8.05)
+# --------------------------------------------------------------------------
+
+def _df_completo(n=200, con_forecast=False, fc_alto_desde=None, fc_nan_hasta=0):
+    """Un snapshot sintético con todo lo que `build_dataset` exige."""
+    rng = np.random.default_rng(5)
+    idx = pd.date_range("2020-01-01", periods=n, freq="D")
+    df = pd.DataFrame(index=idx)
+    q = 2000.0 + rng.normal(0, 100, n).cumsum()
+    df["caudal_actual_m3s"] = q
+    for c in ("caudal_lag_1d", "caudal_lag_3d", "caudal_lag_7d",
+              "caudal_media_3d", "caudal_media_7d", "caudal_delta_1d"):
+        df[c] = q + rng.normal(0, 10, n)
+    for c in ("caudal_agregado_alta_frontera_m3s", "caudal_agregado_alta_frontera_lag_1d",
+              "caudal_agregado_alta_frontera_lag_2d", "caudal_agregado_alta_frontera_lag_3d"):
+        df[c] = q * 0.5
+    df["caudal_agregado_alta_frontera_confiable_pct"] = 100.0
+    df["lluvia_acumulada_mm"] = rng.gamma(2.0, 4.0, n) * 20
+    df["lluvia_agregado_alta_frontera_station_count"] = 20
+    for h in D.HORIZONS:
+        df[f"caudal_t_mas_{h}d"] = q
+    if con_forecast:
+        for k in range(1, 15):
+            col = rng.gamma(2.0, 4.0, n)
+            if fc_alto_desde is not None:
+                col[fc_alto_desde:] = 300.0
+            col[:fc_nan_hasta] = np.nan
+            df[f"ecmwf_cf_tp_mm_d{k}"] = col
+    return df
+
+
+def test_forecast_sin_columnas_falla_claro():
+    try:
+        D.build_dataset(df=_df_completo(con_forecast=False), tau_mode="forecast")
+    except KeyError as exc:
+        assert "forecast" in str(exc)
+    else:
+        raise AssertionError("sin columnas ECMWF el modo forecast tiene que fallar")
+
+
+def test_forecast_usa_el_pronostico_real():
+    """Meter lluvia pronosticada enorme en la segunda mitad tiene que subir τ ahí."""
+    ds_a = D.build_dataset(df=_df_completo(con_forecast=True), tau_mode="forecast")
+    ds_b = D.build_dataset(df=_df_completo(con_forecast=True, fc_alto_desde=100),
+                           tau_mode="forecast")
+    m_a = ds_a.fecha >= "2020-05-01"
+    m_b = ds_b.fecha >= "2020-05-01"
+    assert np.nanmean(ds_b.tau[m_b]) > np.nanmean(ds_a.tau[m_a]) + 0.05
+
+
+def test_forecast_filtra_las_filas_sin_pronostico():
+    """Sin pronóstico no hay τ, y sin τ la fila no entra — igual que cualquier NaN."""
+    ds_con = D.build_dataset(df=_df_completo(con_forecast=True), tau_mode="forecast")
+    ds_hueco = D.build_dataset(df=_df_completo(con_forecast=True, fc_nan_hasta=60),
+                               tau_mode="forecast")
+    assert len(ds_hueco) < len(ds_con)
+    assert ds_hueco.fecha.min() > ds_con.fecha.min()
+
+
+def test_forecast_no_altera_los_otros_modos():
+    """El cableado nuevo no puede tocar el τ del oráculo."""
+    df = _df_completo(con_forecast=True)
+    tau_con = D.build_dataset(df=df, tau_mode="oracle").tau
+    tau_sin = D.build_dataset(df=_df_completo(con_forecast=False), tau_mode="oracle").tau
+    assert np.allclose(tau_con, tau_sin, equal_nan=True)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

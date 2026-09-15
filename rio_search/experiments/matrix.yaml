@@ -1141,10 +1141,17 @@ bloques:
     nombre: modulador en modo forecast
     slug: tau_forecast
     prioridad: P1
-    estado: bloqueado_dato
-    valor: "30 d observados + 14 d de pronóstico real"
-    bloqueado_por: "Fase 4 del roadmap; depende de B2.19."
-    nota: "Es el único modo **operable** que usa información de futuro. Sin él, la propuesta corre con el modulador antecedente o no corre en producción."
+    estado: implementado
+    valor: "30 d observados + 14 d de pronóstico ECMWF real (ecmwf_cf_tp_mm_d1..d14)"
+    cmd: -m rio_search.sensitivity --tau-modes --modes oracle,antecedent,forecast --seeds 3 --split val --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 420
+    nota: >-
+      Es el único modo **operable** que usa información de futuro. Desbloqueada el
+      2026-09-15 por las columnas ECMWF de Gold. **Cobertura medida en d303**: 6.647 de
+      9.754 filas (68,1 %), 2006-11-29 → 2026-09-11, continua salvo un hueco de 580 días
+      (2017 completo y parte de 2018) — VAL y TEST quedan cubiertos por entero; el costo
+      es TRAIN. Por eso el contraste corre los tres modos sobre la **intersección común
+      de fechas**: comparar contra un modo con más historia mediría el período, no el modo.
 
 # ================================================================================
 - id: B9

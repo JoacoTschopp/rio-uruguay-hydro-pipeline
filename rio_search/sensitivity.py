@@ -152,14 +152,27 @@ def sweep_gate_params(*, seeds, model="mlp", loss="gral", split="val",
 def compare_tau_modes(*, seeds, model="mlp", losses=("mse", "gral"),
                       modes=("oracle", "antecedent"), split="test",
                       gate_rain="auto", **kw) -> dict:
-    """Misma pérdida, modulador oráculo vs modulador causal."""
+    """Misma pérdida, con el modulador en cada modo pedido.
+
+    Los modos filtran filas distintas (la ventana antecedente come el arranque de
+    la serie; el pronóstico ECMWF empieza en 2006-11 y tiene el hueco de 2017),
+    así que **todos los modos corren sobre la intersección común de fechas**: si
+    no, un modo con menos historia parecería distinto sólo por el período.
+    """
     out = {"modes": list(modes), "split": split, "runs": {}}
-    _header(f"modulador oráculo vs causal · split {split.upper()}")
+    _header(f"modulador por modo ({', '.join(modes)}) · split {split.upper()}")
     ref_full = data_mod.build_dataset(tau_mode="oracle", gate_rain_col=gate_rain)
+    ds_fulls = {m: data_mod.build_dataset(tau_mode=m, gate_rain_col=gate_rain)
+                for m in modes}
+    fechas = ref_full.fecha
+    for d in ds_fulls.values():
+        fechas = fechas.intersection(d.fecha)
+    ref = ref_full.subset(ref_full.fecha.isin(fechas))
+    out["n_dias_comun"] = len(ref)
+    out["rango_comun"] = [str(fechas.min().date()), str(fechas.max().date())]
     for mode in modes:
-        ds_full = data_mod.build_dataset(tau_mode=mode, gate_rain_col=gate_rain)
-        # cada modo filtra distinto: alinear por fecha antes de comparar nada
-        ds, ref = ds_full.align_to(ref_full)
+        ds_full = ds_fulls[mode]
+        ds = ds_full.subset(ds_full.fecha.isin(fechas))
         splits = data_mod.make_splits(ds.fecha)
         out["runs"][mode] = {"n_dias": len(ds)}
         # se mide siempre con el modulador oráculo para que V+ y V− hablen del mismo
@@ -202,6 +215,9 @@ def main(argv=None) -> int:
                    help="corre el contraste oráculo vs causal en vez del barrido")
     p.add_argument("--gate-grid", action="store_true",
                    help="B8.04: barrido de κ, pesos y ventanas del modulador")
+    p.add_argument("--modes", default="oracle,antecedent",
+                   help="modos del modulador a contrastar con --tau-modes, separados "
+                        "por coma. B8.05 agrega `forecast` (pronóstico ECMWF real)")
     p.add_argument("--epochs", type=int, default=600)
     p.add_argument("--hidden", type=int, default=64)
     p.add_argument("--gate-rain", default="auto")
@@ -219,8 +235,9 @@ def main(argv=None) -> int:
                                     gate_rain=gate_rain, **kw)
         name = "gate_params"
     elif args.tau_modes:
+        modes = tuple(m.strip() for m in args.modes.split(",") if m.strip())
         results = compare_tau_modes(seeds=seeds, model=args.model, split=args.split,
-                                    gate_rain=gate_rain, **kw)
+                                    gate_rain=gate_rain, modes=modes, **kw)
         name = "tau_modes"
     else:
         results = sweep_tau_max(seeds=seeds, model=args.model, split=args.split,
