@@ -3101,3 +3101,44 @@ el lock del PID muerto (`_pid_is_running` vía `tasklist`), no hubo que tocarlo.
 estaba vivo y además corría como `python3.12.exe`, no `python.exe`, así que filtrar por
 `IMAGENAME eq python.exe` tampoco lo mostraba.
 
+## Decisión 051: los lotes de `pf` pasan a trimestres calendario
+
+**Problema.** Al 2026-09-15, `pf` tenía 3.323 de 7.288 días (46%) y quedaban **131 lotes
+mensuales**. Al ritmo medido de **11,6 h por lote** eso son **63 días — 9 semanas**, hasta
+mediados de noviembre.
+
+La medición es lo que define el problema: 16 requests en 174,6 h de reloj, con una transferencia
+real de ~10 s para 72 MB. **El costo es casi todo cola de ECDS, no descarga.** Por lo tanto el
+tiempo total lo fija la *cantidad* de requests, no su tamaño — y ahí es donde se puede ganar.
+
+**Decisión.** `BATCH_MONTHS = 1` → **3** en `historic_pf_tigge.py`. La grilla pasa de 240 lotes
+mensuales a 80 trimestrales, y los pendientes de **131 a 45**.
+
+**Por qué 3 y no más.** Un trimestre son 91 × 16 × 50 = **~72.800 fields**: 3× el request
+mensual que ya demostró funcionar (24.800) y por debajo del límite documentado de otros datasets
+CDS (ERA5 horario: 120.000). Un lote anual serían 292.000, fuera de escala — y en la Decisión
+044 los tres `400 Client Error` observados cayeron justamente en los lotes anuales de `cf`.
+
+**Por qué recién ahora.** Cuando se fijó `BATCH_MONTHS = 1`, un lote grande que fallara costaba
+el lote entero y bloqueaba la cadena. `retrieve_bisecting` (Decisión 049) cambió eso: un
+trimestre fallido se parte en mitades hasta aislar el día que la fuente no entrega. La red que
+faltaba para animarse a lotes grandes ya está puesta.
+
+**Verificación previa al cambio** (dry-run, sin tocar la API):
+
+- 80 lotes totales, **45 pendientes**.
+- El frente `2026-07-01..2026-09-13` encabeza la grilla; `missing_span` lo recorta a los 8 días
+  que faltan.
+- Los trimestres ya bajados (`2026-04-01..2026-06-30` y anteriores) se detectan **completos**:
+  cambiar el tamaño de lote **no re-pide nada**, porque la grilla está alineada al calendario
+  (Decisión 044) y cada lote se recorta a los días faltantes.
+
+**Efecto esperado.** 45 lotes × 11,6 h = **22 días** en vez de 63. Si la cola creciera
+proporcionalmente al tamaño del request —lo que no se puede saber sin medirlo— el piso sería
+igual ~32 días, la mitad del camino anterior. Hay que **volver a medir** el ritmo con unos pocos
+trimestres antes de dar el número por bueno.
+
+**Reversión.** Poner `BATCH_MONTHS = 1`. No hay migración ni re-descarga de por medio.
+
+**Alcance.** Solo `pf`. `cf` ya está completo y queda en 12.
+

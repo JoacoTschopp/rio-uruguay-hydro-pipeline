@@ -72,7 +72,31 @@ RUN_TIME = "00"
 
 EARLIEST_TIGGE_DATE = date(2006, 10, 1)
 TIGGE_LAG_DAYS = 2
-BATCH_MONTHS = 1  # 1 request = 1 mes calendario (50 miembros multiplican los "fields")
+# 1 request = 1 trimestre calendario. Era 1 mes (Decision 051).
+#
+# El costo dominante NO es la descarga sino la espera en la cola de ECDS: 11,6 h por request
+# medidas sobre 16 requests, contra ~10 s de transferencia para 72 MB. O sea que el tiempo total
+# del backfill lo fija la CANTIDAD de requests, no su tamano: pasar de 1 a 3 meses divide por
+# tres los 131 lotes que faltaban.
+#
+# Por que 3 y no mas: 91 dias x 16 pasos x 50 miembros = ~72.800 "fields", 3x el request mensual
+# que ya demostro funcionar (24.800) y todavia por debajo del limite documentado de otros
+# datasets CDS (ERA5 horario: 120.000). Un lote anual serian 292.000, fuera de escala -- ver
+# Decision 044, donde los tres `400 Client Error` observados cayeron justamente en los lotes
+# anuales de `cf`.
+#
+# Lo que hace viable subir el tamano ahora y no entonces es `retrieve_bisecting` (Decision 049):
+# un trimestre que falle ya no bloquea la cadena, se parte en mitades hasta aislar el dia que la
+# fuente no entrega. Cuando se fijo BATCH_MONTHS=1 esa red no existia y un lote grande fallido
+# costaba el lote entero.
+#
+# Disco: un trimestre son ~26 GB de JSON en C: antes de sincronizar y archivar. Con
+# --sync-every-calls 1 (Decision 050) se drena despues de cada lote, asi que no se acumulan.
+#
+# Para volver atras: poner 1. La grilla esta alineada al calendario (Decision 044), asi que
+# cambiar este numero no re-pide nada ya bajado -- `missing_span` recorta cada lote a los dias
+# que realmente faltan.
+BATCH_MONTHS = 3
 UNIT_TO_MM_FACTOR = 1.0
 
 DEFAULT_MAX_BATCHES_PER_RUN = 3
