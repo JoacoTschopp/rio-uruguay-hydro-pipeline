@@ -157,14 +157,23 @@ def escanear(cx: sqlite3.Connection) -> dict:
 
 
 def _listar_volumen(vol: str) -> dict:
-    """Devuelve {nombre: bytes} del volumen. Usa --output json para no parsear columnas."""
+    """Devuelve {nombre: bytes} del volumen.
+
+    Se parsea el listado plano y NO se usa --output json: para Volumes el JSON devuelve
+    file_size=null en TODOS los archivos, y sin el tamanio no se puede detectar una subida
+    truncada -- que es justo el problema que este chequeo tiene que encontrar."""
     out = subprocess.run(
-        ["databricks", "fs", "ls", vol, "--profile", PROFILE, "--output", "json"],
+        ["databricks", "fs", "ls", vol, "-l", "--profile", PROFILE],
         capture_output=True, text=True, timeout=900,
     )
     if out.returncode != 0:
         raise RuntimeError(f"no se pudo listar {vol}: {out.stderr.strip()[:200]}")
-    return {x["name"]: x.get("file_size") for x in json.loads(out.stdout or "[]")}
+    res = {}
+    for linea in out.stdout.splitlines():
+        partes = linea.split()
+        if len(partes) >= 4 and partes[0] == "FILE":
+            res[partes[-1]] = int(partes[1])
+    return res
 
 
 def reconciliar_volumen(cx: sqlite3.Connection) -> dict:
@@ -232,6 +241,27 @@ def reporte(cx: sqlite3.Connection) -> None:
         ).fetchone()[0]
         if huerfanos:
             problemas.append(("HUERFANOS " + fuente, huerfanos))
+        # Subida truncada: el archivo esta en el volumen pero con un tamanio distinto al del
+        # disco. El sync NUNCA lo corrige porque saltea por nombre, sin mirar el tamanio: asi
+        # quedaron 3 archivos de 0 bytes en pf, subidos el 29-30/08 con el disco lleno, que
+        # Bronze leyo como dias sin filas (Decision 047).
+        truncados = cx.execute(
+            """SELECT count(*) FROM archivos WHERE fuente=? AND en_volumen=1 AND ubicacion<>''
+                 AND bytes IS NOT NULL AND bytes_volumen IS NOT NULL AND bytes_volumen<bytes""",
+            (fuente,),
+        ).fetchone()[0]
+        if truncados:
+            problemas.append(("TRUNCADOS EN VOLUMEN " + fuente, truncados))
+        # Caso inverso: el archivo local quedo vacio pero el volumen tiene el dato bueno. No
+        # afecta al dataset (Bronze lee del volumen) pero conviene saberlo, porque already_landed()
+        # solo mira que el archivo exista y da por bajado un dia cuyo JSON local esta vacio.
+        locales_vacios = cx.execute(
+            """SELECT count(*) FROM archivos WHERE fuente=? AND en_volumen=1 AND ubicacion<>''
+                 AND bytes=0 AND bytes_volumen>0""",
+            (fuente,),
+        ).fetchone()[0]
+        if locales_vacios:
+            problemas.append(("LOCALES VACIOS " + fuente, locales_vacios))
         # huecos de calendario
         cub = dias_cubiertos(cx, fuente)
         if cub:
@@ -245,7 +275,15 @@ def reporte(cx: sqlite3.Connection) -> None:
     if problemas:
         print("DISCREPANCIAS:")
         for que, n in problemas:
-            if "huecos" in que:
+            if "LOCALES VACIOS" in que:
+                print(f"  - {que}: {n} archivos vacios en disco cuyo dato SI esta en el volumen. "
+                      f"No afecta al dataset (Bronze lee del volumen); solo significa que la copia "
+                      f"local no sirve para reprocesar sin bajarla de nuevo.")
+            elif "TRUNCADOS" in que:
+                print(f"  - {que}: {n} archivos cuyo tamanio en el volumen NO coincide con el "
+                      f"del disco. El sync saltea por nombre y no los va a arreglar: hay que "
+                      f"re-subirlos con 'databricks fs cp --overwrite'.")
+            elif "huecos" in que:
                 print(f"  - {que}: {n} dias sin dato entre el inicio y el ultimo dia cubierto")
             else:
                 print(f"  - {que}: {n} dias ARCHIVADOS que no estan en el volumen. "
