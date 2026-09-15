@@ -3054,3 +3054,50 @@ como no disponible.
 limit, pero convierte cualquier día malo en un bloqueo total. La bisección es lo que distingue
 "la fuente está caída" de "este día puntual no existe" — y solo el primero justifica parar.
 
+## Decisión 050: el cupo de lotes por llamada se baja a 1 para que el frente diario no se muera de hambre
+
+**Problema.** El 2026-09-15 `pf` estaba **8 días atrasado** (último día en cualquier lado:
+2026-09-05) mientras el backfill seguía trabajando en 2017-08. No era un fallo: nada estaba
+roto, ningún log tenía un error.
+
+La reconstrucción de lo que pasó:
+
+- El proceso arrancó el **2026-09-07 18:17**. Tres minutos después bajó el frente — los JSON
+  `2026_09_02..05` tienen mtime `09-07 18:20`.
+- Desde entonces retrocedió por el histórico y **no volvió a mirar el frente nunca más**.
+
+La causa está en el reparto de responsabilidades entre `run()` y `run_source()`: `run()` arma su
+lista de lotes **una sola vez** al entrar y la recorre hasta agotar `max_batches_per_run`; recién
+cuando vuelve, `run_source()` recalcula qué falta. Con el cupo en **25** y un ritmo medido de
+**11,6 h por lote**, una sola llamada dura **~12 días**, y en todo ese tiempo los días nuevos no
+se piden aunque encabecen la grilla.
+
+Lo agravaba un segundo detalle: el `ExecutionTimeLimit` de 6 h de Task Scheduler mata al wrapper
+de PowerShell pero **no al hijo de Python**, así que el proceso quedó huérfano. La tarea figuraba
+como "Listo", los redisparos horarios encontraban el lock tomado por un PID vivo y salían sin
+hacer nada, y el huérfano siguió moliendo hacia atrás sin re-evaluar.
+
+**Decisión.** `--max-batches-per-call 25` → **1**, y `--sync-every-calls 3` → **1**.
+
+Con cupo 1 se recalcula la lista después de **cada** lote. Como `iter_batches_calendar_backward`
+ordena del mes más reciente hacia atrás, el frente se sirve siempre antes que el histórico, y
+cuando está completo la llamada sigue con el lote viejo que toque. **No cambia cuántos requests
+se hacen ni su tamaño** — solo cada cuánto se re-prioriza, y eso es gratis.
+
+Bajar el sync a 1 es consecuencia: con un lote por llamada, sincronizar cada 3 dejaría ~26 GB de
+JSON en `C:` y hasta 35 h hasta que el día llegue al Volume.
+
+El arreglo también inmuniza contra el huérfano: aunque el wrapper muera a las 6 h, el hijo sigue
+con cupo 1 y re-evalúa el frente en cada vuelta.
+
+**Costo de aplicarlo.** Hubo que matar el proceso huérfano (PID 342888) para que el cambio
+tomara efecto — con el cupo viejo faltaban ~19 lotes, o sea ~25 días más de frente parado. Se
+perdió el request de 2017-08 que estaba en vuelo; se vuelve a pedir. `tigge_lock.py` limpia solo
+el lock del PID muerto (`_pid_is_running` vía `tasklist`), no hubo que tocarlo.
+
+**Nota de diagnóstico.** `tasklist /FI "PID eq N"` desde Git Bash necesita
+`MSYS2_ARG_CONV_EXCL="*"`: sin eso, MSYS convierte `/FI` en una ruta y el comando falla con
+"Argumento u opción no válido", que a simple vista parece "el proceso no existe". El proceso
+estaba vivo y además corría como `python3.12.exe`, no `python.exe`, así que filtrar por
+`IMAGENAME eq python.exe` tampoco lo mostraba.
+
