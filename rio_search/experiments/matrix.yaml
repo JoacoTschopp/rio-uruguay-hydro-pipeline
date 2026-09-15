@@ -1,0 +1,1483 @@
+# Catálogo de combinaciones de la búsqueda — Rio_Search
+#
+# Se recorre con el procedimiento de `docs/protocolo_busqueda_modelos.md`.
+# Este archivo dice QUÉ existe; el protocolo dice CÓMO se recorre y cómo se lee.
+#
+# Cada celda es una combinación atribuible a **un** cambio contra el ancla (protocolo R4).
+# El `id` es estable de por vida: es lo que permite comparar la misma celda entre
+# versiones del dataset (protocolo §7).
+#
+# estado:
+#   implementado           corre hoy con el `cmd` de la celda
+#   falta                  hay que escribir código; NO se implementa sin autorización (R7)
+#   bloqueado_dato         el dato no existe todavía en Gold
+#   requiere_autorizacion  corre hoy, pero contradice una Decisión vigente
+#
+# prioridad:
+#   P1  entra en el criterio de cobertura (§8.1). Sin estas la búsqueda no cierra.
+#   P2  se corre si P1 no saturó el eje.
+#   P3  exploratorio; sólo si el usuario lo pide.
+
+version: 1
+protocolo: docs/protocolo_busqueda_modelos.md
+corredor: rio_search/runner.py     # python -m rio_search.runner --todo
+python: .venv/Scripts/python.exe   # desde la raíz del repo
+
+#: Métrica que se minimiza y que ordena el leaderboard.
+objetivo: val/gral
+#: Cuántos errores estándar tiene que superar una diferencia para no ser ruido.
+umbral_sigmas: 2
+
+# `cmd` lo ejecuta `rio_search.runner`, que le agrega:
+#   --out rio_search/results/<DATASET_ID>/<id>__<slug>.json    (siempre)
+#   --no-test                                                  (celdas `train` fuera de B11)
+# Correr una celda a mano sin esos dos flags pisa resultados y calcula TEST de más.
+
+# --------------------------------------------------------------------------------
+# Configuración ancla — la fila de referencia. Se actualiza al cerrar cada bloque.
+# --------------------------------------------------------------------------------
+ancla:
+  dataset_id: d278-76b949a2
+  actualizada_en: B0.06
+  model: mlp
+  loss: gral
+  groups: [caudal_estado, caudal_agregado_alta_frontera, lluvia_ratio, estacionalidad]
+  horizon_strategy: multi_output
+  split: rolling_365
+  embargo_days: 14
+  tau_mode: oracle
+  tau_max: 0.85
+  gate_rain: lluvia_media_est_mm
+  # NO es la fuente preferible — la grilla MERGE lo es (media areal real). El ancla usa
+  # estaciones porque es la fuente bajo la que se buscaron sus hiperparámetros y bajo la
+  # que corrieron todos los resultados previos de `results/`. Cambiar la fuente mueve
+  # val/gral de 0,497 a 0,549 con HP idénticos — 4× el umbral de ruido — así que ponerla
+  # en el ancla mezclaría dos cambios (R4). MERGE se prueba como celda de un solo cambio
+  # en B8.03; si gana, se vuelve el ancla y B9.01 re-busca HP bajo esa fuente.
+  seeds: 5
+  seed_base: 20260828
+  hp: {hidden: 38, lr: 0.0492, l2: 0.000217, epochs: 378}
+  # `patience` queda en el default 60 porque el CLI de train.py no lo expone (gaps G-01).
+  # El mejor trial de search_gral_tpe_60.json usaba 81. Medido el 2026-09-05: el ancla da
+  # val/gral 0,4969 ± 0,0096, idéntico al `final_multisemilla` de esa búsqueda — en esta
+  # configuración corta el early stopping antes, así que la brecha no afecta al ancla.
+  medido:
+    fecha: 2026-09-05
+    val: {gral: 0.4969, gral_sd: 0.0096, rmse: 1030, nse: 0.18, kge: 0.49, v_plus: 0.365, v_minus: 0.747}
+    persistencia_val: {gral: 0.5145, rmse: 1083}
+    skill_rmse: 0.049
+    umbral_de_ruido: 0.0121
+    dias: 9617
+    splits: {train: 8939, val: 365, test: 285}
+  flags_fijos: >-
+    --model mlp --loss gral --seeds 5 --gate-rain lluvia_media_est_mm
+    --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378
+
+# --------------------------------------------------------------------------------
+# Ejes de la búsqueda
+# --------------------------------------------------------------------------------
+ejes:
+  representacion:  {bloque: B2, saturado: false, desc: "cómo se le presenta la historia al modelo (features, lookback, derivadas)"}
+  features:        {bloque: B2, saturado: false, desc: "qué grupos de columnas entran"}
+  target:          {bloque: B3, saturado: false, desc: "qué se predice y en qué escala"}
+  perdida:         {bloque: B1, saturado: false, desc: "qué se minimiza durante el entrenamiento"}
+  modelo:          {bloque: B4, saturado: false, desc: "familia y arquitectura"}
+  horizonte:       {bloque: B5, saturado: false, desc: "cómo se cubren los 8 horizontes"}
+  ventana:         {bloque: B6, saturado: false, desc: "qué historia se usa para entrenar y con qué peso"}
+  preproceso:      {bloque: B7, saturado: false, desc: "imputación y escalado"}
+  modulador:          {bloque: B8, saturado: false, desc: "parámetros de τ (sensibilidad, no ajuste — R9)"}
+  busqueda_hp:     {bloque: B9, saturado: false, desc: "cómo se buscan los hiperparámetros"}
+  ensemble:        {bloque: B10, saturado: false, desc: "combinación de modelos"}
+
+# --------------------------------------------------------------------------------
+bloques:
+
+# ================================================================================
+- id: B0
+  nombre: Piso, guardas y ancla
+  eje: —
+  pregunta: "¿El dato es el que dice ser, las guardas están verdes y cuál es la referencia?"
+  criterio_de_cierre: "B0.01–B0.04 y B0.06 con estado ok. Sin esto ningún bloque posterior se puede leer."
+  celdas:
+
+  - id: B0.01
+    nombre: frescura del snapshot
+    slug: frescura
+    prioridad: P1
+    estado: implementado
+    cmd: notebooks_local/gold_export/export_gold_dataset.py --refresh
+    produce: DATASET_ID
+    tiempo_est_s: 120
+    nota: >-
+      Consulta la historia de la tabla Delta, regenera el snapshot del Volume si Gold
+      avanzó, baja el parquet y verifica el sha256. Si no hay credenciales de Databricks,
+      parar y preguntar (protocolo §9) — no correr sobre el cache sin autorización.
+
+  - id: B0.02
+    nombre: tests del arnés
+    slug: tests
+    prioridad: P1
+    estado: implementado
+    cmd: -m pytest rio_search/tests -q
+    tiempo_est_s: 12
+    nota: "45 tests. Rojo = alto total (R2)."
+
+  - id: B0.03
+    nombre: auditoría de fuga
+    slug: audit
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.audit
+    tiempo_est_s: 10
+    nota: >-
+      Cubre lo que una revisión de columnas de Gold no ve: features derivadas, modulador y
+      splits. Cada guarda va con su prueba negativa. Un proxy con 50 % de ruido pasa la
+      guarda y baja el RMSE un 18 %: la guarda cubre el régimen realista (copia exacta o
+      casi), no un proxy fuertemente degradado.
+
+  - id: B0.04
+    nombre: baselines
+    slug: baselines
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 1 --gate-rain lluvia_media_est_mm --split val
+    lee: "el bloque `baselines` del JSON"
+    tiempo_est_s: 8
+    nota: >-
+      persistencia, persistencia×0,90, persistencia×1,10 y climatología 30 d salen en toda
+      corrida de train. Persistencia es el piso de admisión (R6): RMSE ≈ 1.648 m³/s sobre
+      d278. La persistencia amortiguada existe para exhibir el sesgo que RMSE no ve.
+
+  - id: B0.05
+    nombre: seasonal naive
+    slug: seasonal_naive
+    prioridad: P2
+    estado: falta
+    eje: modelo
+    valor: "Q̂(t+h) = media histórica del mismo día del año"
+    implementar:
+      donde: rio_search/models.py + run_baselines en train.py
+      que: "SeasonalNaive(window_days) sobre el doy, con ventana ±k días y media de los años previos a TRAIN"
+      depende_de: []
+      esfuerzo: bajo
+    nota: >-
+      El plan lo lista como baseline naïve (§3.3) y hoy no está. Importa porque es el
+      único baseline que captura estacionalidad sin usar el estado actual del río: separa
+      "el modelo aprendió el ciclo anual" de "el modelo aprendió la persistencia".
+
+  - id: B0.06
+    nombre: ancla
+    slug: ancla
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
+    nota: >-
+      La fila contra la que se mide todo. Su `val/gral` y su sd fijan el umbral de ruido
+      (protocolo §5.1). Medido el 2026-09-05 sobre d278-76b949a2: ver `ancla.medido`.
+      **Ojo con lo que ese número dice.** Sobre VAL el ancla le gana a persistencia por
+      apenas 4,9 % de RMSE (1030 vs 1083), y en G-RAL su ventaja sobre el mejor baseline
+      (persistencia ×1,10, G-RAL 0,5044) es de 0,0075 — **por debajo del umbral de ruido de
+      0,0121, o sea un empate**. El año de VAL es bastante más duro que el de TEST, donde el
+      skill de RMSE era ~22 %. Dos consecuencias: la guarda R6 es una restricción viva y no
+      una formalidad, y el margen que la búsqueda tiene para mejorar es grande. Baselines
+      VAL bajo estaciones: persistencia 0,5145 / ×0,90 0,5468 / ×1,10 0,5044 /
+      climatología 30 d 0,6056.
+
+# ================================================================================
+- id: B1
+  nombre: Función de pérdida
+  eje: perdida
+  pregunta: "¿Qué conviene minimizar? ¿Cuánto aporta la transformación log y cuánto la asimetría?"
+  criterio_de_cierre: "Todas las P1 corridas o bloqueadas; ganador declarado o eje saturado."
+  hipotesis_vigente: >-
+    Evidencia acumulada sobre 5 configuraciones: mse_log gana RMSE 5/5; gral gana V⁻ 5/5
+    y le gana a mse_log en V⁺, V⁻ y KGE 5/5 a costa de ~30 m³/s de RMSE; gral NO gana el
+    escalar G-RAL de forma robusta (2/5). Un resultado distinto dispara §9 del protocolo.
+  celdas:
+
+  - id: B1.01
+    nombre: mse
+    slug: mse
+    prioridad: P1
+    estado: implementado
+    valor: "cuadrática, escala cruda — el entrenamiento actual del proyecto"
+    cmd: -m rio_search.train --loss mse --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+
+  - id: B1.02
+    nombre: mae
+    slug: mae
+    prioridad: P1
+    estado: implementado
+    valor: "absoluta, escala cruda"
+    cmd: -m rio_search.train --loss mae --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+
+  - id: B1.03
+    nombre: mse_log
+    slug: mse_log
+    prioridad: P1
+    estado: implementado
+    valor: "cuadrática sobre ln Q — aísla el efecto de la transformación"
+    cmd: -m rio_search.train --loss mse_log --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+
+  - id: B1.04
+    nombre: expectile_raw
+    slug: expectile_raw
+    prioridad: P1
+    estado: implementado
+    valor: "expectil τ sobre escala cruda — aísla el efecto de la asimetría"
+    cmd: -m rio_search.train --loss expectile_raw --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+
+  - id: B1.05
+    nombre: gral
+    slug: gral
+    prioridad: P1
+    estado: implementado
+    valor: "expectil τ sobre ln Q — la propuesta (= ancla)"
+    cmd: "(= B0.06)"
+    tiempo_est_s: 0
+    nota: "No se re-corre: es el ancla."
+
+  - id: B1.06
+    nombre: expectil con τ constante
+    slug: expectile_tau_fijo
+    prioridad: P1
+    estado: falta
+    valor: "τ = 0,65 fijo, sin modulador"
+    implementar:
+      donde: rio_search/train.py
+      que: "flag --tau-constante FLOAT que reemplace ds.tau por un escalar en el entrenamiento (no en la evaluación)"
+      depende_de: []
+      esfuerzo: bajo
+    nota: >-
+      Es el **control que le falta a la tesis**: separa "la asimetría ayuda" de "el modulador
+      ayuda". Sin esta celda, cualquier ganancia de gral se le puede atribuir al modulador sin
+      evidencia. Prioridad P1 por eso.
+
+  - id: B1.07
+    nombre: huber
+    slug: huber
+    prioridad: P1
+    estado: falta
+    valor: "cuadrática cerca de 0, lineal en la cola (δ ajustable)"
+    implementar:
+      donde: rio_search/models.py
+      que: "HuberLoss(delta) con value/grad elemento a elemento; registrar en LOSSES y en LOSS_CONFIGS (huber, huber_log)"
+      depende_de: []
+      esfuerzo: bajo
+    referencia: "Huber 1964. Estándar en caudal por robustez a picos aislados y a errores de aforo."
+
+  - id: B1.08
+    nombre: log-cosh
+    slug: logcosh
+    prioridad: P2
+    estado: falta
+    valor: "aproximación suave de Huber, gradiente continuo en todo el dominio"
+    implementar: {donde: rio_search/models.py, que: "LogCoshLoss", depende_de: [], esfuerzo: bajo}
+
+  - id: B1.09
+    nombre: pinball / cuantil
+    slug: pinball
+    prioridad: P2
+    estado: falta
+    valor: "pérdida cuantílica en q = 0,1 / 0,5 / 0,9"
+    implementar:
+      donde: rio_search/models.py
+      que: "QuantileLoss(q); n_out = n_horizontes × n_cuantiles"
+      depende_de: []
+      esfuerzo: medio
+    nota: >-
+      El docstring de ExpectileLoss deja escrito por qué la familia expectil sirve para
+      entrenar y pinball no, sin trucos: el gradiente de pinball es discontinuo en e = 0.
+      Se corre igual **como control** y para producir intervalos (B10.05), no como
+      candidata a campeón.
+
+  - id: B1.10
+    nombre: NSE-loss
+    slug: nse_loss
+    prioridad: P1
+    estado: falta
+    valor: "1 − NSE como pérdida, con normalización por varianza de la cuenca"
+    implementar:
+      donde: rio_search/models.py
+      que: "pérdida por lote con denominador = varianza de TRAIN; el gradiente es el de MSE reescalado"
+      depende_de: []
+      esfuerzo: medio
+    referencia: >-
+      Kratzert et al. 2019 (Towards learning universal, regional, and local hydrological
+      behaviors via ML). Es la pérdida estándar en rainfall-runoff con redes; entrenar con
+      la métrica que la hidrología reporta es exactamente el argumento de esta tesis
+      aplicado a otra métrica.
+
+  - id: B1.11
+    nombre: KGE-loss
+    slug: kge_loss
+    prioridad: P2
+    estado: falta
+    valor: "1 − KGE diferenciable (r, α, β por lote)"
+    implementar: {donde: rio_search/models.py, que: "pérdida por lote; los tres términos son diferenciables", depende_de: [], esfuerzo: medio}
+    nota: "KGE es la métrica que la tesis va a defender junto con NSE; entrenarla directo es la comparación honesta."
+
+  - id: B1.12
+    nombre: MSE ponderado por caudal
+    slug: mse_weighted
+    prioridad: P2
+    estado: falta
+    valor: "peso w(Q) = (Q/Q̄)^p, p ∈ {0.5, 1}"
+    implementar: {donde: rio_search/models.py, que: "peso por muestra en el gradiente", depende_de: [], esfuerzo: bajo}
+    nota: "Alternativa a la asimetría por modulador: pone el foco en crecida sin usar τ. Es el competidor directo de gral."
+
+  - id: B1.13
+    nombre: NLL gaussiano heterocedástico
+    slug: nll_gauss
+    prioridad: P3
+    estado: falta
+    valor: "el modelo predice μ y log σ² por horizonte"
+    implementar: {donde: rio_search/models.py + train.py, que: "n_out = 2 × n_horizontes; inversa del target sobre μ", depende_de: [], esfuerzo: medio}
+    nota: "Primer paso hacia pronóstico probabilístico. Da incertidumbre por día, que es lo que un operador necesita."
+
+  - id: B1.14
+    nombre: CRPS sobre ensemble de cuantiles
+    slug: crps
+    prioridad: P3
+    estado: falta
+    valor: "CRPS aproximado por cuantiles discretos"
+    implementar: {donde: rio_search/models.py + metrics.py, que: "pérdida y métrica CRPS", depende_de: [], esfuerzo: alto}
+    referencia: "Gneiting & Raftery 2007. Es la métrica estándar de pronóstico probabilístico."
+
+# ================================================================================
+- id: B2
+  nombre: Features y representación de la entrada
+  eje: features
+  pregunta: "¿Qué información aporta y cuál estorba? ¿Alcanza con lags o hace falta ventana?"
+  criterio_de_cierre: "Ablación completa (B2.04–B2.08) + al menos el grid CPTEC. Ganador o eje saturado."
+  advertencia: >-
+    **Los hiperparámetros del ancla se buscaron con 19 features.** Correrlos con 26 o con 7
+    no los deja neutrales: la capacidad que le sobra o le falta al modelo se mezcla con el
+    efecto de las features (protocolo §5.4). Este bloque **ordena candidatos**; el ganador
+    entra a B9 con su propia búsqueda antes de que su ventaja se considere real.
+  celdas:
+
+  - id: B2.01
+    nombre: default 19 features
+    slug: feats19
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B0.06)"
+    tiempo_est_s: 0
+
+  - id: B2.02
+    nombre: + grilla CPTEC (26 features)
+    slug: feats26_cptec
+    prioridad: P1
+    estado: implementado
+    valor: "agrega lluvia MERGE y temperatura SAMeT areales"
+    cmd: -m rio_search.train --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,lluvia_ratio,cptec_grid,estacionalidad --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 14
+    nota: "Media areal real de grilla, no una suma sobre un número variable de pluviómetros (Decisión 033)."
+
+  - id: B2.03
+    nombre: CPTEC en vez de estaciones
+    slug: feats_solo_cptec
+    prioridad: P1
+    estado: implementado
+    valor: "reemplaza lluvia_ratio por cptec_grid"
+    cmd: -m rio_search.train --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,cptec_grid,estacionalidad --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 14
+    nota: "Separa 'sumar CPTEC ayuda' de 'CPTEC reemplaza a las estaciones'. B2.02 sin esta celda no distingue las dos cosas."
+
+  - id: B2.04
+    nombre: "ablación: sin caudal_agregado_alta_frontera"
+    slug: logo_agregado
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --loss gral --seeds 5 --groups caudal_estado,lluvia_ratio,estacionalidad --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
+
+  - id: B2.05
+    nombre: "ablación: sin lluvia"
+    slug: logo_lluvia
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,estacionalidad --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
+    nota: "τ sigue saliendo de la lluvia aunque la lluvia no sea feature: el modulador es independiente del grupo de features."
+
+  - id: B2.06
+    nombre: "ablación: sin estacionalidad"
+    slug: logo_doy
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,lluvia_ratio --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
+
+  - id: B2.07
+    nombre: "ablación: sólo caudal_estado"
+    slug: logo_solo_caudal
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --loss gral --seeds 5 --groups caudal_estado --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+    nota: "El piso informacional: cuánto de la performance sale sólo del estado del punto de predicción."
+
+  - id: B2.08
+    nombre: "ablación: sólo caudal actual"
+    slug: logo_minimo
+    prioridad: P2
+    estado: falta
+    valor: "una sola feature, caudal_actual_m3s"
+    implementar: {donde: rio_search/data.py, que: "grupo `caudal_minimo` en FEATURE_GROUPS", depende_de: [], esfuerzo: bajo}
+    nota: "Cierra la escalera de ablación: persistencia < caudal solo < caudal_estado < todo."
+
+  - id: B2.09
+    nombre: + banderas de calidad
+    slug: feats_calidad
+    prioridad: P2
+    estado: falta
+    valor: "caudal_confiable, supera_aforo_maximo, caudal_extrapolado, curva_vigencia_extendida, *_cobertura_pct, *_es_preliminar"
+    implementar: {donde: rio_search/data.py, que: "grupo `calidad` con cast 0/1 de los booleanos", depende_de: [], esfuerzo: bajo}
+    nota: >-
+      Riesgo real de fuga a vigilar: `supera_aforo_maximo` y `caudal_extrapolado` describen
+      el día t, no el futuro, así que son legítimas — pero pasan por assert_causal igual y
+      la auditoría de fuga tiene que correr después de agregarlas.
+
+  - id: B2.10
+    nombre: + temperatura de estaciones
+    slug: feats_temp_est
+    prioridad: P3
+    estado: falta
+    valor: "temp_media/min/max_c, cobertura"
+    implementar: {donde: rio_search/data.py, que: "grupo `temp_estacion`", depende_de: [], esfuerzo: bajo}
+    nota: "Cobertura 0 % antes de 2006: agrega una discontinuidad en la serie. SAMeT (B2.02) la cubre mejor."
+
+  - id: B2.11
+    nombre: + sub-cuencas aguas abajo
+    slug: feats_subcuencas
+    prioridad: P3
+    estado: requiere_autorizacion
+    valor: "caudal_agregado_intermedia_paso_libres_*, caudal_agregado_baja_salto_grande_*"
+    nota: >-
+      Las columnas existen y tienen datos reales (Decisión 028), pero la Decisión 018 las
+      deja fuera del alcance de la tesis. Correrlas es un experimento válido; **adoptarlas
+      requiere revisar la Decisión 018** y eso lo decide el usuario (protocolo §9).
+      Hidrológicamente además son aguas abajo del punto de predicción: si aportan, hay que
+      explicar por qué y descartar que sea un efecto de calendario compartido.
+
+  - id: B2.12
+    nombre: índice de precipitación antecedente (API)
+    slug: feats_api
+    prioridad: P1
+    estado: falta
+    valor: "API(t) = Σ k^i · P(t−i), k ∈ {0.85, 0.90, 0.95}"
+    implementar: {donde: rio_search/data.py (_derive_rain), que: "columnas api_k085/090/095", depende_de: [], esfuerzo: bajo}
+    referencia: >-
+      Índice clásico de humedad antecedente en hidrología (Kohler & Linsley 1951). Es la
+      misma idea que ya usa el modulador para armar A(t): si sirve para decidir el régimen,
+      la hipótesis obvia es que sirve como feature. P1 por barata y por directamente
+      comparable con el modulador.
+
+  - id: B2.13
+    nombre: derivadas de recesión del caudal
+    slug: feats_recesion
+    prioridad: P1
+    estado: falta
+    valor: "log(Q_t / Q_{t−1}), d²Q/dt², días desde el último pico, pendiente de recesión"
+    implementar: {donde: rio_search/data.py, que: "grupo `dinamica_caudal`", depende_de: [], esfuerzo: medio}
+    nota: >-
+      Hoy sólo hay caudal_delta_1d. La curva de recesión es la firma física de la cuenca y
+      es lo que distingue "el río está bajando desde un pico" de "el río está estable" a
+      igual caudal absoluto.
+
+  - id: B2.14
+    nombre: acumulados de lluvia largos
+    slug: feats_lluvia_larga
+    prioridad: P2
+    estado: falta
+    valor: "acum 60 d y 90 d, y el ratio acum_7d / acum_30d"
+    implementar: {donde: rio_search/data.py (_derive_rain), que: "agregar 60 y 90 a la tupla de ventanas", depende_de: [], esfuerzo: bajo}
+
+  - id: B2.15
+    nombre: log1p del caudal como feature
+    slug: feats_log_caudal
+    prioridad: P2
+    estado: falta
+    valor: "ln de las columnas de caudal, además o en vez de la escala cruda"
+    implementar: {donde: rio_search/train.py (Preprocessor), que: "transformación por columna declarada, no sólo del target", depende_de: [], esfuerzo: medio}
+    nota: "El target log ya gana; la hipótesis es que la entrada log también linealiza la relación."
+
+  - id: B2.16
+    nombre: interacción lluvia × humedad antecedente
+    slug: feats_interaccion
+    prioridad: P2
+    estado: falta
+    valor: "P(t) · API(t): la misma lluvia produce distinta respuesta según el estado de la cuenca"
+    implementar: {donde: rio_search/data.py, que: "columna producto; depende de B2.12", depende_de: [B2.12], esfuerzo: bajo}
+    nota: "Es la no-linealidad hidrológica más conocida. Un MLP la puede aprender, un lineal no: la celda también mide cuánto de la ventaja del MLP viene de acá."
+
+  - id: B2.17
+    nombre: ventana / lookback explícito
+    slug: lookback
+    prioridad: P1
+    estado: falta
+    eje: representacion
+    valor: "tensores (N, L, F) con L ∈ {30, 60, 90, 120}"
+    implementar:
+      donde: rio_search/data.py
+      que: "make_sequences(ds, lookback) → X (N, L, F); el MLP la consume aplanada, los secuenciales tal cual"
+      depende_de: []
+      esfuerzo: medio
+    nota: >-
+      **Prerrequisito de todo B4 secuencial** (LSTM, TCN, transformers). Hoy la historia
+      entra sólo como lags fijos elegidos a mano. Es la celda que más desbloquea del
+      catálogo entero.
+
+  - id: B2.18
+    nombre: selección automática de features
+    slug: feats_seleccion
+    prioridad: P3
+    estado: falta
+    valor: "importancia por permutación sobre VAL; RFE"
+    implementar: {donde: rio_search/ (módulo nuevo), que: "permutación de columnas y re-evaluación", depende_de: [], esfuerzo: medio}
+    nota: "Complementa la ablación por grupo con una lectura por columna. No selecciona nada por sí sola: informa."
+
+  - id: B2.19
+    nombre: features de pronóstico numérico
+    slug: feats_forecast
+    prioridad: P1
+    estado: bloqueado_dato
+    valor: "TIGGE / GEFS: lluvia y temperatura pronosticadas por lead"
+    bloqueado_por: "Fase 4 del roadmap del dataset. Gold v278 no tiene ninguna columna de pronóstico (66 columnas verificadas)."
+    nota: >-
+      Cuando lleguen: son legítimamente información sobre el futuro emitida en t₀, así que
+      pueden superar el umbral de la auditoría de fuga. La salida correcta es declararlas
+      en `audit.FUTURO_LEGITIMO` con justificación — **nunca** bajar el umbral. Desbloquea
+      también B8.05 (modo `forecast` del modulador), que es el único operable de verdad.
+
+# ================================================================================
+- id: B3
+  nombre: Parametrización del target
+  eje: target
+  pregunta: "¿Qué conviene predecir: el caudal, su logaritmo, su cambio o su razón?"
+  criterio_de_cierre: "B3.01–B3.04 corridas o bloqueadas."
+  celdas:
+
+  - id: B3.01
+    nombre: crudo
+    slug: target_crudo
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B1.01, la transformación va atada a la pérdida)"
+    nota: "Hoy `target_transform` no es un eje independiente: LOSS_CONFIGS lo acopla a la pérdida. Ver gaps G-02."
+
+  - id: B3.02
+    nombre: logarítmico
+    slug: target_log
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B1.03 / B1.05)"
+
+  - id: B3.03
+    nombre: raíz cuarta / Box-Cox / Yeo-Johnson
+    slug: target_potencia
+    prioridad: P1
+    estado: falta
+    valor: "Q^(1/4) — la transformación de varianza estabilizada clásica en caudal; λ de Box-Cox ajustado en TRAIN"
+    implementar: {donde: rio_search/train.py (Preprocessor), que: "target_transform ∈ {none, log, pow4, boxcox, yeojohnson}", depende_de: [], esfuerzo: medio}
+    referencia: >-
+      La raíz cuarta es el estándar en hidrología cuando log sobre-comprime las crecidas.
+      Es la competidora directa de log y hoy no está probada: la conclusión "el log es el
+      factor de precisión" se sostiene sobre una comparación de dos, no de tres.
+
+  - id: B3.04
+    nombre: target diferencial
+    slug: target_delta
+    prioridad: P1
+    estado: falta
+    valor: "predecir Q(t+h) − Q(t) y reconstruir sumando"
+    implementar: {donde: rio_search/data.py + train.py, que: "target_param ∈ {nivel, delta, ratio}; la inversa suma q_actual", depende_de: [], esfuerzo: medio}
+    nota: >-
+      Elimina de raíz el problema de que el modelo se refugie en la persistencia: la parte
+      trivial ya está descontada y lo que el modelo aprende es el residuo. Es la
+      parametrización que más suele mover la aguja en series con autocorrelación alta.
+
+  - id: B3.05
+    nombre: target de razón logarítmica
+    slug: target_ratio
+    prioridad: P2
+    estado: falta
+    valor: "predecir ln(Q(t+h) / Q(t))"
+    implementar: {donde: "igual que B3.04", depende_de: [B3.04], esfuerzo: bajo}
+    nota: "Combina delta y log: cambio relativo. Es lo que un hidrólogo lee (\"el río sube 30 %\")."
+
+  - id: B3.06
+    nombre: estandarización estacional del target
+    slug: target_estacional
+    prioridad: P3
+    estado: falta
+    valor: "(Q − μ_doy) / σ_doy con climatología ajustada en TRAIN"
+    implementar: {donde: rio_search/train.py, que: "climatología por día del año con suavizado", depende_de: [], esfuerzo: medio}
+
+# ================================================================================
+- id: B4
+  nombre: Familia de modelo
+  eje: modelo
+  pregunta: "¿Qué arquitectura pronostica mejor con todo lo demás fijo?"
+  criterio_de_cierre: "Todas las P1 corridas o bloqueadas; top-3 identificado para B9 y B11."
+  orden_de_lectura: >-
+    Antes de cualquier transformer hay que tener corridas DLinear (B4.15) y LightGBM
+    (B4.10). Zeng et al. 2023 mostraron que un lineal simple gana a los transformers en
+    buena parte de los benchmarks de series temporales; sin ese control, una comparación
+    de transformers no dice nada. Y en tabular con pocos miles de filas el gradient
+    boosting sigue siendo el estado del arte de facto.
+  celdas:
+
+  - id: B4.01
+    nombre: lineal L2
+    slug: linear
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.train --model linear --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+    nota: "Se entrena por gradiente y no en forma cerrada justamente para que acepte la pérdida asimétrica."
+
+  - id: B4.02
+    nombre: MLP 1 capa
+    slug: mlp1
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B0.06)"
+
+  - id: B4.03
+    nombre: MLP profundo
+    slug: mlp_profundo
+    prioridad: P1
+    estado: falta
+    valor: "2–4 capas ocultas, con dropout y/o conexiones residuales"
+    implementar: {donde: rio_search/models.py, que: "MLPCore con lista de anchos; el backward se generaliza a N capas", depende_de: [], esfuerzo: medio}
+    nota: "MLPCore hoy tiene exactamente una capa oculta con tanh. Sin esta celda no se sabe si el techo del MLP es la profundidad o los datos."
+
+  - id: B4.04
+    nombre: regresión cuantílica lineal
+    slug: quantile_linear
+    prioridad: P2
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "LinearCore + QuantileLoss (B1.09)", depende_de: [B1.09], esfuerzo: bajo}
+
+  - id: B4.05
+    nombre: SARIMAX con exógenas
+    slug: sarimax
+    prioridad: P2
+    estado: falta
+    valor: "ARIMA estacional con lluvia y caudal agregado como exógenas"
+    implementar: {donde: rio_search/models.py, que: "adaptador statsmodels; por horizonte", depende_de: [statsmodels], esfuerzo: medio}
+    nota: "Es la referencia estadística clásica que un tribunal de tesis va a preguntar. No hace falta que gane; hace falta que esté."
+
+  - id: B4.06
+    nombre: Random Forest
+    slug: random_forest
+    prioridad: P2
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "adaptador sklearn; multi-output nativo", depende_de: [scikit-learn], esfuerzo: bajo}
+    nota: "No acepta la pérdida asimétrica: se corre con MSE y se compara sólo en las métricas, dejándolo escrito."
+
+  - id: B4.07
+    nombre: Extra Trees
+    slug: extra_trees
+    prioridad: P3
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "adaptador sklearn", depende_de: [scikit-learn], esfuerzo: bajo}
+
+  - id: B4.08
+    nombre: XGBoost
+    slug: xgboost
+    prioridad: P1
+    estado: falta
+    valor: "gradient boosting con objetivo custom"
+    implementar: {donde: rio_search/models.py, que: "adaptador; objetivo custom con grad/hess — la pérdida expectil los tiene analíticos", depende_de: [xgboost], esfuerzo: medio}
+    nota: >-
+      **La familia que más chance tiene de ganar** en un tabular de 9.600 filas y 19–26
+      columnas. Y acepta objetivo custom, así que gral se puede entrenar de verdad: es la
+      comparación fuerte de la tesis, no una concesión.
+
+  - id: B4.09
+    nombre: LightGBM
+    slug: lightgbm
+    prioridad: P1
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "adaptador; objetivo custom + soporte nativo de cuantiles", depende_de: [lightgbm], esfuerzo: medio}
+    nota: "Más rápido que XGBoost en este tamaño y con objetivo cuantílico nativo. Uno de los dos (B4.08/B4.09) es P1 obligatorio; el otro pasa a P2 si el primero corre."
+
+  - id: B4.10
+    nombre: CatBoost
+    slug: catboost
+    prioridad: P3
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "adaptador", depende_de: [catboost], esfuerzo: bajo}
+
+  - id: B4.11
+    nombre: SVR (RBF)
+    slug: svr
+    prioridad: P3
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "adaptador sklearn; un modelo por horizonte", depende_de: [scikit-learn], esfuerzo: bajo}
+
+  - id: B4.12
+    nombre: Proceso Gaussiano
+    slug: gp
+    prioridad: P3
+    estado: falta
+    implementar: {donde: rio_search/models.py, que: "adaptador sklearn con kernel Matérn + periódico", depende_de: [scikit-learn], esfuerzo: medio}
+    nota: "Da incertidumbre calibrada gratis. Escala mal con 7.000 filas de TRAIN: usar aproximación inducida o submuestreo, y dejarlo escrito."
+
+  - id: B4.13
+    nombre: DLinear / NLinear
+    slug: dlinear
+    prioridad: P1
+    estado: falta
+    valor: "descomposición tendencia+estacional y una capa lineal por componente sobre la ventana"
+    implementar: {donde: rio_search/models.py, que: "sobre las secuencias de B2.17; es lineal, corre en NumPy sin torch", depende_de: [B2.17], esfuerzo: medio}
+    referencia: >-
+      Zeng et al. 2023, "Are Transformers Effective for Time Series Forecasting?" (AAAI).
+      **Control obligatorio antes de cualquier transformer.** Barato y sin dependencias
+      nuevas: es la celda de mejor relación evidencia/costo de todo B4.
+
+  - id: B4.14
+    nombre: LSTM
+    slug: lstm
+    prioridad: P1
+    estado: falta
+    implementar: {donde: rio_search/models.py (torch), que: "adaptador torch con detección de device", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: >-
+      Kratzert et al. 2018/2019: el LSTM es el estado del arte en rainfall-runoff y supera
+      a los modelos conceptuales calibrados. Es la referencia contra la que la tesis se va
+      a medir, quiera o no.
+
+  - id: B4.15
+    nombre: BiLSTM
+    slug: bilstm
+    prioridad: P1
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    nota: >-
+      Es el baseline que `rio_search_plan.md` Fase 3 pone como objetivo. Ojo con el nombre:
+      bidireccional sobre la ventana de **entrada** (pasado) es legítimo; bidireccional
+      sobre el horizonte de salida sería fuga. Dejarlo escrito y verificarlo en la auditoría.
+
+  - id: B4.16
+    nombre: GRU
+    slug: gru
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: bajo}
+    nota: "Con TRAIN de ~7.000 días, menos parámetros que LSTM suele ser una ventaja real, no un ahorro."
+
+  - id: B4.17
+    nombre: Seq2Seq encoder-decoder con atención
+    slug: seq2seq
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    nota: "Es la arquitectura natural para 8 horizontes: el decoder genera la secuencia de salida en vez de 8 cabezas independientes."
+
+  - id: B4.18
+    nombre: TCN (convolución causal dilatada)
+    slug: tcn
+    prioridad: P1
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: medio}
+    referencia: >-
+      Bai, Kolter & Koltun 2018. Campo receptivo largo con pocos parámetros y sin estado
+      recurrente; la causalidad es estructural, no una convención — encaja con el invariante
+      del proyecto. Entrena más rápido que un LSTM y suele empatarle.
+
+  - id: B4.19
+    nombre: N-BEATS
+    slug: nbeats
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: "Oreshkin et al. 2020. Bloques residuales con base interpretable (tendencia/estacionalidad)."
+
+  - id: B4.20
+    nombre: N-HiTS
+    slug: nhits
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: "Challu et al. 2023. N-BEATS con muestreo multi-resolución; suele ganarle en horizontes largos, que acá es t+14."
+
+  - id: B4.21
+    nombre: Transformer vanilla
+    slug: transformer
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    nota: "No se corre antes que B4.13 (DLinear): sin ese control el resultado no es interpretable."
+
+  - id: B4.22
+    nombre: PatchTST
+    slug: patchtst
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: "Nie et al. 2023. Parcheo temporal + independencia de canal; el transformer que sí le gana a DLinear en varios benchmarks."
+
+  - id: B4.23
+    nombre: iTransformer
+    slug: itransformer
+    prioridad: P3
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: "Liu et al. 2024. Invierte los ejes: atención entre variables en vez de entre tiempos."
+
+  - id: B4.24
+    nombre: Temporal Fusion Transformer
+    slug: tft
+    prioridad: P2
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: >-
+      Lim et al. 2021. Es el único de la familia que distingue nativamente covariables
+      **conocidas a futuro** (el pronóstico de lluvia, B2.19) de las observadas. Cuando
+      llegue la Fase 4 del roadmap, es el candidato natural.
+
+  - id: B4.25
+    nombre: Informer / Autoformer / TimesNet
+    slug: transformers_largos
+    prioridad: P3
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    nota: "Diseñados para horizontes de cientos de pasos. Con 8 horizontes su ventaja estructural no aplica. P3 por eso, no por dificultad."
+
+  - id: B4.26
+    nombre: DeepAR
+    slug: deepar
+    prioridad: P3
+    estado: falta
+    implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
+    referencia: "Salinas et al. 2020. Autorregresivo probabilístico; da la distribución completa por horizonte."
+
+  - id: B4.27
+    nombre: Echo State Network
+    slug: esn
+    prioridad: P3
+    estado: falta
+    valor: "reservoir computing: recurrencia aleatoria fija + salida lineal entrenada"
+    implementar: {donde: rio_search/models.py, que: "NumPy puro, sin torch", depende_de: [], esfuerzo: medio}
+    nota: "Entrena en segundos y en caudal rinde sorprendentemente bien. Barata y sin dependencias: buena relación evidencia/costo."
+
+  - id: B4.28
+    nombre: modelo conceptual (GR4J / HBV)
+    slug: conceptual
+    prioridad: P2
+    estado: falta
+    valor: "lluvia-escorrentía conceptual calibrado; como baseline y como generador de features de estado"
+    implementar: {donde: rio_search/models.py, que: "GR4J de 4 parámetros calibrado sobre TRAIN", depende_de: [], esfuerzo: alto}
+    nota: >-
+      Dos usos y hay que separarlos: (a) baseline hidrológico —la comparación que la
+      hidrología pide y que ningún baseline estadístico reemplaza—; (b) híbrido, sus
+      estados internos (almacenamiento de producción y de ruteo) como features del modelo
+      de ML, que es el enfoque que mejor rinde en la literatura reciente.
+
+# ================================================================================
+- id: B5
+  nombre: Estrategia de horizonte
+  eje: horizonte
+  pregunta: "¿Un modelo con 8 salidas, 8 modelos, o iteración recursiva?"
+  criterio_de_cierre: "B5.01–B5.03 corridas o bloqueadas."
+  celdas:
+
+  - id: B5.01
+    nombre: multi_output
+    slug: multioutput
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B0.06)"
+    nota: "Comparte representación entre horizontes y aprovecha la máscara: una fila sin target a 14 d sigue aportando a t+1."
+
+  - id: B5.02
+    nombre: per_horizon
+    slug: per_horizon
+    prioridad: P1
+    estado: falta
+    valor: "8 modelos independientes, uno por horizonte"
+    implementar:
+      donde: rio_search/train.py
+      que: "bucle sobre horizontes con n_out=1 y agregación de métricas; el plan §3.3 lo pone en la aplicación, no en el adaptador"
+      depende_de: []
+      esfuerzo: medio
+    nota: "Decisión #2 del plan lo declara configurable por experimento y comparar ambos es parte de la tesis. Hoy sólo existe uno de los dos."
+
+  - id: B5.03
+    nombre: recursivo
+    slug: recursivo
+    prioridad: P2
+    estado: falta
+    valor: "un modelo a t+1, iterado 14 veces realimentando la predicción"
+    implementar: {donde: rio_search/train.py, que: "predicción iterada; las features derivadas del caudal hay que recalcularlas en cada paso", depende_de: [], esfuerzo: alto}
+    nota: "Acumula error pero usa todos los datos para un solo modelo. Es la comparación directa vs. per_horizon que la literatura de multi-step llama direct vs. recursive."
+
+  - id: B5.04
+    nombre: híbrido directo/recursivo
+    slug: hibrido
+    prioridad: P3
+    estado: falta
+    valor: "directo hasta t+7, recursivo de ahí a t+14"
+    implementar: {depende_de: [B5.03], esfuerzo: bajo}
+
+  - id: B5.05
+    nombre: horizonte como feature
+    slug: horizonte_feature
+    prioridad: P2
+    estado: falta
+    valor: "un solo modelo, h entra como covariable; el dataset se apila 8 veces"
+    implementar: {donde: rio_search/data.py + train.py, que: "apilado largo con columna h", depende_de: [], esfuerzo: medio}
+    nota: "Comparte todo el aprendizaje entre horizontes y permite interpolar a horizontes no entrenados. Multiplica por 8 las filas de TRAIN."
+
+# ================================================================================
+- id: B6
+  nombre: Ventana de entrenamiento y ponderación temporal
+  eje: ventana
+  pregunta: "¿La historia vieja aporta o estorba?"
+  criterio_de_cierre: "B6.01–B6.03 corridas."
+  celdas:
+
+  - id: B6.01
+    nombre: toda la serie (2000→)
+    slug: ventana_completa
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B0.06)"
+
+  - id: B6.02
+    nombre: expandible vs deslizante
+    slug: walkforward_ventanas
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.walkforward --ventanas expandible,deslizante --n-folds 5 --train-years 10 --trials 30 --seeds-per-trial 2 --seeds-final 3 --loss gral --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 1700
+    nota: >-
+      Ya corrido una vez sobre d278: expandible G-RAL 0,638 / deslizante 0,622 sobre 4
+      folds completos — dentro del ruido entre años, sin ganador. Se re-corre como celda
+      para que quede en el ledger. **Es la celda más cara del catálogo** (~28 min);
+      confirmar antes de arrancarla si el presupuesto de la sesión es corto.
+
+  - id: B6.03
+    nombre: piso temporal alternativo
+    slug: ventana_2008
+    prioridad: P1
+    estado: implementado
+    valor: "TRAIN desde 2008-01-01 (el `train_window.start` del plan §4.1)"
+    cmd: -m rio_search.train --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --train-start 2008-01-01 --split val
+    tiempo_est_s: 12
+    nota: >-
+      `make_splits(train_start=...)` ya existía y no estaba expuesto en ningún CLI; el flag
+      `--train-start` se agregó el 2026-09-05 (brecha G-01, cerrada). Recorta TRAIN de 8.939
+      a ~6.000 días: si gana, la historia previa a 2008 estorba más de lo que aporta.
+
+  - id: B6.04
+    nombre: ventana deslizante de otro largo
+    slug: ventana_5_15
+    prioridad: P2
+    estado: implementado
+    valor: "--train-years 5 y 15"
+    cmd: -m rio_search.walkforward --ventanas deslizante --n-folds 5 --train-years 5 --trials 30 --seeds-per-trial 2 --seeds-final 3 --loss gral --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 850
+    nota: "Dos corridas (5 y 15). Sólo si B6.02 dio ventaja a deslizante."
+
+  - id: B6.05
+    nombre: peso muestral por antigüedad
+    slug: peso_antiguedad
+    prioridad: P2
+    estado: falta
+    valor: "w(t) = λ^(edad en años), λ ∈ {0.90, 0.95, 0.98}"
+    implementar: {donde: rio_search/models.py (fit) + train.py, que: "peso por muestra multiplicando el gradiente", depende_de: [], esfuerzo: medio}
+    nota: "Es la versión continua de expandible-vs-deslizante: en vez de cortar la historia, la descuenta. Suele ganarle a las dos."
+
+  - id: B6.06
+    nombre: peso muestral por régimen
+    slug: peso_regimen
+    prioridad: P2
+    estado: falta
+    valor: "sobre-muestreo o peso extra de los días de crecida"
+    implementar: {donde: "igual que B6.05", depende_de: [B6.05], esfuerzo: bajo}
+    nota: >-
+      Competidor directo de la asimetría de gral: pone el foco en crecida por muestreo en
+      vez de por pérdida. Si empatan, la tesis tiene que explicar por qué prefiere la
+      pérdida — y la respuesta buena es que la pérdida declara el costo, el muestreo lo esconde.
+
+# ================================================================================
+- id: B7
+  nombre: Preprocesamiento
+  eje: preproceso
+  pregunta: "¿Cuánto del resultado depende del escalado y de la imputación?"
+  criterio_de_cierre: "B7.01–B7.03 corridas o bloqueadas."
+  celdas:
+
+  - id: B7.01
+    nombre: estandarización
+    slug: prep_standard
+    prioridad: P1
+    estado: implementado
+    cmd: "(= B0.06)"
+    nota: "Ajustada sólo con TRAIN; hay un test que verifica que alterar VAL/TEST no mueve los estadísticos."
+
+  - id: B7.02
+    nombre: robusto (mediana / IQR)
+    slug: prep_robust
+    prioridad: P1
+    estado: falta
+    implementar: {donde: rio_search/train.py (Preprocessor), que: "scaling ∈ {standard, robust, minmax, quantile, none}", depende_de: [], esfuerzo: bajo}
+    nota: "Con caudales de cola pesada la media y el desvío están dominados por las crecidas. Es la celda barata que más chance tiene de mover algo en B7."
+
+  - id: B7.03
+    nombre: minmax / quantile / ninguno
+    slug: prep_otros
+    prioridad: P2
+    estado: falta
+    implementar: {depende_de: [B7.02], esfuerzo: bajo}
+    nota: "El transform cuantílico (rank-gauss) es el que mejor rinde con features de cola pesada en tabular."
+
+  - id: B7.04
+    nombre: imputación por ffill acotado
+    slug: prep_ffill
+    prioridad: P2
+    estado: falta
+    valor: "ffill de hasta 3 días y mediana de TRAIN para el resto (lo que pide el plan §3.6)"
+    implementar: {donde: rio_search/train.py (Preprocessor), que: "imputation ∈ {mediana, ffill_median}", depende_de: [], esfuerzo: bajo}
+    nota: "Hoy sólo hay mediana de TRAIN. En una serie diaria un hueco de 1–2 días se parece más al valor anterior que a la mediana histórica."
+
+  - id: B7.05
+    nombre: indicador de faltante
+    slug: prep_indicador
+    prioridad: P3
+    estado: falta
+    valor: "una columna 0/1 por feature imputada"
+    implementar: {depende_de: [B7.04], esfuerzo: bajo}
+    nota: "Que un dato falte suele ser informativo (falla de telemetría durante crecida). Vigilar que no se vuelva un proxy del régimen."
+
+# ================================================================================
+- id: B8
+  nombre: Modulador de régimen (sensibilidad, no ajuste)
+  eje: modulador
+  pregunta: "¿La conclusión depende de los parámetros del modulador?"
+  criterio_de_cierre: "B8.01–B8.03 corridas."
+  regla: >-
+    R9 del protocolo: τ_max y los umbrales de régimen NO se eligen por métrica. Este bloque
+    mide sensibilidad y su salida es una frase del tipo "la conclusión se sostiene / no se
+    sostiene en el rango explorado", nunca "el mejor τ_max es X".
+  celdas:
+
+  - id: B8.01
+    nombre: barrido de τ_max
+    slug: tau_max_sweep
+    prioridad: P1
+    estado: implementado
+    valor: "τ_max ∈ {0.60, 0.70, 0.80, 0.85, 0.90, 0.95}, medido siempre con τ_max = 0,85"
+    cmd: -m rio_search.sensitivity --seeds 3 --split val --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 300
+    nota: >-
+      **Pasar `--split val` explícitamente**: el default del CLI es `test` y eso viola R3.
+      El τ de referencia fijo es lo que hace comparables las filas: sin él, el umbral de
+      "día húmedo" se movería junto con el parámetro.
+
+  - id: B8.02
+    nombre: oráculo vs causal
+    slug: tau_modes
+    prioridad: P1
+    estado: implementado
+    valor: "modo `oracle` (lluvia futura observada) vs `antecedent` (sólo pasado)"
+    cmd: -m rio_search.sensitivity --tau-modes --seeds 3 --split val --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 200
+    nota: >-
+      El único operable hoy es `antecedent`. `oracle` es retrospectivo y no es causal — hay
+      un test que lo deja escrito. **Si la conclusión sólo se sostiene con el oráculo, hay
+      que decirlo**, y es un hallazgo de la tesis, no un problema a esconder.
+
+  - id: B8.03
+    nombre: fuente de lluvia del modulador
+    slug: gate_rain_merge
+    prioridad: P1
+    estado: implementado
+    valor: "grilla MERGE de CPTEC (media areal real) en vez de la media por estación del ancla"
+    cmd: -m rio_search.train --loss gral --seeds 5 --gate-rain lluvia_merge_alta_frontera_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
+    medido:
+      fecha: 2026-09-05
+      val: {gral: 0.5488, gral_sd: 0.0118, rmse: 1013, nse: 0.20, kge: 0.49, v_plus: 0.530, v_minus: 0.657}
+      dias: 9664
+    nota: >-
+      **Es la celda más consecuente de B8, no un detalle.** Con hiperparámetros idénticos,
+      cambiar la fuente mueve val/gral de 0,4969 a 0,5488 — cuatro veces el umbral de ruido
+      — y da vuelta el perfil de régimen (V⁺ 0,365 → 0,530, V⁻ 0,747 → 0,657). Las dos
+      series correlacionan 0,90 y sus τ 0,93, pero τ entra en la pérdida Y en la métrica, así
+      que cambiarla cambia las dos cosas a la vez: **el número no es comparable con el del
+      ancla como si midieran lo mismo**. MERGE es la fuente hidrológicamente preferible
+      (media areal real, cobertura completa, estacionaria); la media por estación depende de
+      qué pluviómetros reportaron ese día. Si esta celda pasa a ser el ancla, hay que
+      re-correr B9.01 bajo MERGE antes de seguir: los HP vigentes se buscaron bajo estaciones.
+
+  - id: B8.04
+    nombre: barrido de κ, pesos y ventanas
+    slug: gate_params
+    prioridad: P2
+    estado: falta
+    valor: "kappa ∈ {1.5, 2.2, 3.0}; w_ant/w_fc ∈ {0.5/0.5, 0.35/0.65, 0.2/0.8}; ant_days ∈ {15, 30, 60}"
+    implementar: {donde: rio_search/sensitivity.py, que: "barrido genérico sobre GateParams; el dataclass ya acepta todos los campos", depende_de: [], esfuerzo: bajo}
+    nota: "GateParams ya los acepta; falta sólo el driver. κ = 2,2 reparte los días 35/30/35 %: el barrido tiene que reportar el reparto de cada punto o las filas no son comparables."
+
+  - id: B8.05
+    nombre: modulador en modo forecast
+    slug: tau_forecast
+    prioridad: P1
+    estado: bloqueado_dato
+    valor: "30 d observados + 14 d de pronóstico real"
+    bloqueado_por: "Fase 4 del roadmap; depende de B2.19."
+    nota: "Es el único modo **operable** que usa información de futuro. Sin él, la propuesta corre con el modulador antecedente o no corre en producción."
+
+# ================================================================================
+- id: B9
+  nombre: Búsqueda de hiperparámetros
+  eje: busqueda_hp
+  pregunta: "¿Cuánto queda sobre la mesa por hiperparámetros, y qué eje importa?"
+  criterio_de_cierre: "B9.01 corrida sobre los 2–3 finalistas de B4."
+  regla: "El objetivo sale de VAL. TEST no entra en ningún trial (R3) — search.py ya lo hace así."
+  celdas:
+
+  - id: B9.01
+    nombre: TPE
+    slug: bo_tpe
+    prioridad: P1
+    estado: implementado
+    valor: "optimización bayesiana estándar de Optuna, 60 trials"
+    cmd: -m rio_search.search --trials 60 --sampler tpe --loss gral --metric gral --seeds-per-trial 3 --seeds-final 5 --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 420
+    nota: >-
+      **Usar `--seeds-per-trial 3` como mínimo.** Con 1 el desvío entre semillas de
+      val/gral (~0,01) es comparable a la diferencia total que la búsqueda logra entre su
+      mejor y su peor configuración razonable: el sampler termina persiguiendo
+      inicializaciones afortunadas en vez de hiperparámetros. Es lineal en costo, así que
+      es un cambio de precio, no de diseño.
+
+  - id: B9.02
+    nombre: procesos gaussianos
+    slug: bo_gp
+    prioridad: P2
+    estado: falta
+    valor: "sampler GP de Optuna, 40 trials"
+    implementar:
+      donde: entorno
+      que: "instalar torch — GPSampler lo importa de forma diferida"
+      depende_de: [torch]
+      esfuerzo: bajo
+    nota: >-
+      Estaba marcada `implementado` y **no lo estaba**: falló el 2026-09-15 con
+      `ModuleNotFoundError: No module named 'torch'`. El `GPSampler` de Optuna importa torch de forma
+      diferida, así que el error no aparece hasta que el sampler se usa de verdad — por eso el catálogo
+      la daba por corrible. Más adecuada que TPE con presupuesto chico de trials y espacio continuo,
+      pero instalar torch es una decisión del usuario (y lo desbloquea todo B4 secuencial a la vez).
+
+  - id: B9.03
+    nombre: aleatorio (control)
+    slug: bo_random
+    prioridad: P1
+    estado: implementado
+    cmd: -m rio_search.search --trials 60 --sampler random --loss gral --metric gral --seeds-per-trial 3 --seeds-final 5 --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 420
+    nota: >-
+      No es optimización bayesiana: es el **control** que dice si la BO aportó algo. Sin
+      esta celda, "la BO encontró X" no es una afirmación verificable.
+
+  - id: B9.04
+    nombre: multi-objetivo
+    slug: bo_nsga
+    prioridad: P2
+    estado: falta
+    valor: "NSGA-II sobre (val/gral, val/rmse) o sobre (V⁺, FA húmedo): frente de Pareto"
+    implementar: {donde: rio_search/search.py, que: "create_study(directions=[...]) y reporte del frente", depende_de: [], esfuerzo: medio}
+    nota: >-
+      Es la forma honesta de mostrar el trade-off que este proyecto tiene en el centro:
+      gral compra V⁻ y KGE pagando ~30 m³/s de RMSE. Un frente de Pareto lo muestra; un
+      escalar lo esconde.
+
+  - id: B9.05
+    nombre: Hyperband / ASHA
+    slug: bo_asha
+    prioridad: P3
+    estado: falta
+    implementar: {donde: rio_search/search.py, que: "cambiar el pruner; Optuna ya trae HyperbandPruner", depende_de: [], esfuerzo: bajo}
+    nota: "Hoy usa MedianPruner. Con corridas de 2 s el podado no es el cuello de botella: P3 por eso."
+
+  - id: B9.06
+    nombre: CMA-ES
+    slug: bo_cmaes
+    prioridad: P3
+    estado: falta
+    implementar: {donde: rio_search/search.py, que: "agregar CmaEsSampler al diccionario de samplers", depende_de: [], esfuerzo: bajo}
+
+  - id: B9.07
+    nombre: espacio ampliado
+    slug: espacio_ampliado
+    prioridad: P2
+    estado: falta
+    valor: "sumar a SPACE: lookback, n_capas, dropout, escalado, ventana de TRAIN"
+    implementar: {donde: rio_search/search.py, que: "SPACE condicional por familia de modelo", depende_de: [B2.17, B4.03, B7.02, B6.03], esfuerzo: medio}
+    nota: >-
+      **Acá es donde se recuperan las interacciones** que el descenso coordinado no ve
+      (protocolo §10). Se corre al final, sobre los 2–3 finalistas, con los ejes acoplados
+      liberados a la vez. τ_max no entra en el espacio nunca (R9).
+
+# ================================================================================
+- id: B10
+  nombre: Ensembles
+  eje: ensemble
+  pregunta: "¿Combinar los finalistas gana más que elegir uno?"
+  criterio_de_cierre: "B10.01 y B10.02 corridas sobre el top-3 de B4."
+  celdas:
+
+  - id: B10.01
+    nombre: promedio entre semillas
+    slug: ens_semillas
+    prioridad: P1
+    estado: falta
+    valor: "promediar las **predicciones** de las N semillas, no sus métricas"
+    implementar: {donde: rio_search/train.py, que: "guardar predicciones por semilla y evaluar el promedio", depende_de: [], esfuerzo: bajo}
+    nota: >-
+      Hoy se promedian métricas, que es otra cosa. El promedio de predicciones casi siempre
+      gana a la media de las métricas individuales, es gratis (las corridas ya existen) y
+      es el ensemble que un operador puede desplegar sin cambiar nada.
+
+  - id: B10.02
+    nombre: promedio entre configuraciones
+    slug: ens_top3
+    prioridad: P1
+    estado: falta
+    valor: "media simple de las predicciones de los 3 mejores de B4"
+    implementar: {depende_de: [B10.01], esfuerzo: bajo}
+
+  - id: B10.03
+    nombre: stacking
+    slug: ens_stacking
+    prioridad: P2
+    estado: falta
+    valor: "meta-modelo lineal con pesos ajustados en VAL"
+    implementar: {donde: rio_search/ (módulo nuevo), que: "meta-regresión sobre predicciones out-of-fold", depende_de: [B10.01], esfuerzo: medio}
+    nota: "Ojo: ajustar los pesos en el mismo VAL que seleccionó los miembros contamina la selección. Hace falta un VAL interno o folds anidados; dejarlo escrito."
+
+  - id: B10.04
+    nombre: mezcla ponderada por régimen
+    slug: ens_por_regimen
+    prioridad: P2
+    estado: falta
+    valor: "peso función de τ: un modelo para crecida, otro para estiaje"
+    implementar: {depende_de: [B10.01], esfuerzo: medio}
+    nota: >-
+      Es la extensión natural de la tesis: si el costo depende del régimen, el **modelo**
+      también puede depender del régimen. El modulador ya da τ por día y es causal, así que la
+      mezcla es operable.
+
+  - id: B10.05
+    nombre: intervalos de predicción
+    slug: ens_intervalos
+    prioridad: P2
+    estado: falta
+    valor: "cuantiles 10/50/90 y cobertura empírica"
+    implementar: {donde: rio_search/metrics.py, que: "cobertura de intervalo, ancho medio, pinball de evaluación", depende_de: [B1.09], esfuerzo: medio}
+    nota: "Un pronóstico operativo sin banda es difícil de usar. También es lo que permite comparar contra ensembles de NWP el día que lleguen."
+
+# ================================================================================
+- id: B11
+  nombre: Confirmación y cierre
+  eje: —
+  pregunta: "¿La ventaja del campeón sobrevive a cambiar de año, y cuánto vale en TEST?"
+  criterio_de_cierre: "Los cuatro puntos de §8.1 del protocolo."
+  regla: "ES EL ÚNICO BLOQUE DONDE SE MIRA TEST (R3)."
+  celdas:
+
+  - id: B11.01
+    nombre: walk-forward anidado del campeón
+    slug: wf_campeon
+    prioridad: P1
+    estado: implementado
+    valor: "5 folds anuales, BO dentro de cada fold sobre su propio VAL"
+    cmd: -m rio_search.walkforward --ventanas expandible --n-folds 5 --trials 30 --seeds-per-trial 2 --seeds-final 3 --loss gral --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 850
+    nota: >-
+      Es la forma anidada: la búsqueda corre **dentro** de cada fold, que es la única que
+      no usa información del futuro del fold para elegir su configuración. Tres cosas que
+      mezcla a propósito y hay que leer juntas: el año de TEST cambia entre folds, los
+      hiperparámetros cambian entre folds, y el último fold suele ser parcial (queda
+      marcado y no entra en las medias). Criterio de confirmación: **el campeón le gana al
+      ancla en ≥ 3 de los 4 folds completos**, no en la media.
+
+  - id: B11.02
+    nombre: TEST único
+    slug: test_unico
+    prioridad: P1
+    estado: implementado
+    valor: "la configuración campeona, 5 semillas, TEST leído una sola vez"
+    cmd: "(el JSON del campeón ya lo tiene calculado; acá se lo lee y se lo registra)"
+    tiempo_est_s: 0
+    nota: >-
+      No se re-entrena: se lee el bloque `test` del JSON del campeón, se reporta con su
+      desvío entre semillas y se escribe en el ledger. TEST son 285–365 días de un solo
+      año hidrológico: se reporta como media ± desvío y las diferencias menores al desvío
+      no se leen.
+
+  - id: B11.03
+    nombre: significancia entre finalistas
+    slug: diebold_mariano
+    prioridad: P2
+    estado: falta
+    valor: "test de Diebold-Mariano sobre las series de error, con corrección de autocorrelación"
+    implementar: {donde: rio_search/metrics.py, que: "dm_test(e1, e2, h) con varianza HAC", depende_de: [], esfuerzo: medio}
+    referencia: >-
+      Diebold & Mariano 1995. Es el test estándar para decir si dos pronósticos difieren de
+      verdad. El desvío entre semillas (§5.1) cubre el ruido de inicialización; DM cubre el
+      ruido de la muestra temporal, que es el que queda.
+
+  - id: B11.04
+    nombre: lectura por horizonte y por régimen
+    slug: desglose
+    prioridad: P1
+    estado: implementado
+    valor: "métricas por h ∈ {1..7, 14} y por régimen de τ"
+    cmd: "(el bloque `per_horizon` ya está en cada JSON)"
+    tiempo_est_s: 0
+    nota: >-
+      El escalar promedia 8 horizontes muy distintos: t+1 es casi persistencia y t+14 es
+      otro problema. Un campeón que gana el promedio perdiendo t+1 no sirve para operar.
+
+  - id: B11.05
+    nombre: informe final y propuesta de Decisión
+    slug: informe
+    prioridad: P1
+    estado: implementado
+    cmd: "(redacción; sin comando)"
+    nota: >-
+      Salida: leaderboard final, qué eje aportó cuánto, qué quedó bloqueado y por qué, y
+      una entrada propuesta para `decisions.md`. **La propone el agente y la aprueba el
+      usuario** — no se escribe en decisions.md sin autorización.
+
+# --------------------------------------------------------------------------------
+# Brechas transversales del arnés — no son celdas, son lo que hace falta para que
+# varias celdas se puedan correr o leer bien. Igual que las celdas `falta`: se
+# reportan y se espera autorización (protocolo R7).
+# --------------------------------------------------------------------------------
+gaps:
+  - id: G-01
+    titulo: "train.py no expone --patience ni --train-start"
+    estado: cerrada
+    cerrada_en: 2026-09-05
+    impacto: >-
+      El ancla no podía reproducir exactamente el mejor trial de la BO (patience 81 vs 60
+      por defecto), y B6.03 no se podía correr aunque make_splits ya aceptara train_start.
+    resolucion: >-
+      `--patience` y `--train-start` agregados al CLI de train.py, y los dos quedan
+      registrados en el bloque `run_config` del JSON. B6.03 pasó a `implementado`. Medido:
+      el ancla da el mismo val/gral con patience 60 y con 81 — en esa configuración corta
+      el early stopping antes, así que la brecha existía pero no la afectaba.
+
+  - id: G-02
+    titulo: "la transformación del target está acoplada a la pérdida"
+    impacto: >-
+      LOSS_CONFIGS mapea nombre → (pérdida, transformación), así que target y pérdida no
+      son ejes independientes. Bloquea B3.03–B3.06 y cualquier combinación tipo
+      (huber, raíz cuarta).
+    esfuerzo: medio
+
+  - id: G-03
+    titulo: "no hay forma de no calcular TEST"
+    estado: cerrada
+    cerrada_en: 2026-09-05
+    impacto: >-
+      run_experiment evaluaba TEST siempre y lo escribía en el JSON, así que R3 se sostenía
+      por disciplina de quien leía, no por el código.
+    resolucion: >-
+      `--no-test` en train.py (y `evaluar_test` en run_experiment / run_baselines /
+      run_comparison): el bloque directamente no se calcula ni se escribe. El corredor se
+      lo agrega solo a toda celda `train` fuera de B11, así que la regla pasó a ser
+      estructural. `--split test` junto con `--no-test` ahora es un error explícito.
+      Queda abierto para search.py y walkforward.py, que no tienen el flag: ahí el corredor
+      no lee TEST y el ledger guarda "no_leido".
+
+  - id: G-04
+    titulo: "sensitivity.py tenía --split test por defecto"
+    estado: cerrada
+    cerrada_en: 2026-09-05
+    impacto: "Correrlo sin --split val violaba R3 en silencio."
+    resolucion: "El default pasó a `val`. Un barrido de sensibilidad se corre muchas veces; leerlo en TEST convierte el conjunto de prueba en criterio de selección."
+
+  - id: G-05
+    titulo: "no se guardan las predicciones"
+    impacto: >-
+      Sólo se guardan métricas agregadas. Sin las predicciones por día no se puede hacer
+      ensemble (B10), ni Diebold-Mariano (B11.03), ni graficar hidrogramas, ni analizar
+      residuos. Es la brecha que más celdas bloquea después de B2.17.
+    esfuerzo: medio
+
+  - id: G-06
+    titulo: "no hay MLflow"
+    impacto: >-
+      Los resultados van a JSON. El plan (§3.5) pide tracking en Databricks con procedencia
+      de código y tiempos. Con ~120 celdas × varias versiones del dataset, el ledger JSONL
+      alcanza pero no escala a la comparación cruzada que la tesis va a querer.
+    esfuerzo: alto
+
+  - id: G-08
+    titulo: "train.py revienta al imprimir si --out cae fuera del repo"
+    estado: cerrada
+    cerrada_en: 2026-09-05
+    resolucion: "`relative_to` envuelto en try/except, igual que en search.py y walkforward.py."
+    impacto: >-
+      `out_path.relative_to(REPO_ROOT)` sin guarda: el JSON se escribe bien y después la
+      corrida muere con ValueError. search.py y walkforward.py ya lo envuelven en try/except;
+      train.py no. El protocolo siempre escribe dentro del repo, así que no lo toca — pero
+      es una corrida perdida para cualquiera que use un --out externo.
+    esfuerzo: bajo
+
+  - id: G-07
+    titulo: "no hay corredor del catálogo"
+    estado: cerrada
+    cerrada_en: 2026-09-05
+    impacto: >-
+      El agente ejecutaba celda por celda y escribía el ledger a mano, así que el protocolo
+      dependía de que lo interpretara bien cada vez.
+    resolucion: >-
+      `rio_search/runner.py`. Lee este YAML, resuelve el DATASET_ID desde el manifest, corre
+      lo implementado en orden de bloque, calcula el veredicto contra el ancla con el umbral
+      de ruido y hace append al ledger. `--estado` es la fase F0, `--todo` es el replay
+      completo, `--deriva` es el informe de §7. Cuando cambia el dataset, cierra las filas
+      viejas como históricas antes de correr nada.
+
+# --------------------------------------------------------------------------------
+resumen:
+  celdas_totales: 111
+  implementadas: 37          # 26 con comando propio + 11 que reusan la corrida de otra celda
+  faltan: 71
+  bloqueadas_por_dato: 2     # B2.19, B8.05 — Fase 4 del roadmap del dataset
+  requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
+  celdas_P1: 56              # de las cuales 35 corren hoy
+  reloj_de_lo_implementado: >-
+    ~90 min para las 37 celdas implementadas; **~33 min sin las tres celdas de
+    walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto. Los tiempos de las
+    celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
+    5 semillas con `--no-test` tarda 3–7 s, no los ~60 que se habían estimado. El replay
+    completo del catálogo implementado es, en la práctica, media hora.
+  camino_mas_corto_a_un_cierre: >-
+    Con lo implementado hoy se corren B0 completo, B1 (5 de 14), B2 (7 de 19), B4 (2 de 28),
+    B6 (4 de 6), B8 (3 de 5), B9 (3 de 7) y B11 (4 de 5). Eso cierra el eje `perdida`, la
+    ablación de features y la sensibilidad del modulador — pero **no** alcanza para el criterio
+    de finalización: sin B2.17 (ventana), B4.08/B4.09 (GBM), B4.13 (DLinear), B4.14 (LSTM),
+    B5.02 (per_horizon), B3.04 (target diferencial), B1.06 (τ constante) y B1.10 (NSE-loss),
+    la cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
+    es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero
+    sobre el dataset que haya, sin intervención.
+  tres_desbloqueos_de_mayor_impacto:
+    - "B2.17 (ventana / lookback) — habilita 13 celdas de B4"
+    - "G-05 (guardar predicciones) — habilita todo B10 y B11.03"
+    - "B4.09 o B4.13 (LightGBM o DLinear) — la comparación fuerte que hoy no existe"
