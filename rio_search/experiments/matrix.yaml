@@ -1125,10 +1125,17 @@ bloques:
     nombre: barrido de κ, pesos y ventanas
     slug: gate_params
     prioridad: P2
-    estado: falta
+    estado: implementado
     valor: "kappa ∈ {1.5, 2.2, 3.0}; w_ant/w_fc ∈ {0.5/0.5, 0.35/0.65, 0.2/0.8}; ant_days ∈ {15, 30, 60}"
-    implementar: {donde: rio_search/sensitivity.py, que: "barrido genérico sobre GateParams; el dataclass ya acepta todos los campos", depende_de: [], esfuerzo: bajo}
-    nota: "GateParams ya los acepta; falta sólo el driver. κ = 2,2 reparte los días 35/30/35 %: el barrido tiene que reportar el reparto de cada punto o las filas no son comparables."
+    cmd: -m rio_search.sensitivity --gate-grid --seeds 3 --split val --gate-rain lluvia_media_est_mm
+    tiempo_est_s: 420
+    nota: >-
+      Producto completo: 27 puntos, 3 semillas cada uno, siempre **medido con la
+      configuración declarada** (como el barrido de τ_max: lo que cambia es con qué τ se
+      entrena). Cada punto reporta su reparto húmedo/neutro/seco — κ = 2,2 da ≈ 35/30/35 %
+      y con κ = 1,5 casi no hay días fuera del centro, así que sin el reparto las filas no
+      son comparables. `ant_days` mueve las filas iniciales sin τ: cada punto se alinea por
+      fecha contra la referencia antes de entrenar.
 
   - id: B8.05
     nombre: modulador en modo forecast

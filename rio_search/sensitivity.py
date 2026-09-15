@@ -87,6 +87,68 @@ def sweep_tau_max(*, seeds, model="mlp", losses=("gral", "expectile_raw"),
     return out
 
 
+#: Grilla de B8.04. κ = 2,2 / 0,35-0,65 / 30 d es la configuración declarada.
+GATE_GRID_KAPPAS = (1.5, 2.2, 3.0)
+GATE_GRID_PESOS = ((0.5, 0.5), (0.35, 0.65), (0.2, 0.8))
+GATE_GRID_ANT_DAYS = (15, 30, 60)
+
+
+def _gate_grid(kappas=GATE_GRID_KAPPAS, pesos=GATE_GRID_PESOS,
+               ant_days=GATE_GRID_ANT_DAYS) -> list[tuple[str, gate_mod.GateParams]]:
+    """El producto completo de la grilla, con una etiqueta estable por punto."""
+    out = []
+    for kappa in kappas:
+        for w_ant, w_fc in pesos:
+            for ad in ant_days:
+                etiqueta = f"k{kappa:g}_w{w_ant:g}/{w_fc:g}_ant{ad}"
+                out.append((etiqueta, gate_mod.GateParams(
+                    kappa=kappa, w_ant=w_ant, w_fc=w_fc, ant_days=int(ad))))
+    return out
+
+
+def sweep_gate_params(*, seeds, model="mlp", loss="gral", split="val",
+                      gate_rain="auto", **kw) -> dict:
+    """B8.04: la misma pérdida bajo cada punto de la grilla del modulador.
+
+    Igual que el barrido de τ_max, **se mide siempre con el τ de la configuración
+    declarada** (GateParams por defecto): lo que cambia entre filas es con qué τ
+    se entrena. Cada punto reporta además su reparto húmedo/neutro/seco — sin eso
+    las filas no son comparables, porque κ y los pesos mueven el umbral de "día
+    húmedo" (con κ = 1,5 casi no hay días fuera del centro).
+
+    `ant_days` cambia cuántas filas iniciales quedan sin τ (la suma móvil
+    estricta necesita ventana completa), así que cada punto se alinea por fecha
+    contra la referencia antes de entrenar o medir nada.
+    """
+    ref_full = data_mod.build_dataset(tau_mode="oracle", gate_rain_col=gate_rain)
+    out = {"grid": {"kappa": list(GATE_GRID_KAPPAS),
+                    "pesos_w_ant_w_fc": [list(p) for p in GATE_GRID_PESOS],
+                    "ant_days": list(GATE_GRID_ANT_DAYS)},
+           "split": split, "ref_params": gate_mod.DEFAULT_PARAMS.as_dict(),
+           "loss": loss, "runs": {}}
+    _header(f"barrido del modulador · loss={loss} · split {split.upper()}"
+            f"  [medido siempre con la configuración declarada]")
+    for etiqueta, params in _gate_grid():
+        ds_full = data_mod.build_dataset(tau_mode="oracle", gate_rain_col=gate_rain,
+                                         gate_params=params)
+        ds, ref = ds_full.align_to(ref_full)
+        splits = data_mod.make_splits(ds.fecha)
+        r = run_experiment_seeds(ds, splits, model=model, loss=loss, seeds=seeds,
+                                 eval_tau=ref.tau, **kw)
+        m = r[split]["mean"]
+        reparto = {
+            "humedo_pct": round(100 * float(np.mean(ds.tau > 0.65)), 1),
+            "neutro_pct": round(100 * float(np.mean((ds.tau >= 0.35) & (ds.tau <= 0.65))), 1),
+            "seco_pct": round(100 * float(np.mean(ds.tau < 0.35)), 1),
+        }
+        out["runs"][etiqueta] = {**m, "_tau_reparto": reparto, "n_dias": len(ds)}
+        _print_row(etiqueta, m)
+        print(f"    reparto τ: húmedo {reparto['humedo_pct']} % · neutro "
+              f"{reparto['neutro_pct']} % · seco {reparto['seco_pct']} %")
+    print("-" * 104)
+    return out
+
+
 def compare_tau_modes(*, seeds, model="mlp", losses=("mse", "gral"),
                       modes=("oracle", "antecedent"), split="test",
                       gate_rain="auto", **kw) -> dict:
@@ -138,6 +200,8 @@ def main(argv=None) -> int:
                         "convierte el conjunto de prueba en un criterio de selección")
     p.add_argument("--tau-modes", action="store_true",
                    help="corre el contraste oráculo vs causal en vez del barrido")
+    p.add_argument("--gate-grid", action="store_true",
+                   help="B8.04: barrido de κ, pesos y ventanas del modulador")
     p.add_argument("--epochs", type=int, default=600)
     p.add_argument("--hidden", type=int, default=64)
     p.add_argument("--gate-rain", default="auto")
@@ -150,7 +214,11 @@ def main(argv=None) -> int:
     gate_rain = args.gate_rain
     print(f"semillas: {seeds}")
 
-    if args.tau_modes:
+    if args.gate_grid:
+        results = sweep_gate_params(seeds=seeds, model=args.model, split=args.split,
+                                    gate_rain=gate_rain, **kw)
+        name = "gate_params"
+    elif args.tau_modes:
         results = compare_tau_modes(seeds=seeds, model=args.model, split=args.split,
                                     gate_rain=gate_rain, **kw)
         name = "tau_modes"

@@ -119,6 +119,19 @@ def test_regime_labels():
     assert list(G.regime_labels(tau)) == ["humedo", "neutro", "seco", "sin_dato"]
 
 
+def test_gate_grid_de_b804_es_el_producto_completo_y_valido():
+    from rio_search.sensitivity import _gate_grid
+
+    grid = _gate_grid()
+    assert len(grid) == 27                                  # 3 κ × 3 pesos × 3 ventanas
+    etiquetas = [e for e, _ in grid]
+    assert len(set(etiquetas)) == 27, "etiquetas repetidas: dos puntos se pisarían"
+    # GateParams valida w_ant + w_fc = 1 en __post_init__: si un par no suma 1,
+    # la grilla ni se construye. La configuración declarada tiene que estar.
+    assert any(p == G.DEFAULT_PARAMS.__class__(kappa=2.2, w_ant=0.35, w_fc=0.65,
+                                               ant_days=30) for _, p in grid)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:
