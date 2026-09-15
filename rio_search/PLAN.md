@@ -10,6 +10,15 @@ El alcance de esta fase es **los controles y diagnósticos (todos) y las 19
 estrategias P1**. Las P2/P3 quedan para la fase siguiente. Los resultados son
 orientativos, no concluyentes.
 
+## Disciplina de ramas y de agentes
+
+- `main` es sólo dataset (Databricks); `main-predic` es la integración de predicción.
+  El agente del dataset trabaja en su propio worktree y en rama propia colgada de
+  `main`; las ramas de predicción cuelgan de `main-predic`.
+- Cada tramo/PR lo **desarrolla un sub-agente**. El orquestador define el encargo y,
+  una vez realizado, verifica que los tests pasen y que el commit esté hecho antes de
+  dar el tramo por cerrado.
+
 ## La regla de cada celda
 
 Se trabaja **una celda por vez**, nunca dos estrategias abiertas a la vez:
