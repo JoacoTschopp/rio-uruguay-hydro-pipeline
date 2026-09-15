@@ -288,6 +288,12 @@ def tipo_de_celda(celda: dict) -> str:
 def _bloque_val(datos: dict, tipo: str, celda: dict) -> dict | None:
     """El diccionario de métricas de VAL que corresponde a cada tipo de salida."""
     if tipo == "train":
+        # Una celda de baseline (`lee: baselines:<clave>`) no mide el modelo
+        # entrenado sino la vara que viaja en el mismo JSON.
+        lee = str(celda.get("lee") or "")
+        if lee.startswith("baselines:"):
+            b = (datos.get("baselines") or {}).get(lee.split(":", 1)[1].strip()) or {}
+            return (b.get("val") or {}).get("mean")
         modelos = datos.get("models") or {}
         if not modelos:
             return None

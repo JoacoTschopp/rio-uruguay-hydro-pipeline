@@ -24,7 +24,7 @@ import numpy as np
 
 __all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "LOSSES",
            "LinearCore", "MLPCore", "PersistenceBaseline", "ClimatologyBaseline",
-           "DampedPersistence"]
+           "DampedPersistence", "SeasonalNaive"]
 
 
 # --------------------------------------------------------------------------
@@ -344,3 +344,48 @@ class ClimatologyBaseline:
         m = pd.Series(np.asarray(q_series, float)).rolling(
             self.window, min_periods=max(1, int(0.7 * self.window))).mean().to_numpy()
         return np.repeat(m.reshape(-1, 1), n_horizons, axis=1)
+
+
+class SeasonalNaive:
+    """ŷ(t+h) = media histórica del caudal en el mismo día del año que t+h.
+
+    Se ajusta con TRAIN únicamente: para cada día del año, la media del caudal en
+    una ventana circular de ±window días sobre los años de TRAIN. Es el único
+    baseline que captura el ciclo anual sin mirar el estado actual del río:
+    separa "el modelo aprendió la estacionalidad" de "aprendió la persistencia".
+    """
+
+    def __init__(self, window: int = 7):
+        self.window = window
+        self.name = f"estacional doy ±{window}d"
+        self._por_doy: np.ndarray | None = None       # (366,) media circular
+        self._global = float("nan")
+
+    def fit(self, fecha, q_series) -> "SeasonalNaive":
+        import pandas as pd
+        fecha = pd.DatetimeIndex(fecha)
+        q = np.asarray(q_series, dtype=float)
+        ok = np.isfinite(q)
+        doy = fecha.dayofyear.to_numpy()[ok]
+        q = q[ok]
+        suma = np.bincount(doy - 1, weights=q, minlength=366)
+        cnt = np.bincount(doy - 1, minlength=366).astype(float)
+        k = self.window
+        idx = (np.arange(366)[:, None] + np.arange(-k, k + 1)[None, :]) % 366
+        with np.errstate(invalid="ignore"):
+            media = suma[idx].sum(axis=1) / cnt[idx].sum(axis=1)
+        self._global = float(q.mean()) if q.size else float("nan")
+        self._por_doy = np.where(np.isfinite(media), media, self._global)
+        return self
+
+    def predict(self, fecha, horizons) -> np.ndarray:
+        """`(n, n_horizontes)`: la media del doy de **t+h**, no la del doy de t."""
+        import pandas as pd
+        if self._por_doy is None:
+            raise RuntimeError("SeasonalNaive.predict antes de fit")
+        fecha = pd.DatetimeIndex(fecha)
+        out = np.empty((len(fecha), len(horizons)), dtype=float)
+        for j, h in enumerate(horizons):
+            doy = (fecha + pd.Timedelta(days=int(h))).dayofyear.to_numpy()
+            out[:, j] = self._por_doy[doy - 1]
+        return out

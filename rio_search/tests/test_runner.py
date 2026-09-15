@@ -193,6 +193,19 @@ def test_extraer_metricas_de_train():
     assert m["val"]["kge"] == 0.5
 
 
+def test_extraer_metricas_lee_un_baseline_cuando_la_celda_lo_pide():
+    """B0.05: la celda mide la vara del JSON, no el modelo que viajó al lado."""
+    datos = _json_train()
+    datos["baselines"]["estacional doy ±7d"] = {
+        "val": {"mean": {"gral": 0.99, "rmse": 2500.0, "nse": -0.5, "kge": 0.1,
+                         "v_plus": 0.5, "v_minus": 0.5, "fa_wet": 0.5}}}
+    celda = {"cmd": "-m rio_search.train", "lee": "baselines:estacional doy ±7d"}
+    m = R.extraer_metricas(datos, "train", celda, "gral")
+    assert m["objetivo"] == 0.99                # el baseline, no el 0.42 del modelo
+    assert m["objetivo_sd"] is None             # determinista: sin desvío, sin veredicto
+    assert m["skill_rmse_vs_persistencia"] < 0  # y no le gana a persistencia
+
+
 def test_extraer_metricas_elige_la_perdida_del_comando_en_un_compare():
     datos = _json_train()
     datos["models"]["mse_log"] = {"val": {"mean": {"gral": 0.99, "gral_sd": 0.01,

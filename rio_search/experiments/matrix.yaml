@@ -152,18 +152,19 @@ bloques:
     nombre: seasonal naive
     slug: seasonal_naive
     prioridad: P2
-    estado: falta
+    estado: implementado
     eje: modelo
-    valor: "Q̂(t+h) = media histórica del mismo día del año"
-    implementar:
-      donde: rio_search/models.py + run_baselines en train.py
-      que: "SeasonalNaive(window_days) sobre el doy, con ventana ±k días y media de los años previos a TRAIN"
-      depende_de: []
-      esfuerzo: bajo
+    valor: "Q̂(t+h) = media histórica del mismo día del año (±7 d, ajustada con TRAIN)"
+    cmd: -m rio_search.train --model linear --loss mse --seeds 1 --epochs 200 --gate-rain lluvia_media_est_mm --split val
+    lee: "baselines:estacional doy ±7d"
+    tiempo_est_s: 6
     nota: >-
       El plan lo lista como baseline naïve (§3.3) y hoy no está. Importa porque es el
       único baseline que captura estacionalidad sin usar el estado actual del río: separa
       "el modelo aprendió el ciclo anual" de "el modelo aprendió la persistencia".
+      `SeasonalNaive(7)` en models.py se ajusta con TRAIN únicamente y viaja en el bloque
+      `baselines` de todo JSON de train; la celda lo lee de ahí (`lee: baselines:...`).
+      El modelo entrenado del cmd es sólo el vehículo más barato para producir el JSON.
 
   - id: B0.06
     nombre: ancla

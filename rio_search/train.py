@@ -48,7 +48,7 @@ from . import data as data_mod
 from . import gate as gate_mod
 from . import metrics as metrics_mod
 from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, LinearCore,
-                     MLPCore, PersistenceBaseline)
+                     MLPCore, PersistenceBaseline, SeasonalNaive)
 
 __all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
 
@@ -222,6 +222,10 @@ def run_baselines(ds, splits, *, evaluar_test: bool = True) -> dict:
         "persistencia x 1.10": DampedPersistence(1.10).predict(ds.q_actual, n_h),
         "climatologia 30 d": ClimatologyBaseline(30).predict(ds.q_actual, n_h),
     }
+    # El estacional es el único baseline que aprende algo, y lo aprende de TRAIN
+    # únicamente: la media por día del año no puede ver los años de VAL/TEST.
+    estacional = SeasonalNaive(7).fit(ds.fecha[splits.train], ds.q_actual[splits.train])
+    preds[estacional.name] = estacional.predict(ds.fecha, ds.horizons)
     splits_a_medir = [("val", splits.val)] + ([("test", splits.test)] if evaluar_test else [])
     out = {}
     for name, p in preds.items():
