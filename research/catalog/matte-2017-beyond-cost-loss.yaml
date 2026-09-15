@@ -1,0 +1,21 @@
+slug: matte-2017-beyond-cost-loss
+title: >-
+  Moving beyond the cost--loss ratio: economic assessment of streamflow forecasts for a risk-averse decision maker
+authors:
+  - "Matte, Simon"
+  - "Boucher, Marie-Amélie"
+  - "Boucher, Vincent"
+  - "Fortier Filion, Thomas-Charles"
+year: 2017
+venue: "Hydrology and Earth System Sciences"
+volume: "21"
+pages: "2967--2986"
+doi: "10.5194/hess-21-2967-2017"
+bibtype: article
+tipo: paper
+tags: [costo-perdida, valor-economico, operacion, justificacion-de-tau-max]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  De dónde sale el razonamiento de costo. El cociente tau/(1-tau) es la versión continua del cociente costo/pérdida; este paper muestra sus límites (supone decisor neutral al riesgo) y es la referencia para justificar tau_max = 0,85 ante un tribunal.

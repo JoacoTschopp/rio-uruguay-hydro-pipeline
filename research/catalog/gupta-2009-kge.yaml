@@ -1,0 +1,22 @@
+slug: gupta-2009-kge
+title: >-
+  Decomposition of the mean squared error and NSE performance criteria: Implications for improving hydrological modelling
+authors:
+  - "Gupta, Hoshin V."
+  - "Kling, Harald"
+  - "Yilmaz, Koray K."
+  - "Martinez, Guillermo F."
+year: 2009
+venue: "Journal of Hydrology"
+volume: "377"
+number: "1-2"
+pages: "80--91"
+doi: "10.1016/j.jhydrol.2009.08.003"
+bibtype: article
+tipo: paper
+tags: [KGE, metrica-hidrologica, descomposicion, referencia]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  Origen del KGE. Descompone el error cuadrático en correlación, sesgo y variabilidad — la lectura que explica por qué gral mejora KGE aunque empeore RMSE.

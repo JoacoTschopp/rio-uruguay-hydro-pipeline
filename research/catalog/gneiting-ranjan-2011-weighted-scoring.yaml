@@ -1,0 +1,20 @@
+slug: gneiting-ranjan-2011-weighted-scoring
+title: >-
+  Comparing Density Forecasts Using Threshold- and Quantile-Weighted Scoring Rules
+authors:
+  - "Gneiting, Tilmann"
+  - "Ranjan, Roopesh"
+year: 2011
+venue: "Journal of Business & Economic Statistics"
+volume: "29"
+number: "3"
+pages: "411--422"
+doi: "10.1198/jbes.2010.08110"
+bibtype: article
+tipo: paper
+tags: [twCRPS, ponderacion, probabilistico, trabajo-futuro]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  El camino cuando el pronóstico sea probabilístico. Introduce el twCRPS: una función de peso sobre el eje de la variable que concentra el score donde importa SIN perder la propiedad de score propio. tau(t) se reusa ahí como función de peso.

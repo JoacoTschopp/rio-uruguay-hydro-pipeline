@@ -22,3 +22,10 @@ req.json
 # Son datos generados por los scripts locales, no codigo. No versionar.
 notebooks_local/ana_rating_curve/output/raw_json/
 notebooks_local/ana_rating_curve/rating_curve_state.json
+
+# Biblioteca de investigacion: el catalogo y las notas SI se versionan; los PDF no,
+# por licencia. Con el DOI del catalogo cualquiera recupera el documento.
+research/documents/
+# La plantilla LaTeX la aporta el usuario (Fase 8 del plan de Rio_Search)
+research/templates/
+thesis/**/build/

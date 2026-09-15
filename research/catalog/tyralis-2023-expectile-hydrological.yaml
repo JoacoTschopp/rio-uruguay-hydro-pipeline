@@ -1,0 +1,22 @@
+slug: tyralis-2023-expectile-hydrological
+title: >-
+  Expectile-based hydrological modelling for uncertainty estimation: Life after mean
+authors:
+  - "Tyralis, Hristos"
+  - "Papacharalampous, Georgia"
+  - "Khatami, Sina"
+year: 2023
+venue: "Journal of Hydrology"
+volume: "617"
+number: "Part B"
+pages: "128986"
+doi: "10.1016/j.jhydrol.2022.128986"
+url: "https://arxiv.org/abs/2201.05712"
+bibtype: article
+tipo: paper
+tags: [expectil, hidrologia, precedente-directo, incertidumbre]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  EL PRECEDENTE MÁS CERCANO. Calibra modelos GR con pérdida expectil en 511 cuencas de EE.UU. Usa niveles FIJOS (0,5 / 0,9 / 0,95 / 0,975) para estimar incertidumbre; acá el nivel VARÍA por día y codifica costo. Es la comparación obligada.

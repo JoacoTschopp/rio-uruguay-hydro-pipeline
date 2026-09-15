@@ -1,0 +1,24 @@
+slug: kratzert-2019-universal-regional-local
+title: >-
+  Towards learning universal, regional, and local hydrological behaviors via machine learning applied to large-sample datasets
+authors:
+  - "Kratzert, Frederik"
+  - "Klotz, Daniel"
+  - "Shalev, Guy"
+  - "Klambauer, Günter"
+  - "Hochreiter, Sepp"
+  - "Nearing, Grey"
+year: 2019
+venue: "Hydrology and Earth System Sciences"
+volume: "23"
+number: "12"
+pages: "5089--5110"
+doi: "10.5194/hess-23-5089-2019"
+bibtype: article
+tipo: paper
+tags: [LSTM, NSE-loss, estado-del-arte, competidor]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  Estado del arte en lluvia-escorrentía con LSTM, y el precedente de entrenar con la métrica hidrológica (NSE promediado por cuenca) en vez de MSE. Mismo argumento que esta tesis, aplicado a otra métrica. Es la celda B1.10 y el modelo B4.14.

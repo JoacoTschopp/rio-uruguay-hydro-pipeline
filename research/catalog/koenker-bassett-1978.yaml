@@ -1,0 +1,20 @@
+slug: koenker-bassett-1978
+title: >-
+  Regression Quantiles
+authors:
+  - "Koenker, Roger"
+  - "Bassett, Gilbert"
+year: 1978
+venue: "Econometrica"
+volume: "46"
+number: "1"
+pages: "33--50"
+doi: "10.2307/1913643"
+bibtype: article
+tipo: paper
+tags: [cuantil, pinball, alternativa-descartada]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  La familia alternativa. Su pérdida pinball tiene gradiente discontinuo en cero, que es la razón por la que este proyecto eligió expectiles para poder entrenar.
