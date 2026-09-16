@@ -1300,9 +1300,16 @@ bloques:
     nombre: promedio entre configuraciones
     slug: ens_top3
     prioridad: P1
-    estado: falta
-    valor: "media simple de las predicciones de los 3 mejores de B4"
-    implementar: {depende_de: [B10.01], esfuerzo: bajo}
+    estado: implementado
+    valor: "media simple de las predicciones de los 3 mejores del ledger"
+    cmd: -m rio_search.ensemble --modo configs --miembros huber_log,per_horizon,dinamica_caudal --seeds 5
+    tiempo_est_s: 150
+    nota: >-
+      El valor original decía "los 3 mejores de B4", pero B4 tiene dos familias corridas: los
+      miembros oficiales son los 3 mejores finalistas del ledger d303 (huber_log 0,4751 ·
+      per_horizon 0,4822 · dinamica_caudal 0,4921), apareados por semilla y promediados en
+      m³/s. Los pares quedan como exploratorios en results/B10.02_explor_par_*.json — la
+      pregunta viva es si huber_log y per_horizon suman.
 
   - id: B10.03
     nombre: stacking
@@ -1507,8 +1514,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 52          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
-  faltan: 57
+  implementadas: 53          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 56
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy
