@@ -277,6 +277,9 @@ def tipo_de_celda(celda: dict) -> str:
     if not cmd or cmd.startswith("("):
         return "alias"
     for modulo, tipo in (("rio_search.train", "train"),
+                         # ensemble imita el esquema de salida de train (models/
+                         # <clave>/val/mean + seeds + baselines): se lee igual
+                         ("rio_search.ensemble", "train"),
                          ("rio_search.search", "search"),
                          ("rio_search.walkforward", "walkforward"),
                          ("rio_search.sensitivity", "sensitivity"),

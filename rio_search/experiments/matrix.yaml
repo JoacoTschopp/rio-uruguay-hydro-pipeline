@@ -1284,13 +1284,17 @@ bloques:
     nombre: promedio entre semillas
     slug: ens_semillas
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "promediar las **predicciones** de las N semillas, no sus métricas"
-    implementar: {donde: rio_search/train.py, que: "guardar predicciones por semilla y evaluar el promedio", depende_de: [], esfuerzo: bajo}
+    cmd: -m rio_search.ensemble --modo semillas --miembros gral --seeds 5
+    tiempo_est_s: 60
     nota: >-
-      Hoy se promedian métricas, que es otra cosa. El promedio de predicciones casi siempre
-      gana a la media de las métricas individuales, es gratis (las corridas ya existen) y
-      es el ensemble que un operador puede desplegar sin cambiar nada.
+      El promedio de predicciones casi siempre gana a la media de las métricas
+      individuales, es gratis (reproduce las corridas del ancla, segundos cada una) y es el
+      ensemble que un operador puede desplegar sin cambiar nada. G-05 quedó como
+      `return_predictions` en run_experiment + rio_search/ensemble.py; se promedia en m³/s.
+      El `_sd` del resultado es **jackknife entre semillas** (el ensemble pleno colapsa ese
+      eje), declarado en el JSON.
 
   - id: B10.02
     nombre: promedio entre configuraciones
@@ -1503,8 +1507,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 51          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
-  faltan: 58
+  implementadas: 52          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 57
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy

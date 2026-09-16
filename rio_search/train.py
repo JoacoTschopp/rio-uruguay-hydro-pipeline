@@ -271,7 +271,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    evaluar_test: bool = True, per_horizon: bool = False,
                    target_param: str = "nivel",
                    target_transform: str | None = None,
-                   scaling: str = "standard") -> dict:
+                   scaling: str = "standard",
+                   return_predictions: bool = False) -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
     `eval_tau` separa el τ con el que se **entrena** (`ds.tau`) del τ con el que
@@ -412,6 +413,12 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
             inv = ds.q_actual[m][:, None] + inv
         pred = np.maximum(inv, 0.0)
         out[name] = _evaluate_split(ds.Y[m], pred, tau_eval[m], ds.horizons)
+        if return_predictions:
+            # G-05 (B10): la predicción en m³/s, en memoria, para que un ensemble
+            # promedie PREDICCIONES y no métricas. Es un ndarray a propósito: no
+            # debe caer en un JSON de resultados — quien lo pide lo consume y lo
+            # descarta (rio_search/ensemble.py).
+            out.setdefault("predicciones", {})[name] = pred
     return out
 
 
