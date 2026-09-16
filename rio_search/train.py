@@ -155,7 +155,7 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    hidden: int = 64, epochs: int = 600, lr: float = 0.01,
                    l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
                    eval_tau=None, train_tau=None, on_epoch=None, verbose: bool = False,
-                   evaluar_test: bool = True) -> dict:
+                   evaluar_test: bool = True, per_horizon: bool = False) -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
     `eval_tau` separa el τ con el que se **entrena** (`ds.tau`) del τ con el que
@@ -169,6 +169,13 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     B1.06 — un τ constante entrena "asimetría sin modulador", y como la métrica
     sigue usando `ds.tau`, la diferencia con el ancla mide sólo lo que aporta
     que τ varíe día a día.
+
+    `per_horizon=True` (B5.02) entrena un modelo independiente por horizonte, con
+    los mismos HP y el mismo preprocesamiento: la única diferencia con el
+    multi-salida es que la representación oculta no se comparte. La máscara de
+    NaN opera por columna en ambos casos, así que cada modelo ve todas las filas
+    donde SU horizonte existe. La evaluación junta las 8 columnas y usa el mismo
+    `_evaluate_split`: los dos modos son comparables fila contra fila.
 
     `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
     forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
@@ -190,21 +197,43 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     core_cls = {"mlp": MLPCore, "linear": LinearCore}[model]
     kw = dict(loss=loss_fn, epochs=epochs, lr=lr, l2=l2, patience=patience,
               seed=seed, verbose=verbose)
-    core = core_cls(hidden=hidden, **kw) if model == "mlp" else core_cls(**kw)
+
+    def nuevo_core():
+        return core_cls(hidden=hidden, **kw) if model == "mlp" else core_cls(**kw)
+
+    if per_horizon and on_epoch is not None:
+        raise ValueError("per_horizon no soporta on_epoch: el podado por época está "
+                         "definido sobre un único entrenamiento, no sobre ocho")
 
     tau_entrena = ds.tau if train_tau is None else np.asarray(train_tau, dtype=float)
+    tau_tr = tau_entrena[tr] if loss_fn.uses_tau else None
+    tau_va = tau_entrena[va] if loss_fn.uses_tau else None
     t0 = time.perf_counter()
-    core.fit(Xtr, Ztr, tau=tau_entrena[tr] if loss_fn.uses_tau else None,
-             X_val=Xva, Y_val=Zva, tau_val=tau_entrena[va] if loss_fn.uses_tau else None,
-             on_epoch=on_epoch)
+    if per_horizon:
+        cores = []
+        for j in range(Ztr.shape[1]):
+            c = nuevo_core()
+            c.fit(Xtr, Ztr[:, j:j + 1], tau=tau_tr,
+                  X_val=Xva, Y_val=Zva[:, j:j + 1], tau_val=tau_va)
+            cores.append(c)
+    else:
+        c = nuevo_core()
+        c.fit(Xtr, Ztr, tau=tau_tr, X_val=Xva, Y_val=Zva, tau_val=tau_va,
+              on_epoch=on_epoch)
+        cores = [c]
     fit_seconds = time.perf_counter() - t0
 
     out = {
         "model": model, "loss": loss, "elementwise_loss": loss_name,
         "target_transform": transform, "hidden": hidden if model == "mlp" else None,
         "lr": lr, "l2": l2, "patience": patience, "epochs_max": epochs,
-        "seed": seed, "epochs_run": len(core.history), "best_epoch": core.best_epoch,
-        "pruned": core.pruned,
+        "seed": seed,
+        "horizonte": "per_horizon" if per_horizon else "multi_output",
+        "epochs_run": ([len(c.history) for c in cores] if per_horizon
+                       else len(cores[0].history)),
+        "best_epoch": ([c.best_epoch for c in cores] if per_horizon
+                       else cores[0].best_epoch),
+        "pruned": any(c.pruned for c in cores),
         "time_fit_s": round(fit_seconds, 3),
         "imputed_fraction_train": round(pre.imputed_fraction(ds.X[tr]), 4),
         "splits": splits.describe(ds.fecha),
@@ -215,8 +244,9 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     out["test_evaluado"] = bool(evaluar_test)
     a_evaluar = [("val", va, Xva)] + ([("test", te, Xte)] if evaluar_test else [])
     for name, m, X in a_evaluar:
-        pred = pre.inverse_y(core.predict(X))
-        pred = np.maximum(pred, 0.0)
+        Z = (np.hstack([c.predict(X) for c in cores]) if per_horizon
+             else cores[0].predict(X))
+        pred = np.maximum(pre.inverse_y(Z), 0.0)
         out[name] = _evaluate_split(ds.Y[m], pred, tau_eval[m], ds.horizons)
     return out
 
@@ -394,6 +424,9 @@ def main(argv=None) -> int:
     p.add_argument("--train-start", default=None,
                    help="piso temporal de TRAIN, p. ej. 2008-01-01. Por defecto, el "
                         "principio de la serie")
+    p.add_argument("--horizonte", choices=["multi_output", "per_horizon"],
+                   default="multi_output",
+                   help="B5: una red con todas las salidas, o un modelo por horizonte")
     p.add_argument("--lookback", type=int, default=None, metavar="L",
                    help="ventana causal de features (B2.17): el MLP consume la "
                         "ventana aplanada; sin el flag, sólo los lags de siempre")
@@ -441,7 +474,8 @@ def main(argv=None) -> int:
 
     kw = dict(hidden=args.hidden, epochs=args.epochs, lr=args.lr, l2=args.l2,
               patience=args.patience, verbose=args.verbose,
-              evaluar_test=not args.no_test)
+              evaluar_test=not args.no_test,
+              per_horizon=args.horizonte == "per_horizon")
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")
@@ -474,7 +508,8 @@ def main(argv=None) -> int:
     results["run_config"] = {"train_start": args.train_start, "patience": args.patience,
                              "test_evaluado": not args.no_test,
                              "tau_constante": args.tau_constante,
-                             "lookback": args.lookback}
+                             "lookback": args.lookback,
+                             "horizonte": args.horizonte}
 
     print_table(results, args.split)
     print(f"\n  ranking por RMSE : {' < '.join(results['rankings']['rmse'])}")
@@ -484,7 +519,8 @@ def main(argv=None) -> int:
         data_mod.REPO_ROOT / "rio_search" / "results" /
         f"{args.model}_{'compare' if args.compare else args.loss}_{args.tau_mode}"
         f"{'_legacy' if args.legacy else ''}{'_grid' if args.groups and 'cptec' in args.groups else ''}"
-        f"{('_lb%d' % args.lookback) if args.lookback else ''}.json")
+        f"{('_lb%d' % args.lookback) if args.lookback else ''}"
+        f"{'_ph' if args.horizonte == 'per_horizon' else ''}.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str),
                         encoding="utf-8")

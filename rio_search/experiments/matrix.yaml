@@ -911,14 +911,11 @@ bloques:
     nombre: per_horizon
     slug: per_horizon
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "8 modelos independientes, uno por horizonte"
-    implementar:
-      donde: rio_search/train.py
-      que: "bucle sobre horizontes con n_out=1 y agregación de métricas; el plan §3.3 lo pone en la aplicación, no en el adaptador"
-      depende_de: []
-      esfuerzo: medio
-    nota: "Decisión #2 del plan lo declara configurable por experimento y comparar ambos es parte de la tesis. Hoy sólo existe uno de los dos."
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val --horizonte per_horizon
+    tiempo_est_s: 100
+    nota: "Decisión #2 del plan lo declara configurable por experimento y comparar ambos es parte de la tesis. Mismos HP que el ancla: lo único que cambia es que la representación no se comparte."
 
   - id: B5.03
     nombre: recursivo
@@ -1484,8 +1481,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 44          # medido sobre los `estado:` de este archivo (Tramo 3, 2026-09-16)
-  faltan: 65
+  implementadas: 45          # medido sobre los `estado:` de este archivo (Tramo 4, 2026-09-16)
+  faltan: 64
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy
@@ -1501,7 +1498,7 @@ resumen:
     B3 (2 de 6), B4 (2 de 28), B6 (4 de 6) y B9 (2 de 7). El Tramo 1 dejó corridos todos
     los controles y diagnósticos — pero **no** alcanza para el criterio
     de finalización: sin B4.08/B4.09 (GBM), B4.13 (DLinear), B4.14 (LSTM),
-    B5.02 (per_horizon), B3.04 (target diferencial) y B1.10 (NSE-loss),
+    B3.04 (target diferencial) y B1.10 (NSE-loss),
     la cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
     es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero
     sobre el dataset que haya, sin intervención.
