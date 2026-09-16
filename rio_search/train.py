@@ -155,7 +155,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    hidden: int = 64, epochs: int = 600, lr: float = 0.01,
                    l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
                    eval_tau=None, train_tau=None, on_epoch=None, verbose: bool = False,
-                   evaluar_test: bool = True, per_horizon: bool = False) -> dict:
+                   evaluar_test: bool = True, per_horizon: bool = False,
+                   target_param: str = "nivel") -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
     `eval_tau` separa el τ con el que se **entrena** (`ds.tau`) del τ con el que
@@ -177,6 +178,13 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     donde SU horizonte existe. La evaluación junta las 8 columnas y usa el mismo
     `_evaluate_split`: los dos modos son comparables fila contra fila.
 
+    `target_param="delta"` (B3.04) cambia QUÉ se predice: el modelo aprende
+    Q(t+h) − Q(t) y la predicción final reconstruye sumando el q_actual del día.
+    La parte trivial —la persistencia— queda descontada del aprendizaje, pero la
+    evaluación no se mueve: siempre en m³/s contra el caudal observado. Un delta
+    puede ser negativo, así que sólo admite transformaciones del target que
+    acepten negativos.
+
     `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
     forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
     una sola vez, al final, sobre la configuración campeona. Mientras el bloque
@@ -188,11 +196,22 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     loss_name, transform = LOSS_CONFIGS[loss]
     loss_fn = LOSSES[loss_name]
 
+    if target_param not in ("nivel", "delta"):
+        raise ValueError(f"target_param desconocido: {target_param!r}. Opciones: "
+                         "nivel, delta (ratio es B3.05 y depende de esta celda)")
+    if target_param == "delta" and transform in ("log", "pow4", "boxcox"):
+        raise ValueError(f"target_param=delta no admite la transformación {transform!r}: "
+                         "un delta puede ser negativo. Usar una pérdida con "
+                         "transformación none (p. ej. expectile_raw)")
+
     tr, va, te = splits.train, splits.val, splits.test
-    pre = Preprocessor(target_transform=transform).fit(ds.X[tr], ds.Y[tr])
+    # B3.04: con target delta el modelo aprende Q(t+h) − Q(t) — el residuo sobre
+    # la persistencia — y la reconstrucción devuelve la parte trivial al final.
+    Yobj = ds.Y - ds.q_actual[:, None] if target_param == "delta" else ds.Y
+    pre = Preprocessor(target_transform=transform).fit(ds.X[tr], Yobj[tr])
 
     Xtr, Xva, Xte = (pre.transform_x(ds.X[m]) for m in (tr, va, te))
-    Ztr, Zva = pre.transform_y(ds.Y[tr]), pre.transform_y(ds.Y[va])
+    Ztr, Zva = pre.transform_y(Yobj[tr]), pre.transform_y(Yobj[va])
 
     core_cls = {"mlp": MLPCore, "linear": LinearCore}[model]
     kw = dict(loss=loss_fn, epochs=epochs, lr=lr, l2=l2, patience=patience,
@@ -225,7 +244,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
 
     out = {
         "model": model, "loss": loss, "elementwise_loss": loss_name,
-        "target_transform": transform, "hidden": hidden if model == "mlp" else None,
+        "target_transform": transform, "target_param": target_param,
+        "hidden": hidden if model == "mlp" else None,
         "lr": lr, "l2": l2, "patience": patience, "epochs_max": epochs,
         "seed": seed,
         "horizonte": "per_horizon" if per_horizon else "multi_output",
@@ -246,7 +266,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     for name, m, X in a_evaluar:
         Z = (np.hstack([c.predict(X) for c in cores]) if per_horizon
              else cores[0].predict(X))
-        pred = np.maximum(pre.inverse_y(Z), 0.0)
+        inv = pre.inverse_y(Z)
+        if target_param == "delta":
+            inv = ds.q_actual[m][:, None] + inv
+        pred = np.maximum(inv, 0.0)
         out[name] = _evaluate_split(ds.Y[m], pred, tau_eval[m], ds.horizons)
     return out
 
@@ -427,6 +450,9 @@ def main(argv=None) -> int:
     p.add_argument("--horizonte", choices=["multi_output", "per_horizon"],
                    default="multi_output",
                    help="B5: una red con todas las salidas, o un modelo por horizonte")
+    p.add_argument("--target-param", choices=["nivel", "delta"], default="nivel",
+                   help="B3.04: qué se predice — el caudal (nivel) o su cambio "
+                        "Q(t+h)−Q(t) (delta), reconstruido sumando q_actual")
     p.add_argument("--lookback", type=int, default=None, metavar="L",
                    help="ventana causal de features (B2.17): el MLP consume la "
                         "ventana aplanada; sin el flag, sólo los lags de siempre")
@@ -475,7 +501,8 @@ def main(argv=None) -> int:
     kw = dict(hidden=args.hidden, epochs=args.epochs, lr=args.lr, l2=args.l2,
               patience=args.patience, verbose=args.verbose,
               evaluar_test=not args.no_test,
-              per_horizon=args.horizonte == "per_horizon")
+              per_horizon=args.horizonte == "per_horizon",
+              target_param=args.target_param)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")
@@ -509,7 +536,8 @@ def main(argv=None) -> int:
                              "test_evaluado": not args.no_test,
                              "tau_constante": args.tau_constante,
                              "lookback": args.lookback,
-                             "horizonte": args.horizonte}
+                             "horizonte": args.horizonte,
+                             "target_param": args.target_param}
 
     print_table(results, args.split)
     print(f"\n  ranking por RMSE : {' < '.join(results['rankings']['rmse'])}")
@@ -520,7 +548,8 @@ def main(argv=None) -> int:
         f"{args.model}_{'compare' if args.compare else args.loss}_{args.tau_mode}"
         f"{'_legacy' if args.legacy else ''}{'_grid' if args.groups and 'cptec' in args.groups else ''}"
         f"{('_lb%d' % args.lookback) if args.lookback else ''}"
-        f"{'_ph' if args.horizonte == 'per_horizon' else ''}.json")
+        f"{'_ph' if args.horizonte == 'per_horizon' else ''}"
+        f"{'_delta' if args.target_param == 'delta' else ''}.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str),
                         encoding="utf-8")

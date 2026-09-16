@@ -604,13 +604,18 @@ bloques:
     nombre: target diferencial
     slug: target_delta
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "predecir Q(t+h) − Q(t) y reconstruir sumando"
-    implementar: {donde: rio_search/data.py + train.py, que: "target_param ∈ {nivel, delta, ratio}; la inversa suma q_actual", depende_de: [], esfuerzo: medio}
+    cmd: -m rio_search.train --loss expectile_raw --target-param delta --seeds 5 --gate-rain lluvia_media_est_mm --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
     nota: >-
       Elimina de raíz el problema de que el modelo se refugie en la persistencia: la parte
       trivial ya está descontada y lo que el modelo aprende es el residuo. Es la
       parametrización que más suele mover la aguja en series con autocorrelación alta.
+      El delta vive en escala cruda (puede ser negativo), así que su pareja limpia es
+      `expectile_raw`; contra el ancla cambian parametrización y transformación a la vez,
+      y contra B1.04 (expectile_raw sobre nivel) se aísla el efecto del delta. `ratio`
+      queda para B3.05.
 
   - id: B3.05
     nombre: target de razón logarítmica
@@ -1481,8 +1486,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 45          # medido sobre los `estado:` de este archivo (Tramo 4, 2026-09-16)
-  faltan: 64
+  implementadas: 46          # medido sobre los `estado:` de este archivo (Tramo 4, 2026-09-16)
+  faltan: 63
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy
