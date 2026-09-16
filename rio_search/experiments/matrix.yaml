@@ -471,9 +471,10 @@ bloques:
     nombre: índice de precipitación antecedente (API)
     slug: feats_api
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "API(t) = Σ k^i · P(t−i), k ∈ {0.85, 0.90, 0.95}"
-    implementar: {donde: rio_search/data.py (_derive_rain), que: "columnas api_k085/090/095", depende_de: [], esfuerzo: bajo}
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,lluvia_ratio,lluvia_api,estacionalidad --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 14
     referencia: >-
       Índice clásico de humedad antecedente en hidrología (Kohler & Linsley 1951). Es la
       misma idea que ya usa el modulador para armar A(t): si sirve para decidir el régimen,
@@ -1482,8 +1483,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 42          # medido sobre los `estado:` de este archivo (Tramo 2, 2026-09-16)
-  faltan: 67
+  implementadas: 43          # medido sobre los `estado:` de este archivo (Tramo 3, 2026-09-16)
+  faltan: 66
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy

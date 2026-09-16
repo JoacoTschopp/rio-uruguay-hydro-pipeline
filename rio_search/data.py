@@ -88,6 +88,9 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
         "temp_samet_alta_frontera_media_c", "temp_samet_alta_frontera_max_c",
         "temp_samet_alta_frontera_min_c",
     ),
+    # Índice de precipitación antecedente (B2.12): memoria exponencial de la
+    # lluvia con tres constantes de decaimiento. Se construye en `_derive_rain`.
+    "lluvia_api": ("api_k085", "api_k090", "api_k095"),
     "estacionalidad": ("doy_sin", "doy_cos"),
 }
 
@@ -275,6 +278,24 @@ def _derive_rain(df: pd.DataFrame) -> pd.DataFrame:
     base = out["lluvia_media_est_mm"]
     for w in (3, 7, 10, 30):
         out[f"lluvia_media_est_acum_{w}d"] = base.rolling(w, min_periods=max(1, int(0.8 * w))).sum()
+    # Índice de precipitación antecedente (Kohler & Linsley 1951), B2.12:
+    # API(t) = k·API(t−1) + P(t) = Σ k^i·P(t−i). Es la memoria exponencial de la
+    # lluvia — la misma señal de humedad que el modulador resume en A(t), ofrecida
+    # al modelo como feature. Se calcula con la definición literal de la
+    # recursión (el ewm de pandas arranca distinto, así que se escribe literal).
+    # Un hueco de P cuenta como 0 dentro de la recursión (mismo criterio que un
+    # acumulado con cobertura parcial) y el arranque en frío queda NaN los
+    # primeros 30 días — la ventana más larga de los acumulados — para no
+    # inventar sequía donde sólo falta historia.
+    p_api = base.fillna(0.0).to_numpy(dtype=float)
+    for k in (0.85, 0.90, 0.95):
+        api = np.empty_like(p_api)
+        acc = 0.0
+        for i, v in enumerate(p_api):
+            acc = k * acc + v
+            api[i] = acc
+        api[:30] = np.nan
+        out[f"api_k{int(round(k * 100)):03d}"] = api
     doy = out.index.dayofyear.to_numpy(dtype=float)
     out["doy_sin"] = np.sin(2 * np.pi * doy / 365.25)
     out["doy_cos"] = np.cos(2 * np.pi * doy / 365.25)
