@@ -394,6 +394,9 @@ def main(argv=None) -> int:
     p.add_argument("--train-start", default=None,
                    help="piso temporal de TRAIN, p. ej. 2008-01-01. Por defecto, el "
                         "principio de la serie")
+    p.add_argument("--lookback", type=int, default=None, metavar="L",
+                   help="ventana causal de features (B2.17): el MLP consume la "
+                        "ventana aplanada; sin el flag, sólo los lags de siempre")
     p.add_argument("--snapshot", default=None)
     p.add_argument("--legacy", action="store_true",
                    help="permitir un snapshot previo a las Decisiones 039/040 "
@@ -428,6 +431,8 @@ def main(argv=None) -> int:
                                 gate_params=params, snapshot_path=args.snapshot,
                                 groups=groups, permitir_legacy=args.legacy,
                                 gate_rain_col=args.gate_rain)
+    if args.lookback:
+        ds = data_mod.with_lookback(ds, args.lookback)
     splits = data_mod.make_splits(ds.fecha, train_start=args.train_start)
     print(f"  {len(ds)} días · {ds.X.shape[1]} features · τ modo {ds.tau_mode} "
           f"(τ_max = {params.tau_max})")
@@ -468,7 +473,8 @@ def main(argv=None) -> int:
     # esto, dos JSON con los mismos hiperparámetros pueden no ser comparables.
     results["run_config"] = {"train_start": args.train_start, "patience": args.patience,
                              "test_evaluado": not args.no_test,
-                             "tau_constante": args.tau_constante}
+                             "tau_constante": args.tau_constante,
+                             "lookback": args.lookback}
 
     print_table(results, args.split)
     print(f"\n  ranking por RMSE : {' < '.join(results['rankings']['rmse'])}")
@@ -477,7 +483,8 @@ def main(argv=None) -> int:
     out_path = Path(args.out) if args.out else (
         data_mod.REPO_ROOT / "rio_search" / "results" /
         f"{args.model}_{'compare' if args.compare else args.loss}_{args.tau_mode}"
-        f"{'_legacy' if args.legacy else ''}{'_grid' if args.groups and 'cptec' in args.groups else ''}.json")
+        f"{'_legacy' if args.legacy else ''}{'_grid' if args.groups and 'cptec' in args.groups else ''}"
+        f"{('_lb%d' % args.lookback) if args.lookback else ''}.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str),
                         encoding="utf-8")

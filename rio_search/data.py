@@ -29,7 +29,8 @@ import pandas as pd
 __all__ = ["HORIZONS", "FEATURE_GROUPS", "Dataset", "Splits",
            "load_snapshot", "build_dataset", "make_splits", "REPO_ROOT",
            "DEFAULT_SNAPSHOT", "LEGACY_SNAPSHOT", "DEFAULT_GROUPS",
-           "MIN_DELTA_VERSION", "read_manifest", "Fold", "make_walkforward_folds"]
+           "MIN_DELTA_VERSION", "read_manifest", "Fold", "make_walkforward_folds",
+           "make_sequences", "with_lookback"]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _CACHE = REPO_ROOT / "notebooks_local" / "gold_export" / "cache"
@@ -375,6 +376,49 @@ def build_dataset(
         feature_names=feature_names,
         horizons=tuple(horizons),
         tau_mode=f"{tau_mode}:{gate_rain_col.replace('_alta_frontera','').replace('lluvia_','')}",
+    )
+
+
+def make_sequences(ds: Dataset, lookback: int) -> tuple[Dataset, np.ndarray]:
+    """Tensores causales (N, L, F): la ventana de la fila i cubre [t_i-L+1, t_i].
+
+    B2.17, y prerrequisito de todo B4 secuencial. La ventana se arma sobre el
+    calendario diario continuo entre la primera y la última fecha del Dataset:
+    los días que `build_dataset` filtró (sin caudal actual, sin target, sin τ)
+    entran como NaN y los imputa después el `Preprocessor` con estadísticos de
+    TRAIN, igual que cualquier otro NaN. Sólo se descartan las filas cuya
+    ventana se saldría del calendario por el arranque.
+
+    Devuelve el Dataset recortado a las filas con ventana completa y el tensor
+    alineado fila a fila. El eje L va de lo más viejo a lo más nuevo:
+    `seq[i, -1] == X[i]` — la ventana termina en t, nunca lo cruza.
+    """
+    if lookback < 1:
+        raise ValueError(f"lookback debe ser >= 1, vino {lookback}")
+    cal = pd.date_range(ds.fecha.min(), ds.fecha.max(), freq="D")
+    pos = cal.get_indexer(ds.fecha)
+    X_cal = np.full((len(cal), ds.X.shape[1]), np.nan)
+    X_cal[pos] = ds.X
+    keep = pos >= lookback - 1
+    ventanas = pos[keep][:, None] + np.arange(-(lookback - 1), 1)[None, :]
+    return ds.subset(keep), X_cal[ventanas]
+
+
+def with_lookback(ds: Dataset, lookback: int) -> Dataset:
+    """El mismo Dataset con la ventana aplanada en X: (N, L·F), para el MLP.
+
+    Los modelos secuenciales de B4 consumen `make_sequences` tal cual; el MLP
+    la consume aplanada. El orden de las columnas va de lo más viejo a lo más
+    nuevo: las últimas F columnas son las features originales del día t
+    (sufijo `_tm0`, "t menos 0").
+    """
+    rec, seq = make_sequences(ds, lookback)
+    nombres = [f"{n}_tm{lookback - 1 - j}"
+               for j in range(lookback) for n in ds.feature_names]
+    return Dataset(
+        fecha=rec.fecha, X=seq.reshape(len(rec), -1), Y=rec.Y,
+        q_actual=rec.q_actual, tau=rec.tau, feature_names=nombres,
+        horizons=rec.horizons, tau_mode=rec.tau_mode,
     )
 
 
