@@ -68,6 +68,61 @@ LOSS_CONFIGS: dict[str, tuple[str, str]] = {
 # Preprocesamiento — todo se ajusta con TRAIN únicamente
 # --------------------------------------------------------------------------
 
+TARGET_TRANSFORMS = ("none", "log", "pow4", "boxcox", "yeojohnson")
+
+
+def _yeojohnson(y, lam):
+    """Yeo-Johnson hacia adelante. Definida en toda la recta: es la única de la
+    familia que un target delta (negativo) puede usar."""
+    y = np.asarray(y, dtype=float)
+    out = np.full(y.shape, np.nan)
+    with np.errstate(invalid="ignore"):
+        pos = y >= 0
+        out[pos] = (np.log1p(y[pos]) if abs(lam) < 1e-12
+                    else (np.power(y[pos] + 1.0, lam) - 1.0) / lam)
+        neg = y < 0
+        out[neg] = (-np.log1p(-y[neg]) if abs(lam - 2.0) < 1e-12
+                    else -(np.power(1.0 - y[neg], 2.0 - lam) - 1.0) / (2.0 - lam))
+    return out
+
+
+def _yeojohnson_inv(z, lam):
+    z = np.asarray(z, dtype=float)
+    out = np.full(z.shape, np.nan)
+    with np.errstate(invalid="ignore"):
+        pos = z >= 0
+        out[pos] = (np.expm1(z[pos]) if abs(lam) < 1e-12
+                    else np.power(np.maximum(lam * z[pos] + 1.0, 1e-12), 1.0 / lam) - 1.0)
+        neg = z < 0
+        out[neg] = (-np.expm1(-z[neg]) if abs(lam - 2.0) < 1e-12
+                    else 1.0 - np.power(np.maximum(1.0 - (2.0 - lam) * z[neg], 1e-12),
+                                        1.0 / (2.0 - lam)))
+    return out
+
+
+def _ajustar_lambda(y, transform, q_floor, grid=None):
+    """λ por máxima verosimilitud perfilada, SOLO con TRAIN y sin scipy: barrido
+    fino sobre [−1, 2]. El término (λ−1)·Σ log|·| es el jacobiano — sin él, el
+    óptimo colapsaría en la λ que más encoja la escala."""
+    y = np.asarray(y, dtype=float).ravel()
+    y = y[np.isfinite(y)]
+    grid = np.linspace(-1.0, 2.0, 121) if grid is None else np.asarray(grid, float)
+    if transform == "boxcox":
+        y = np.maximum(y, q_floor)
+        logy = np.log(y)
+        jac = float(logy.sum())
+        def z_de(lam):
+            return logy if abs(lam) < 1e-12 else (np.power(y, lam) - 1.0) / lam
+    else:                                    # yeojohnson
+        jac = float((np.sign(y) * np.log1p(np.abs(y))).sum())
+        def z_de(lam):
+            return _yeojohnson(y, lam)
+    def llf(lam):
+        v = float(np.var(z_de(lam)))
+        return -0.5 * y.size * np.log(max(v, 1e-300)) + (lam - 1.0) * jac
+    return float(grid[int(np.argmax([llf(l) for l in grid]))])
+
+
 @dataclass
 class Preprocessor:
     """Imputación + escalado de features, y transformación + escalado del target.
@@ -79,6 +134,7 @@ class Preprocessor:
 
     target_transform: str = "none"
     q_floor: float = metrics_mod.Q_FLOOR
+    target_lambda: float | None = None
     x_median: np.ndarray | None = None
     x_mean: np.ndarray | None = None
     x_std: np.ndarray | None = None
@@ -88,11 +144,26 @@ class Preprocessor:
     def _t(self, y):
         if self.target_transform == "log":
             return np.log(np.maximum(y, self.q_floor))
+        if self.target_transform == "pow4":
+            return np.power(np.maximum(y, self.q_floor), 0.25)
+        if self.target_transform == "boxcox":
+            lam, yf = self.target_lambda, np.maximum(y, self.q_floor)
+            return np.log(yf) if abs(lam) < 1e-12 else (np.power(yf, lam) - 1.0) / lam
+        if self.target_transform == "yeojohnson":
+            return _yeojohnson(y, self.target_lambda)
         return y
 
     def _t_inv(self, z):
         if self.target_transform == "log":
             return np.exp(z)
+        if self.target_transform == "pow4":
+            return np.power(np.maximum(z, 0.0), 4.0)
+        if self.target_transform == "boxcox":
+            lam = self.target_lambda
+            return (np.exp(z) if abs(lam) < 1e-12
+                    else np.power(np.maximum(lam * z + 1.0, 1e-12), 1.0 / lam))
+        if self.target_transform == "yeojohnson":
+            return _yeojohnson_inv(z, self.target_lambda)
         return z
 
     def fit(self, X, Y):
@@ -103,6 +174,9 @@ class Preprocessor:
         std = Xi.std(axis=0)
         self.x_std = np.where(std > 1e-12, std, 1.0)
 
+        if self.target_transform in ("boxcox", "yeojohnson") and self.target_lambda is None:
+            self.target_lambda = _ajustar_lambda(Y[np.isfinite(Y)], self.target_transform,
+                                                 self.q_floor)
         ty = self._t(Y[np.isfinite(Y)])
         self.y_mean = float(ty.mean())
         self.y_std = float(ty.std()) or 1.0
@@ -156,7 +230,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
                    eval_tau=None, train_tau=None, on_epoch=None, verbose: bool = False,
                    evaluar_test: bool = True, per_horizon: bool = False,
-                   target_param: str = "nivel") -> dict:
+                   target_param: str = "nivel",
+                   target_transform: str | None = None) -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
     `eval_tau` separa el τ con el que se **entrena** (`ds.tau`) del τ con el que
@@ -178,6 +253,11 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     donde SU horizonte existe. La evaluación junta las 8 columnas y usa el mismo
     `_evaluate_split`: los dos modos son comparables fila contra fila.
 
+    `target_transform` (B3.03) reemplaza la transformación acoplada a la pérdida:
+    la pérdida elemento a elemento no cambia, cambia el espacio donde se calcula.
+    `boxcox` y `yeojohnson` ajustan su λ en TRAIN por máxima verosimilitud. La
+    evaluación no se mueve del espacio original del caudal.
+
     `target_param="delta"` (B3.04) cambia QUÉ se predice: el modelo aprende
     Q(t+h) − Q(t) y la predicción final reconstruye sumando el q_actual del día.
     La parte trivial —la persistencia— queda descontada del aprendizaje, pero la
@@ -195,6 +275,12 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
         raise KeyError(f"pérdida desconocida: {loss}. Opciones: {list(LOSS_CONFIGS)}")
     loss_name, transform = LOSS_CONFIGS[loss]
     loss_fn = LOSSES[loss_name]
+
+    if target_transform is not None:                    # B3.03: cierra el gap G-02
+        if target_transform not in TARGET_TRANSFORMS:
+            raise ValueError(f"target_transform desconocido: {target_transform!r}. "
+                             f"Opciones: {TARGET_TRANSFORMS}")
+        transform = target_transform
 
     if target_param not in ("nivel", "delta"):
         raise ValueError(f"target_param desconocido: {target_param!r}. Opciones: "
@@ -245,6 +331,7 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     out = {
         "model": model, "loss": loss, "elementwise_loss": loss_name,
         "target_transform": transform, "target_param": target_param,
+        "target_lambda": pre.target_lambda,
         "hidden": hidden if model == "mlp" else None,
         "lr": lr, "l2": l2, "patience": patience, "epochs_max": epochs,
         "seed": seed,
@@ -450,6 +537,9 @@ def main(argv=None) -> int:
     p.add_argument("--horizonte", choices=["multi_output", "per_horizon"],
                    default="multi_output",
                    help="B5: una red con todas las salidas, o un modelo por horizonte")
+    p.add_argument("--target-transform", choices=list(TARGET_TRANSFORMS), default=None,
+                   help="B3.03: reemplaza la transformación del target acoplada a la "
+                        "pérdida (λ de Box-Cox / Yeo-Johnson se ajusta en TRAIN)")
     p.add_argument("--target-param", choices=["nivel", "delta"], default="nivel",
                    help="B3.04: qué se predice — el caudal (nivel) o su cambio "
                         "Q(t+h)−Q(t) (delta), reconstruido sumando q_actual")
@@ -502,7 +592,8 @@ def main(argv=None) -> int:
               patience=args.patience, verbose=args.verbose,
               evaluar_test=not args.no_test,
               per_horizon=args.horizonte == "per_horizon",
-              target_param=args.target_param)
+              target_param=args.target_param,
+              target_transform=args.target_transform)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")
@@ -537,7 +628,8 @@ def main(argv=None) -> int:
                              "tau_constante": args.tau_constante,
                              "lookback": args.lookback,
                              "horizonte": args.horizonte,
-                             "target_param": args.target_param}
+                             "target_param": args.target_param,
+                             "target_transform": args.target_transform}
 
     print_table(results, args.split)
     print(f"\n  ranking por RMSE : {' < '.join(results['rankings']['rmse'])}")
@@ -549,7 +641,8 @@ def main(argv=None) -> int:
         f"{'_legacy' if args.legacy else ''}{'_grid' if args.groups and 'cptec' in args.groups else ''}"
         f"{('_lb%d' % args.lookback) if args.lookback else ''}"
         f"{'_ph' if args.horizonte == 'per_horizon' else ''}"
-        f"{'_delta' if args.target_param == 'delta' else ''}.json")
+        f"{'_delta' if args.target_param == 'delta' else ''}"
+        f"{('_' + args.target_transform) if args.target_transform else ''}.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str),
                         encoding="utf-8")

@@ -592,13 +592,22 @@ bloques:
     nombre: raíz cuarta / Box-Cox / Yeo-Johnson
     slug: target_potencia
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "Q^(1/4) — la transformación de varianza estabilizada clásica en caudal; λ de Box-Cox ajustado en TRAIN"
-    implementar: {donde: rio_search/train.py (Preprocessor), que: "target_transform ∈ {none, log, pow4, boxcox, yeojohnson}", depende_de: [], esfuerzo: medio}
+    cmd: -m rio_search.train --model mlp --loss gral --target-transform boxcox --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 12
     referencia: >-
       La raíz cuarta es el estándar en hidrología cuando log sobre-comprime las crecidas.
-      Es la competidora directa de log y hoy no está probada: la conclusión "el log es el
-      factor de precisión" se sostiene sobre una comparación de dos, no de tres.
+      Es la competidora directa de log: la conclusión "el log es el factor de precisión"
+      se sostenía sobre una comparación de dos, no de tres.
+    nota: >-
+      Corridas las tres variantes con los HP del ancla (d303, 5 semillas):
+      pow4 0,4986 ± 0,0120 · boxcox 0,4948 ± 0,0073 · yeojohnson 0,4948 ± 0,0073.
+      La MLE en TRAIN eligió λ = −0,10 — prácticamente el log (λ = 0) — y no le gana:
+      el log queda confirmado por verosimilitud, no por costumbre. La celda registra
+      boxcox, la mejor de la familia; las otras quedan en
+      results/B3.03_explor_{pow4,yeojohnson}.json. --target-transform cierra el gap
+      G-02: la transformación ya no viaja atada a la pérdida.
 
   - id: B3.04
     nombre: target diferencial
@@ -1486,8 +1495,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 46          # medido sobre los `estado:` de este archivo (Tramo 4, 2026-09-16)
-  faltan: 63
+  implementadas: 47          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 62
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy
