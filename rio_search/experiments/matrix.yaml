@@ -1476,27 +1476,28 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 37          # 26 con comando propio + 11 que reusan la corrida de otra celda
-  faltan: 71
-  bloqueadas_por_dato: 2     # B2.19, B8.05 — Fase 4 del roadmap del dataset
+  implementadas: 41          # medido sobre los `estado:` de este archivo (Tramo 1, 2026-09-16)
+  faltan: 68
+  bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 56              # de las cuales 35 corren hoy
+  celdas_P1: 56              # de las cuales 37 corren hoy
   reloj_de_lo_implementado: >-
-    ~90 min para las 37 celdas implementadas; **~33 min sin las tres celdas de
-    walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto. Los tiempos de las
+    ~100 min para las 41 celdas implementadas; **~40 min sin las tres celdas de
+    walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
+    2.861 s el 2026-09-15. Los tiempos de las
     celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
     5 semillas con `--no-test` tarda 3–7 s, no los ~60 que se habían estimado. El replay
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
-    Con lo implementado hoy se corren B0 completo, B1 (5 de 14), B2 (7 de 19), B4 (2 de 28),
-    B6 (4 de 6), B8 (3 de 5), B9 (3 de 7) y B11 (4 de 5). Eso cierra el eje `perdida`, la
-    ablación de features y la sensibilidad del modulador — pero **no** alcanza para el criterio
+    Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (6 de 14), B2 (7 de 19),
+    B3 (2 de 6), B4 (2 de 28), B6 (4 de 6) y B9 (2 de 7). El Tramo 1 dejó corridos todos
+    los controles y diagnósticos — pero **no** alcanza para el criterio
     de finalización: sin B2.17 (ventana), B4.08/B4.09 (GBM), B4.13 (DLinear), B4.14 (LSTM),
-    B5.02 (per_horizon), B3.04 (target diferencial), B1.06 (τ constante) y B1.10 (NSE-loss),
+    B5.02 (per_horizon), B3.04 (target diferencial) y B1.10 (NSE-loss),
     la cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
     es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero
     sobre el dataset que haya, sin intervención.
   tres_desbloqueos_de_mayor_impacto:
     - "B2.17 (ventana / lookback) — habilita 13 celdas de B4"
-    - "G-05 (guardar predicciones) — habilita todo B10 y B11.03"
+    - "G-05 (guardar predicciones) — habilita todo B10"
     - "B4.09 o B4.13 (LightGBM o DLinear) — la comparación fuerte que hoy no existe"
