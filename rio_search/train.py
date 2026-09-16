@@ -48,7 +48,7 @@ from . import data as data_mod
 from . import gate as gate_mod
 from . import metrics as metrics_mod
 from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, LinearCore,
-                     MLPCore, PersistenceBaseline, SeasonalNaive)
+                     MLPCore, NSELoss, PersistenceBaseline, SeasonalNaive)
 
 __all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
 
@@ -63,6 +63,7 @@ LOSS_CONFIGS: dict[str, tuple[str, str]] = {
     "gral":          ("expectile", "log"),
     "huber":         ("huber",     "none"),
     "huber_log":     ("huber",     "log"),
+    "nse_loss":      ("nse",       "none"),
 }
 
 
@@ -344,12 +345,16 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     Xtr, Xva, Xte = (pre.transform_x(ds.X[m]) for m in (tr, va, te))
     Ztr, Zva = pre.transform_y(Yobj[tr]), pre.transform_y(Yobj[va])
 
+    if loss_name == "nse":                  # B1.10: σ²_h por horizonte, de TRAIN
+        loss_fn = NSELoss(np.nanvar(Ztr, axis=0))
+
     core_cls = {"mlp": MLPCore, "linear": LinearCore}[model]
     kw = dict(loss=loss_fn, epochs=epochs, lr=lr, l2=l2, patience=patience,
               seed=seed, verbose=verbose)
 
-    def nuevo_core():
-        return core_cls(hidden=hidden, **kw) if model == "mlp" else core_cls(**kw)
+    def nuevo_core(loss_j=None):
+        kw2 = kw if loss_j is None else dict(kw, loss=loss_j)
+        return core_cls(hidden=hidden, **kw2) if model == "mlp" else core_cls(**kw2)
 
     if per_horizon and on_epoch is not None:
         raise ValueError("per_horizon no soporta on_epoch: el podado por época está "
@@ -362,7 +367,11 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     if per_horizon:
         cores = []
         for j in range(Ztr.shape[1]):
-            c = nuevo_core()
+            # NSE por horizonte: cada modelo recibe SU σ², no el vector entero
+            loss_j = (NSELoss(loss_fn.var[j:j + 1], eps=loss_fn.eps)
+                      if isinstance(loss_fn, NSELoss) and loss_fn.var is not None
+                      else None)
+            c = nuevo_core(loss_j)
             c.fit(Xtr, Ztr[:, j:j + 1], tau=tau_tr,
                   X_val=Xva, Y_val=Zva[:, j:j + 1], tau_val=tau_va)
             cores.append(c)

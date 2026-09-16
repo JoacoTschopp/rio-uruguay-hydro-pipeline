@@ -304,13 +304,12 @@ bloques:
     nombre: NSE-loss
     slug: nse_loss
     prioridad: P1
-    estado: falta
-    valor: "1 − NSE como pérdida, con normalización por varianza de la cuenca"
-    implementar:
-      donde: rio_search/models.py
-      que: "pérdida por lote con denominador = varianza de TRAIN; el gradiente es el de MSE reescalado"
-      depende_de: []
-      esfuerzo: medio
+    estado: implementado
+    valor: "1 − NSE como pérdida: MSE / σ²_h de TRAIN, por horizonte"
+    cmd: >-
+      -m rio_search.train --loss nse_loss --seeds 5 --gate-rain lluvia_media_est_mm
+      --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
     referencia: >-
       Kratzert et al. 2019 (Towards learning universal, regional, and local hydrological
       behaviors via ML). Es la pérdida estándar en rainfall-runoff con redes; entrenar con
@@ -1503,8 +1502,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 49          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
-  faltan: 60
+  implementadas: 50          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 59
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy

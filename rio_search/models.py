@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "HuberLoss", "LOSSES",
+__all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "HuberLoss",
+           "NSELoss", "LOSSES",
            "LinearCore", "MLPCore", "PersistenceBaseline", "ClimatologyBaseline",
            "DampedPersistence", "SeasonalNaive"]
 
@@ -116,11 +117,39 @@ class HuberLoss(Loss):
         return -2.0 * np.clip(e, -self.delta, self.delta)
 
 
+class NSELoss(Loss):
+    """1 − NSE como pérdida: MSE normalizado por la varianza del target de
+    TRAIN, por horizonte (Kratzert et al. 2019). El gradiente es el de MSE
+    reescalado por 1/σ²_h: entrenar con la métrica que la hidrología reporta.
+
+    `var` se calibra por corrida en `run_experiment` (sale de TRAIN, nunca de
+    VAL). Sin calibrar (`var=None`) el peso es 1 y coincide con el MSE del
+    proyecto — neutro por diseño, para que el registro global no dependa de un
+    estado que todavía no existe.
+    """
+
+    name = "nse"
+
+    def __init__(self, var=None, eps: float = 1e-6):
+        self.var = None if var is None else np.asarray(var, dtype=float)
+        self.eps = float(eps)
+
+    def _w(self):
+        return 1.0 if self.var is None else 1.0 / (self.var + self.eps)
+
+    def value(self, e, tau=None):
+        return self._w() * e ** 2
+
+    def grad(self, e, tau=None):
+        return -2.0 * self._w() * e
+
+
 LOSSES: dict[str, Loss] = {
     "mse": SquaredLoss(),
     "mae": AbsoluteLoss(),
     "expectile": ExpectileLoss(),
     "huber": HuberLoss(),
+    "nse": NSELoss(),
 }
 
 
