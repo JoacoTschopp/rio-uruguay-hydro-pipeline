@@ -392,3 +392,290 @@ Prometer una cobertura que la fuente no puede dar (2000–2006) generaría una l
 * Cualquier feature de precipitación pronosticada anterior a 2006-10 no estará disponible para el dataset de tesis salvo que se incorpore otra fuente (ej. reanálisis ERA5 como proxy, que no es un pronóstico real y tendría que documentarse como tal si se usara).
 * Bronze/Silver de `cf`/`pf` no requirieron cambios de esquema: los notebooks históricos escriben JSONs diarios con el mismo formato que el job diario. El único cambio de código fue agregar `load_mode=backfill` a `ETL_Silver_ECMWF_CF`/`_PF` (con `range_start`/`range_end` explícitos), porque el modo `incremental` existente no cubre filas más viejas que el máximo ya cargado.
 * La duración real del backfill completo (~20 requests `cf` + ~238 requests `pf`) no está validada contra la API todavía — queda pendiente calibrar `max_batches_per_run` con el tiempo de cola real observado la primera vez que se corra en Databricks.
+
+## Decisión 047: `repartition()` antes de `toPandas()` en el Silver de ECMWF
+
+**Problema.** Desde el 2026-09-08 el job `ECMWF_Forecast_Daily_Incremental` (job_id
+756555076983243) fallaba todos los días en `ETL_Silver_ECMWF_CF`; el último éxito había sido el
+2026-09-07. El error era `ArrowInvalid` dentro de `chunk_df.toPandas()`.
+
+La causa no es el volumen de datos: Bronze devuelve los `RecordBatch` de Arrow con **nullability
+distinta para `run_date` según el parquet de origen**. Los archivos escritos por la ruta
+histórica y los escritos por la ruta diaria no coinciden en ese detalle del esquema, y al
+concatenar los batches en el driver Arrow rechaza la unión.
+
+**Decisión.** Una línea, en los dos notebooks Silver de ECMWF (`_CF` y `_PF`):
+
+```python
+pdf = chunk_df.repartition(8).toPandas()
+```
+
+`repartition()` fuerza un shuffle, y el shuffle re-serializa: todos los batches salen con el
+mismo esquema y la concatenación deja de fallar. El costo es un shuffle sobre un chunk ya
+acotado a 60 días.
+
+**Por qué no se arregló el esquema de Bronze.** Reescribir el parquet histórico para uniformar
+la nullability es una reescritura de ~900 GB para corregir un detalle que solo importa en el
+borde Arrow→pandas. La alternativa barata resuelve el mismo problema sin tocar el dato.
+
+**Nota.** Los notebooks se publicaron con `databricks workspace import --format JUPYTER
+--overwrite` y se verificaron re-exportando: `bundle deploy` **no** actualiza el contenido de un
+notebook ya publicado, solo la definición del job.
+
+
+## Decisión 048: el pronóstico se agrega por sub-cuenca en Silver y colapsa a un número en Gold
+
+**Problema.** Bronze guarda el pronóstico punto a punto: para `pf` son 436 puntos × 16 pasos ×
+50 miembros por día, ~1.100 millones de filas en el histórico. Ningún modelo hidrológico agregado
+consume eso, y no había ninguna tabla entre Bronze y `training_dataset_v0`.
+
+**Decisión.** Dos saltos, con una división de trabajo deliberada.
+
+**En Silver** (`weather.silver.ecmwf_forecast_{cf,pf}_subcuenca`, notebook
+`ETL_Silver_ECMWF_Subcuenca`): una fila por `(run_date, run_time, step_hours, miembro,
+sub-cuenca)`.
+
+- **Se promedian los puntos** de cada sub-cuenca. La media areal es la entrada natural de un
+  modelo agregado. `n_puntos` viaja en la fila: sin él, un día con cobertura parcial da una media
+  sesgada hacia la parte de la cuenca que sí llegó y nada lo delata.
+- **Se conservan los 50 miembros.** Promediarlos acá borraría la dispersión del ensemble, que es
+  la única medida de incertidumbre que aporta `pf` — y sería irreversible sin reprocesar Bronze.
+- **Se mantienen las tres sub-cuencas.** En Silver está todo; el recorte es de Gold.
+
+**En Gold** (`training_dataset_v0`): solo `alta_frontera` (Decisión 018), y el ensemble colapsa a
+un número. `tp_mm_medio` viene **acumulado** desde el inicio del pronóstico (así lo entrega
+TIGGE), así que la lluvia del día de adelanto `d` es la diferencia entre el paso `24d` y el
+`24(d-1)`: publicar el acumulado crudo daría 15 columnas fuertemente colineales y ninguna en la
+unidad "mm que caen ese día".
+
+**La métrica sobre los miembros es la media, y es provisional.** Promediar el ensemble tira
+justamente la dispersión por la que se bajó. Está elegida para cerrar el pipeline hasta Gold, no
+porque sea la correcta; el reemplazo (P90, máximo, fracción de miembros sobre umbral) se
+implementa cambiando un `F.avg` en el notebook de Gold, sin tocar nada aguas arriba. Ese es el
+punto de conservar los miembros en Silver.
+
+**La fuente del agregado es Bronze + `weather.silver.punto_subcuenca`, no `*_basin`.** Los dos
+caminos aplican el mismo point-in-polygon; la diferencia es el costo. `ETL_Silver_ECMWF_{CF,PF}`
+lo recalcula con `toPandas()` + geopandas sobre todas las filas; el mapa tiene **436 puntos** y
+el agregado se resuelve con un JOIN. Medido: el agregado de `pf` sobre 1.175 días corrió en **20
+segundos**. `punto_subcuenca` se deriva de `*_basin` justamente para que el tageo tenga una sola
+fuente de verdad y las dos tablas Silver no puedan divergir.
+
+**Por qué el job de pronóstico vuelve a materializar Gold.** `Silver_Gold_Daily_Incremental`
+corre 04:30 America/Montevideo (07:30 UTC) y `ECMWF_Forecast_Daily_Incremental` a las 08:00 UTC:
+media hora después. Sin un segundo pase de Gold al final del job de pronóstico, el dataset
+publicaría siempre el pronóstico del día anterior. La ventana de Gold es `delete` + `append` sobre
+un rango, o sea idempotente: correrlo dos veces por día no duplica ninguna fila.
+
+**Por qué `pf` no tiene task de Landing en el job diario.** El ensemble lo baja el backfill local
+continuo (`run_tigge_backfill.py`), cuya grilla de lotes ya llega hasta `date.today() -
+TIGGE_LAG_DAYS`. Agregar una descarga de `pf` en Databricks pondría un segundo cliente contra la
+misma cola de ECDS — exactamente lo que prohíbe la Decisión 012.
+
+**Cobertura conocida.** `pf` arranca en 2006-10 y Gold en 2000-01-01, así que las columnas de
+pronóstico quedan en NULL para los primeros ~6 años del dataset. Es por construcción, no un
+defecto de carga.
+
+**Verificación** (2026-09-14, sobre el estado real de las tablas):
+
+| tabla | días | filas | control |
+|---|---|---|---|
+| `bronze.ecmwf_forecast_cf` | 6.706 | 115.561.080 | — |
+| `silver.ecmwf_forecast_cf_subcuenca` | 6.706 | 321.003 | = 6.706×16×3 − 59×5×3 |
+| `bronze.ecmwf_forecast_pf` | 3.138 | 2.710.692.000 | — |
+| `silver.ecmwf_forecast_pf_subcuenca` | 3.138 | 7.529.700 | = 3.138×16×50×3 − 1.500 (día parcial 2019-10-17) |
+
+Los dos agregados igualan a Bronze día por día. El de `pf` —1.963 días nuevos, ~1.700 millones
+de filas de entrada— corrió en **3,6 minutos**.
+
+**Traza de un día completo** (`run_date = 2026-09-11`, bajado ese mismo 2026-09-14 a las 02:52
+UTC), capa por capa:
+
+| capa | filas |
+|---|---|
+| Bronze (bounding box) | 17.280 = 1.080 puntos × 16 pasos |
+| Silver `*_basin` (dentro de la cuenca) | 6.976 = 436 × 16 |
+| Silver `*_subcuenca` | 48 = 3 × 16 |
+| Silver, solo `alta_frontera` | 16 |
+| Gold | 1 fila |
+
+`ecmwf_cf_tp_mm_d1` de Gold da **53,997476**, y reconstruirlo a mano desde Silver
+(`tp` del paso 24h menos el del paso 0h) da **53,997476**. Diferencia 0.
+
+**La acumulación quedó confirmada empíricamente**, que era el supuesto del que dependía todo el
+cálculo: el `tp` promedio de `alta_frontera` para una corrida cualquiera crece monótonamente de
+0,0 mm en el paso 0 a 192,4 mm en el paso 360. `UNIT_TO_MM_FACTOR = 1.0` es correcto (kg/m² = mm).
+
+**Anomalía menor registrada, sin corregir.** 34 de 29.530 incrementos muestreados dan un valor
+negativo, con mínimo **−0,0027 mm**. Es ruido de empaquetado del GRIB en el campo acumulado, no
+un error del cálculo — la magnitud lo demuestra. No se recorta a cero porque eso cambia valores
+del dataset, y qué entra en el dataset es una decisión que no toma la capa medallón.
+
+
+## Decisión 049: bisección del lote fallido y registro de días que la fuente no entrega
+
+**Problema.** La grilla alineada al calendario de la Decisión 044 destapó un hueco que la grilla
+solapada anterior venía salteando sin que nadie lo notara: el pedido `2016-09-02..2016-12-31`
+devolvía `400` de ECDS, cortaba `cf` y, por el encadenamiento de `run_tigge_backfill.py`, dejaba
+`pf` bloqueado. **48 fallos idénticos, dos días sin bajar nada.**
+
+La primera hipótesis —la cinta dañada J0018900 (Decisión 031)— era **falsa**: una sonda en vivo
+demostró que el dato estaba disponible. Sondeando por tamaño de rango (3, 30 y 45 días pasaban;
+46 y 121 fallaban) el problema se acotó a **un solo día malo, `2016-12-29`**.
+
+**Decisión.** Dos piezas en `common_ecmwf.py`:
+
+1. **`retrieve_bisecting(retrieve, raw_path_for, start, end)`** — ante un fallo, parte el rango
+   en dos y reintenta cada mitad, hasta rangos de un día. Un día que la fuente no sirve deja de
+   costar el lote entero.
+2. **Registro de días no disponibles** (`tigge_unavailable_days.json`, escrito atómicamente vía
+   `.tmp` + `replace`): cuando falla un pedido de **un solo día**, se anota con su motivo.
+   `missing_span()` los excluye del cálculo de pendientes.
+
+El registro no es cosmético: sin él, `_pending_batches()` nunca llega a 0 para ese lote y el
+`while True` de `run_source()` queda pidiendo en bucle un día que la fuente jamás va a entregar.
+
+**Resultado.** De los 121 días del lote se recuperaron **120**; queda registrado `2016-12-29`
+como no disponible.
+
+**Lección.** El corte ante el primer fallo (Decisión 030) evita bombardear una cola con rate
+limit, pero convierte cualquier día malo en un bloqueo total. La bisección es lo que distingue
+"la fuente está caída" de "este día puntual no existe" — y solo el primero justifica parar.
+
+## Decisión 050: el cupo de lotes por llamada se baja a 1 para que el frente diario no se muera de hambre
+
+**Problema.** El 2026-09-15 `pf` estaba **8 días atrasado** (último día en cualquier lado:
+2026-09-05) mientras el backfill seguía trabajando en 2017-08. No era un fallo: nada estaba
+roto, ningún log tenía un error.
+
+La reconstrucción de lo que pasó:
+
+- El proceso arrancó el **2026-09-07 18:17**. Tres minutos después bajó el frente — los JSON
+  `2026_09_02..05` tienen mtime `09-07 18:20`.
+- Desde entonces retrocedió por el histórico y **no volvió a mirar el frente nunca más**.
+
+La causa está en el reparto de responsabilidades entre `run()` y `run_source()`: `run()` arma su
+lista de lotes **una sola vez** al entrar y la recorre hasta agotar `max_batches_per_run`; recién
+cuando vuelve, `run_source()` recalcula qué falta. Con el cupo en **25** y un ritmo medido de
+**11,6 h por lote**, una sola llamada dura **~12 días**, y en todo ese tiempo los días nuevos no
+se piden aunque encabecen la grilla.
+
+Lo agravaba un segundo detalle: el `ExecutionTimeLimit` de 6 h de Task Scheduler mata al wrapper
+de PowerShell pero **no al hijo de Python**, así que el proceso quedó huérfano. La tarea figuraba
+como "Listo", los redisparos horarios encontraban el lock tomado por un PID vivo y salían sin
+hacer nada, y el huérfano siguió moliendo hacia atrás sin re-evaluar.
+
+**Decisión.** `--max-batches-per-call 25` → **1**, y `--sync-every-calls 3` → **1**.
+
+Con cupo 1 se recalcula la lista después de **cada** lote. Como `iter_batches_calendar_backward`
+ordena del mes más reciente hacia atrás, el frente se sirve siempre antes que el histórico, y
+cuando está completo la llamada sigue con el lote viejo que toque. **No cambia cuántos requests
+se hacen ni su tamaño** — solo cada cuánto se re-prioriza, y eso es gratis.
+
+Bajar el sync a 1 es consecuencia: con un lote por llamada, sincronizar cada 3 dejaría ~26 GB de
+JSON en `C:` y hasta 35 h hasta que el día llegue al Volume.
+
+El arreglo también inmuniza contra el huérfano: aunque el wrapper muera a las 6 h, el hijo sigue
+con cupo 1 y re-evalúa el frente en cada vuelta.
+
+**Costo de aplicarlo.** Hubo que matar el proceso huérfano (PID 342888) para que el cambio
+tomara efecto — con el cupo viejo faltaban ~19 lotes, o sea ~25 días más de frente parado. Se
+perdió el request de 2017-08 que estaba en vuelo; se vuelve a pedir. `tigge_lock.py` limpia solo
+el lock del PID muerto (`_pid_is_running` vía `tasklist`), no hubo que tocarlo.
+
+**Nota de diagnóstico.** `tasklist /FI "PID eq N"` desde Git Bash necesita
+`MSYS2_ARG_CONV_EXCL="*"`: sin eso, MSYS convierte `/FI` en una ruta y el comando falla con
+"Argumento u opción no válido", que a simple vista parece "el proceso no existe". El proceso
+estaba vivo y además corría como `python3.12.exe`, no `python.exe`, así que filtrar por
+`IMAGENAME eq python.exe` tampoco lo mostraba.
+
+## Decisión 051: los lotes de `pf` pasan a trimestres calendario
+
+**Problema.** Al 2026-09-15, `pf` tenía 3.323 de 7.288 días (46%) y quedaban **131 lotes
+mensuales**. Al ritmo medido de **11,6 h por lote** eso son **63 días — 9 semanas**, hasta
+mediados de noviembre.
+
+La medición es lo que define el problema: 16 requests en 174,6 h de reloj, con una transferencia
+real de ~10 s para 72 MB. **El costo es casi todo cola de ECDS, no descarga.** Por lo tanto el
+tiempo total lo fija la *cantidad* de requests, no su tamaño — y ahí es donde se puede ganar.
+
+**Decisión.** `BATCH_MONTHS = 1` → **3** en `historic_pf_tigge.py`. La grilla pasa de 240 lotes
+mensuales a 80 trimestrales, y los pendientes de **131 a 45**.
+
+**Por qué 3 y no más.** Un trimestre son 91 × 16 × 50 = **~72.800 fields**: 3× el request
+mensual que ya demostró funcionar (24.800) y por debajo del límite documentado de otros datasets
+CDS (ERA5 horario: 120.000). Un lote anual serían 292.000, fuera de escala — y en la Decisión
+044 los tres `400 Client Error` observados cayeron justamente en los lotes anuales de `cf`.
+
+**Por qué recién ahora.** Cuando se fijó `BATCH_MONTHS = 1`, un lote grande que fallara costaba
+el lote entero y bloqueaba la cadena. `retrieve_bisecting` (Decisión 049) cambió eso: un
+trimestre fallido se parte en mitades hasta aislar el día que la fuente no entrega. La red que
+faltaba para animarse a lotes grandes ya está puesta.
+
+**Verificación previa al cambio** (dry-run, sin tocar la API):
+
+- 80 lotes totales, **45 pendientes**.
+- El frente `2026-07-01..2026-09-13` encabeza la grilla; `missing_span` lo recorta a los 8 días
+  que faltan.
+- Los trimestres ya bajados (`2026-04-01..2026-06-30` y anteriores) se detectan **completos**:
+  cambiar el tamaño de lote **no re-pide nada**, porque la grilla está alineada al calendario
+  (Decisión 044) y cada lote se recorta a los días faltantes.
+
+**Efecto esperado.** 45 lotes × 11,6 h = **22 días** en vez de 63. Si la cola creciera
+proporcionalmente al tamaño del request —lo que no se puede saber sin medirlo— el piso sería
+igual ~32 días, la mitad del camino anterior. Hay que **volver a medir** el ritmo con unos pocos
+trimestres antes de dar el número por bueno.
+
+**Reversión.** Poner `BATCH_MONTHS = 1`. No hay migración ni re-descarga de por medio.
+
+**Alcance.** Solo `pf`. `cf` ya está completo y queda en 12.
+
+## Decisión 052: el archivado a `D:` se dispara solo después de cada sync, y no bloquea la descarga
+
+**Problema.** No había **nada** que moviera archivos de `C:` a `D:`. `sync_to_databricks.py` solo
+sube —ni una línea de `unlink`, `move` o `rename`—, no existe ninguna tarea programada de
+archivado, y `ARCHIVE_DIRS` en `common_ecmwf.py` se usa **solo para leer** (`already_landed()`
+mira ahí para no re-pedir un día ya archivado). La migración `W:` → `D:` de 2.861 archivos fue
+manual y de una sola vez.
+
+O sea que `C:` acumulaba sin drenar. Al 2026-09-15: **123 GB de JSON de pf** (462 archivos) con
+296 GB libres. Con lotes mensuales (~9 GB) tardaba en notarse; con los trimestrales de la
+Decisión 051 son **~26 GB de golpe**, o sea **~11 lotes de los 45 pendientes** hasta repetir el
+`No space left on device` de la Decisión 042. El cambio a trimestres aceleró el problema 3×.
+
+**Decisión.** Un comando `catalogo.py archivar [--fuente X] [--dry-run]`, disparado
+automáticamente después de cada sync desde `run_tigge_backfill.py`.
+
+**El orden de los pasos es lo que hace la operación segura ante una interrupción:**
+
+1. **Confirmar el destino** — se copia a `.tmp` y se verifica que el tamaño en destino coincida
+   con el origen. Recién ahí el archivo existe completo de los dos lados.
+2. **Asentar en el registro** — se actualiza `ubicacion` en el catálogo y se hace commit.
+3. **Mover** — recién entonces se borra el origen.
+
+Cortarse entre 2 y 3 deja el archivo duplicado, que es inofensivo y lo corrige el próximo
+`escanear`. Cortarse antes de 2 deja un `.tmp`, que se limpia al arrancar. En ningún punto
+intermedio se pierde el dato — y además está en el volumen, que es la precondición para siquiera
+considerar el archivo.
+
+**Dos guardas que no son opcionales:**
+
+- **Solo se mueve lo que el catálogo confirma en el volumen con `bytes_volumen = bytes`.** Si no
+  coinciden es una subida truncada (el chequeo `TRUNCADOS` del reporte) y borrar el local sería
+  destruir la única copia buena.
+- **Se re-consulta el tamaño real en disco antes de tocar el archivo.** El descargador puede
+  estar escribiéndolo justo en ese momento; si el tamaño real no es el que registró el catálogo,
+  se saltea.
+
+**No bloquea.** El archivado se lanza *detached* (`subprocess.Popen` sin `wait`) y el backfill
+sigue con el lote siguiente de inmediato. Mover ~26 GB a un disco externo por USB tarda, y lo
+único que el backfill necesita del archivado es que *eventualmente* libere espacio, no que ya lo
+haya liberado. Tampoco hace falta sincronizar los disparos: `archivar` tiene su propio lock por
+PID, así que un segundo disparo mientras el primero corre sale sin hacer nada en vez de pisarlo.
+
+Que el archivado falle **nunca** puede cortar una descarga en curso: el `Popen` va envuelto en
+`try/except` y el error se imprime, no se propaga.
+
+**Ejecución manual inicial** (2026-09-16): 502 archivos, **133,8 GB**, 0 salteados en el
+`--dry-run` previo. Los 502 estaban confirmados en el volumen con tamaño byte a byte idéntico.
+
