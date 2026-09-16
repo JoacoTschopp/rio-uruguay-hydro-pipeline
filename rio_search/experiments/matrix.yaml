@@ -262,13 +262,17 @@ bloques:
     nombre: huber
     slug: huber
     prioridad: P1
-    estado: falta
-    valor: "cuadrática cerca de 0, lineal en la cola (δ ajustable)"
-    implementar:
-      donde: rio_search/models.py
-      que: "HuberLoss(delta) con value/grad elemento a elemento; registrar en LOSSES y en LOSS_CONFIGS (huber, huber_log)"
-      depende_de: []
-      esfuerzo: bajo
+    estado: implementado
+    valor: "cuadrática cerca de 0, lineal en la cola (δ = 1,345, declarado)"
+    cmd: >-
+      -m rio_search.train --loss huber_log --seeds 5 --gate-rain lluvia_media_est_mm
+      --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 10
+    nota: "La celda oficial es huber_log: aísla la robustez dentro del espacio log del ancla
+      (el comparador limpio es B1.03 mse_log). δ = 1,345 es la constante de 95 % de eficiencia
+      de Huber en el espacio estandarizado del target — se declara, no se tunea por VAL. La
+      variante en crudo (--loss huber, comparador B1.01) queda como exploratoria en
+      results/B1.07_explor_huber_raw.json."
     referencia: "Huber 1964. Estándar en caudal por robustez a picos aislados y a errores de aforo."
 
   - id: B1.08
@@ -1499,8 +1503,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 48          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
-  faltan: 61
+  implementadas: 49          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 60
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy

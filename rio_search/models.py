@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "LOSSES",
+__all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "HuberLoss", "LOSSES",
            "LinearCore", "MLPCore", "PersistenceBaseline", "ClimatologyBaseline",
            "DampedPersistence", "SeasonalNaive"]
 
@@ -92,10 +92,35 @@ class ExpectileLoss(Loss):
         return -4.0 * self._w(e, tau) * e
 
 
+class HuberLoss(Loss):
+    """Cuadrática hasta δ, lineal más allá — robusta a picos aislados y a
+    errores de aforo sin volverse ciega al tamaño del error como MAE.
+
+    Escrita para coincidir con `SquaredLoss` en la rama cuadrática (e², no
+    ½e²): así los HP del ancla siguen significando lo mismo. δ = 1,345 es la
+    constante clásica de Huber (95 % de eficiencia bajo normalidad), aplicada
+    en el espacio estandarizado del target donde σ = 1 — se declara, no se
+    ajusta por VAL.
+    """
+
+    name = "huber"
+
+    def __init__(self, delta: float = 1.345):
+        self.delta = float(delta)
+
+    def value(self, e, tau=None):
+        a = np.abs(e)
+        return np.where(a <= self.delta, e ** 2, 2.0 * self.delta * a - self.delta ** 2)
+
+    def grad(self, e, tau=None):
+        return -2.0 * np.clip(e, -self.delta, self.delta)
+
+
 LOSSES: dict[str, Loss] = {
     "mse": SquaredLoss(),
     "mae": AbsoluteLoss(),
     "expectile": ExpectileLoss(),
+    "huber": HuberLoss(),
 }
 
 

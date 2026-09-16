@@ -61,6 +61,8 @@ LOSS_CONFIGS: dict[str, tuple[str, str]] = {
     "mse_log":       ("mse",       "log"),
     "expectile_raw": ("expectile", "none"),
     "gral":          ("expectile", "log"),
+    "huber":         ("huber",     "none"),
+    "huber_log":     ("huber",     "log"),
 }
 
 
