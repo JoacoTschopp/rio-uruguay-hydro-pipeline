@@ -680,10 +680,11 @@ bloques:
     nombre: MLP profundo
     slug: mlp_profundo
     prioridad: P1
-    estado: falta
-    valor: "2–4 capas ocultas, con dropout y/o conexiones residuales"
-    implementar: {donde: rio_search/models.py, que: "MLPCore con lista de anchos; el backward se generaliza a N capas", depende_de: [], esfuerzo: medio}
-    nota: "MLPCore hoy tiene exactamente una capa oculta con tanh. Sin esta celda no se sabe si el techo del MLP es la profundidad o los datos."
+    estado: implementado
+    valor: "2–4 capas ocultas (sin dropout ni residuales: L2 + early stopping, declarado)"
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38,38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 20
+    nota: "MLPCore generalizado a lista de anchos con backward a N capas; `hidden` entero reproduce la red de una capa bit a bit (testeado en test_mlp_profundo). La celda oficial son 2 capas de 38 con los HP del ancla; 3 y 4 capas quedan como exploratorias en results/B4.03_explor_*.json."
 
   - id: B4.04
     nombre: regresión cuantílica lineal
@@ -1502,8 +1503,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 50          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
-  faltan: 59
+  implementadas: 51          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 58
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy

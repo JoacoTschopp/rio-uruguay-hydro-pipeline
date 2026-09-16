@@ -326,39 +326,59 @@ class LinearCore(_GradientModel):
 
 
 class MLPCore(_GradientModel):
-    """Perceptrón multicapa de una capa oculta con tanh."""
+    """Perceptrón multicapa con tanh; `hidden` es un ancho o una lista de anchos.
+
+    B4.03: con `hidden=[38, 38]` la red tiene dos capas ocultas. Un entero
+    reproduce **bit a bit** la red de una capa de siempre: los `dims` y el orden
+    de los sorteos del rng son los mismos, así que el ancla no se mueve. Sin
+    dropout ni residuales: con 2–4 capas y L2, el early stopping sobre VAL es la
+    regularización que ya gobierna al resto del arnés (queda declarado en la
+    celda, no escondido).
+    """
 
     name = "mlp"
 
-    def __init__(self, hidden: int = 64, **kw):
+    def __init__(self, hidden: int | list[int] = 64, **kw):
         super().__init__(**kw)
         self.hidden = hidden
+        self.widths = [hidden] if isinstance(hidden, int) else [int(w) for w in hidden]
+        if not self.widths or any(w < 1 for w in self.widths):
+            raise ValueError(f"anchos ocultos inválidos: {hidden!r}")
 
     def _init_params(self, n_in, n_out, rng):
         # Xavier: mantiene la varianza estable a través de la tanh
-        s1 = np.sqrt(1.0 / n_in)
-        s2 = np.sqrt(1.0 / self.hidden)
-        return {
-            "W1": rng.normal(0, s1, size=(n_in, self.hidden)),
-            "b1": np.zeros(self.hidden),
-            "W2": rng.normal(0, s2, size=(self.hidden, n_out)),
-            "b2": np.zeros(n_out),
-        }
+        dims = [n_in] + self.widths + [n_out]
+        params = {}
+        for i in range(len(dims) - 1):
+            s = np.sqrt(1.0 / dims[i])
+            params[f"W{i + 1}"] = rng.normal(0, s, size=(dims[i], dims[i + 1]))
+            params[f"b{i + 1}"] = np.zeros(dims[i + 1])
+        return params
 
     def _forward(self, X, params):
-        h = np.tanh(X @ params["W1"] + params["b1"])
-        return h @ params["W2"] + params["b2"], h
+        hs, a = [], X
+        for i in range(1, len(self.widths) + 1):
+            a = np.tanh(a @ params[f"W{i}"] + params[f"b{i}"])
+            hs.append(a)
+        L = len(self.widths) + 1
+        return a @ params[f"W{L}"] + params[f"b{L}"], hs
 
     def _backward(self, X, cache, G, params):
-        h = cache
-        dW2 = h.T @ G
-        db2 = G.sum(axis=0)
-        dh = G @ params["W2"].T
-        dz1 = dh * (1.0 - h ** 2)
-        return {"W1": X.T @ dz1, "b1": dz1.sum(axis=0), "W2": dW2, "b2": db2}
+        hs = cache
+        L = len(self.widths) + 1
+        grads = {f"W{L}": hs[-1].T @ G, f"b{L}": G.sum(axis=0)}
+        d = G @ params[f"W{L}"].T
+        for i in range(len(self.widths), 0, -1):
+            dz = d * (1.0 - hs[i - 1] ** 2)
+            prev = X if i == 1 else hs[i - 2]
+            grads[f"W{i}"] = prev.T @ dz
+            grads[f"b{i}"] = dz.sum(axis=0)
+            if i > 1:
+                d = dz @ params[f"W{i}"].T
+        return grads
 
     def _weight_keys(self):
-        return ("W1", "W2")
+        return tuple(f"W{i}" for i in range(1, len(self.widths) + 2))
 
 
 # --------------------------------------------------------------------------

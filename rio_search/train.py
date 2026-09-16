@@ -562,6 +562,15 @@ def _rankings(results: dict, split: str = "test") -> dict:
 # CLI
 # --------------------------------------------------------------------------
 
+def _parse_hidden(s: str) -> int | list[int]:
+    """`38` → una capa; `38,38` → lista de anchos (B4.03). Un entero se queda
+    entero para que el nombre del archivo de salida y el JSON no cambien."""
+    partes = [int(x) for x in str(s).split(",") if x.strip()]
+    if not partes:
+        raise argparse.ArgumentTypeError(f"--hidden inválido: {s!r}")
+    return partes[0] if len(partes) == 1 else partes
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -576,7 +585,10 @@ def main(argv=None) -> int:
                    help="entrenar con este τ fijo en vez del modulador (la evaluación "
                         "sigue usando el τ del modulador). Es el control de atribución "
                         "de B1.06: separa 'la asimetría ayuda' de 'el modulador ayuda'")
-    p.add_argument("--hidden", type=int, default=64)
+    p.add_argument("--hidden", type=_parse_hidden, default=64,
+                   help="ancho de la capa oculta, o lista '38,38' para un MLP "
+                        "profundo (B4.03): N capas tanh, mismas reglas de "
+                        "entrenamiento")
     p.add_argument("--epochs", type=int, default=600)
     p.add_argument("--lr", type=float, default=0.01)
     p.add_argument("--l2", type=float, default=1e-4)
