@@ -3142,3 +3142,52 @@ trimestres antes de dar el número por bueno.
 
 **Alcance.** Solo `pf`. `cf` ya está completo y queda en 12.
 
+## Decisión 052: el archivado a `D:` se dispara solo después de cada sync, y no bloquea la descarga
+
+**Problema.** No había **nada** que moviera archivos de `C:` a `D:`. `sync_to_databricks.py` solo
+sube —ni una línea de `unlink`, `move` o `rename`—, no existe ninguna tarea programada de
+archivado, y `ARCHIVE_DIRS` en `common_ecmwf.py` se usa **solo para leer** (`already_landed()`
+mira ahí para no re-pedir un día ya archivado). La migración `W:` → `D:` de 2.861 archivos fue
+manual y de una sola vez.
+
+O sea que `C:` acumulaba sin drenar. Al 2026-09-15: **123 GB de JSON de pf** (462 archivos) con
+296 GB libres. Con lotes mensuales (~9 GB) tardaba en notarse; con los trimestrales de la
+Decisión 051 son **~26 GB de golpe**, o sea **~11 lotes de los 45 pendientes** hasta repetir el
+`No space left on device` de la Decisión 042. El cambio a trimestres aceleró el problema 3×.
+
+**Decisión.** Un comando `catalogo.py archivar [--fuente X] [--dry-run]`, disparado
+automáticamente después de cada sync desde `run_tigge_backfill.py`.
+
+**El orden de los pasos es lo que hace la operación segura ante una interrupción:**
+
+1. **Confirmar el destino** — se copia a `.tmp` y se verifica que el tamaño en destino coincida
+   con el origen. Recién ahí el archivo existe completo de los dos lados.
+2. **Asentar en el registro** — se actualiza `ubicacion` en el catálogo y se hace commit.
+3. **Mover** — recién entonces se borra el origen.
+
+Cortarse entre 2 y 3 deja el archivo duplicado, que es inofensivo y lo corrige el próximo
+`escanear`. Cortarse antes de 2 deja un `.tmp`, que se limpia al arrancar. En ningún punto
+intermedio se pierde el dato — y además está en el volumen, que es la precondición para siquiera
+considerar el archivo.
+
+**Dos guardas que no son opcionales:**
+
+- **Solo se mueve lo que el catálogo confirma en el volumen con `bytes_volumen = bytes`.** Si no
+  coinciden es una subida truncada (el chequeo `TRUNCADOS` del reporte) y borrar el local sería
+  destruir la única copia buena.
+- **Se re-consulta el tamaño real en disco antes de tocar el archivo.** El descargador puede
+  estar escribiéndolo justo en ese momento; si el tamaño real no es el que registró el catálogo,
+  se saltea.
+
+**No bloquea.** El archivado se lanza *detached* (`subprocess.Popen` sin `wait`) y el backfill
+sigue con el lote siguiente de inmediato. Mover ~26 GB a un disco externo por USB tarda, y lo
+único que el backfill necesita del archivado es que *eventualmente* libere espacio, no que ya lo
+haya liberado. Tampoco hace falta sincronizar los disparos: `archivar` tiene su propio lock por
+PID, así que un segundo disparo mientras el primero corre sale sin hacer nada en vez de pisarlo.
+
+Que el archivado falle **nunca** puede cortar una descarga en curso: el `Popen` va envuelto en
+`try/except` y el error se imprime, no se propaga.
+
+**Ejecución manual inicial** (2026-09-16): 502 archivos, **133,8 GB**, 0 salteados en el
+`--dry-run` previo. Los 502 estaban confirmados en el volumen con tamaño byte a byte idéntico.
+

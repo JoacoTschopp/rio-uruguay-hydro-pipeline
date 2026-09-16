@@ -18,7 +18,9 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -31,6 +33,42 @@ from common_ecmwf import (  # noqa: E402
     load_unavailable_days,
     missing_span,
 )
+
+
+# `label` en run_source es 'cf'/'pf'; el catalogo las nombra con su prefijo de fuente.
+_FUENTE_CATALOGO = {"cf": "ecmwf_cf", "pf": "ecmwf_pf"}
+
+
+def _lanzar_archivado(fuente: str) -> None:
+    """Dispara el archivado de C: -> D: y NO espera a que termine (Decision 052).
+
+    Corre despues de cada sync, que es el unico momento en que hay archivos nuevos confirmados
+    en el volumen y por lo tanto sueltos para mover. Va detached a proposito: mover ~26 GB de un
+    lote trimestral a un disco externo por USB tarda bastante, y el backfill no tiene ninguna
+    razon para quedarse esperando -- lo unico que necesita del archivado es que eventualmente
+    libere espacio, no que lo haya liberado ya.
+
+    Sin esperar tampoco hay que sincronizar nada: `catalogo.py archivar` tiene su propio lock,
+    asi que si el lote siguiente termina antes que el archivado en curso, el segundo disparo
+    sale sin hacer nada en vez de pisar al primero.
+    """
+    catalogo = Path(__file__).resolve().parents[1] / "catalogo.py"
+    log = Path(__file__).resolve().parent / "archivar_task.log"
+    try:
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write(f"\n=== archivado lanzado {datetime.now():%Y-%m-%d %H:%M:%S} ({fuente}) ===\n")
+            fh.flush()
+            subprocess.Popen(
+                [sys.executable, str(catalogo), "archivar", "--fuente", fuente],
+                stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                close_fds=True,
+            )
+        print(f"[archivado] lanzado en segundo plano para {fuente} (no se espera)")
+    except Exception as e:
+        # El archivado es housekeeping: que falle no puede cortar una descarga en curso.
+        print(f"[archivado] no se pudo lanzar: {str(e)[:200]}")
 
 
 def _pending_batches(module) -> int:
@@ -73,6 +111,7 @@ def run_source(module, label: str, max_batches_per_call: int, sync_every_calls: 
         if calls_since_sync >= sync_every_calls:
             print(f"[{label}] Sincronizando con Databricks...")
             sync_to_databricks.sync(profile)
+            _lanzar_archivado(_FUENTE_CATALOGO.get(label, ''))
             calls_since_sync = 0
 
         if result.get("failed"):
@@ -80,11 +119,13 @@ def run_source(module, label: str, max_batches_per_call: int, sync_every_calls: 
                   f"(evita bombardear la cola si esta rate-limited). Volver a correr mas tarde.")
             if calls_since_sync > 0:
                 sync_to_databricks.sync(profile)
+                _lanzar_archivado(_FUENTE_CATALOGO.get(label, ''))
             return False
 
     if calls_since_sync > 0:
         print(f"[{label}] Sync final...")
         sync_to_databricks.sync(profile)
+        _lanzar_archivado(_FUENTE_CATALOGO.get(label, ''))
     return True
 
 

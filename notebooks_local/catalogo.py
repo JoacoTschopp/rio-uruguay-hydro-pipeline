@@ -22,11 +22,14 @@ Uso:
     python catalogo.py volumen             # lista los volumenes y marca que llego
     python catalogo.py reporte             # resumen + discrepancias
     python catalogo.py revalidar           # escanear + volumen + reporte (lo que corre a diario)
+    python catalogo.py archivar --fuente ecmwf_pf [--dry-run]   # suelta de C: lo ya confirmado
 """
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -111,13 +114,24 @@ def _parse(nombre: str):
     return f"{m['y']}-{m['m']}-{m['d']}", m["hh"]
 
 
-def escanear(cx: sqlite3.Connection) -> dict:
+def _fuentes(solo: str | None = None):
+    """Itera las fuentes, opcionalmente una sola. `archivar` corre despues de cada lote y no
+    tiene por que listar los cuatro volumenes (gefs solo son 7.305 archivos) para mover unos
+    pocos JSON de pf."""
+    if solo is None:
+        return FUENTES.items()
+    if solo not in FUENTES:
+        raise SystemExit(f"fuente desconocida: {solo}. Opciones: {', '.join(FUENTES)}")
+    return [(solo, FUENTES[solo])]
+
+
+def escanear(cx: sqlite3.Connection, solo: str | None = None) -> dict:
     """Recorre disco local y directorios de archivo. El orden importa: se recorre primero el
     archivo y despues el local, para que si un dia esta en los dos (pasa durante una migracion)
     gane la copia local, que es la que el sync mira."""
     ahora = datetime.now(timezone.utc).isoformat()
     resumen = {}
-    for fuente, cfg in FUENTES.items():
+    for fuente, cfg in _fuentes(solo):
         vistos = 0
         for d in list(cfg["dirs_archivo"])[::-1] + [cfg["dir_local"]]:
             if not d.exists():
@@ -176,10 +190,10 @@ def _listar_volumen(vol: str) -> dict:
     return res
 
 
-def reconciliar_volumen(cx: sqlite3.Connection) -> dict:
+def reconciliar_volumen(cx: sqlite3.Connection, solo: str | None = None) -> dict:
     ahora = datetime.now(timezone.utc).isoformat()
     resumen = {}
-    for fuente, cfg in FUENTES.items():
+    for fuente, cfg in _fuentes(solo):
         try:
             enel = _listar_volumen(cfg["volumen"])
         except Exception as e:
@@ -203,6 +217,121 @@ def reconciliar_volumen(cx: sqlite3.Connection) -> dict:
     cx.execute("INSERT INTO corridas VALUES (?,?,?)", (ahora, "volumen", json.dumps(resumen)))
     cx.commit()
     return resumen
+
+
+ARCHIVAR_LOCK = BASE / "catalogo_archivar.lock"
+
+
+def _lock_archivar_tomado() -> bool:
+    """Un solo archivador a la vez. El backfill lo lanza despues de CADA lote, y con lotes
+    trimestrales dos corridas podrian pisarse moviendo el mismo archivo."""
+    if not ARCHIVAR_LOCK.exists():
+        return False
+    try:
+        pid = int(ARCHIVAR_LOCK.read_text(encoding="utf-8").strip())
+    except (ValueError, OSError):
+        return False
+    try:
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                             capture_output=True, text=True, timeout=10)
+        return str(pid) in out.stdout
+    except Exception:
+        return False
+
+
+def archivar(cx: sqlite3.Connection, solo: str | None = None, dry_run: bool = False) -> dict:
+    """Mueve al disco de archivo los JSON locales que ya estan confirmados en el volumen.
+
+    Por que existe (Decision 052): nada movia los archivos a `D:`. El sync solo sube, y la
+    migracion `W:` -> `D:` fue manual y de una sola vez, asi que `C:` acumulaba sin drenar --
+    123 GB de pf al 2026-09-15, con lotes trimestrales de ~26 GB cada uno y 296 GB libres:
+    ~11 lotes hasta repetir el "No space left on device" de la Decision 042.
+
+    El orden de los pasos es lo que hace la operacion segura ante una interrupcion:
+
+    1. **Confirmar el destino**: se copia a `.tmp` y se verifica que el tamanio en destino
+       coincida con el origen. Recien ahi el archivo existe completo en los dos lados.
+    2. **Asentar en el registro**: se actualiza `ubicacion` en el catalogo.
+    3. **Mover**: se borra el origen.
+
+    Si se corta entre 2 y 3 el archivo queda duplicado, que es inofensivo y lo corrige el
+    proximo `escanear`. Si se corta antes de 2, queda un `.tmp` que se limpia al arrancar. En
+    ningun punto intermedio se pierde el dato, porque ademas esta en el volumen -- que es la
+    precondicion para siquiera considerar el archivo.
+    """
+    movidos = {}
+    for fuente, cfg in _fuentes(solo):
+        destinos = cfg["dirs_archivo"]
+        if not destinos:
+            continue
+        destino = Path(destinos[0])
+        if not destino.exists():
+            movidos[fuente] = f"destino {destino} no existe, se saltea"
+            continue
+
+        for tmp in destino.glob("*.tmp"):  # restos de una corrida cortada
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+        # Candidatos: el catalogo dice que el dia esta en el volumen con el MISMO tamanio que
+        # en disco. Si no coinciden es una subida truncada (el chequeo TRUNCADOS del reporte) y
+        # borrar el local seria destruir la unica copia buena.
+        filas = cx.execute(
+            """SELECT fecha, run_time, nombre, ubicacion, bytes FROM archivos
+               WHERE fuente=? AND en_volumen=1 AND ubicacion=? AND bytes>0
+                 AND bytes_volumen IS NOT NULL AND bytes_volumen=bytes""",
+            (fuente, str(cfg["dir_local"])),
+        ).fetchall()
+
+        n_ok = n_skip = 0
+        bytes_ok = 0
+        for fecha, hh, nombre, ubic, tam in filas:
+            origen = Path(ubic) / nombre
+            try:
+                real = origen.stat().st_size
+            except OSError:
+                n_skip += 1
+                continue
+            # El descargador puede estar escribiendo este archivo justo ahora: si su tamanio
+            # real no es el que registro el catalogo, no se toca.
+            if real != tam:
+                n_skip += 1
+                continue
+            if dry_run:
+                n_ok += 1
+                bytes_ok += real
+                continue
+
+            tmp = destino / (nombre + ".tmp")
+            final = destino / nombre
+            try:
+                shutil.copy2(origen, tmp)
+                if tmp.stat().st_size != real:      # (1) confirmar destino
+                    tmp.unlink()
+                    n_skip += 1
+                    continue
+                tmp.replace(final)
+                cx.execute(                          # (2) asentar en el registro
+                    "UPDATE archivos SET ubicacion=? WHERE fuente=? AND fecha=? AND run_time=?",
+                    (str(destino), fuente, fecha, hh),
+                )
+                cx.commit()
+                origen.unlink()                      # (3) mover: recien ahora se suelta el origen
+                n_ok += 1
+                bytes_ok += real
+            except OSError as e:
+                print(f"  no se pudo archivar {nombre}: {str(e)[:120]}", flush=True)
+                n_skip += 1
+
+        movidos[fuente] = {"movidos": n_ok, "GB": round(bytes_ok / 2**30, 1), "salteados": n_skip}
+
+    if not dry_run:
+        cx.execute("INSERT INTO corridas VALUES (?,?,?)",
+                   (datetime.now(timezone.utc).isoformat(), "archivar", json.dumps(movidos)))
+        cx.commit()
+    return movidos
 
 
 def dias_cubiertos(cx: sqlite3.Connection, fuente: str) -> set:
@@ -298,13 +427,41 @@ def reporte(cx: sqlite3.Connection) -> None:
 
 def main() -> int:
     accion = sys.argv[1] if len(sys.argv) > 1 else "reporte"
+    args = sys.argv[2:]
+    dry_run = "--dry-run" in args
+    solo = None
+    if "--fuente" in args:
+        solo = args[args.index("--fuente") + 1]
+
     cx = conectar()
+
+    if accion == "archivar":
+        # El catalogo se refresca antes de mover: si no, los archivos que el sync acaba de
+        # subir todavia figuran como no confirmados y habria que esperar a la revalidacion
+        # diaria para poder soltarlos de C:.
+        if _lock_archivar_tomado():
+            print("ya hay un archivador corriendo; salgo.")
+            cx.close()
+            return 0
+        ARCHIVAR_LOCK.write_text(str(os.getpid()), encoding="utf-8")
+        try:
+            print(f"refrescando catalogo ({solo or 'todas las fuentes'})...", flush=True)
+            escanear(cx, solo)
+            reconciliar_volumen(cx, solo)
+            print("archivando..." + (" (dry-run, no mueve nada)" if dry_run else ""), flush=True)
+            for fuente, res in archivar(cx, solo, dry_run).items():
+                print(f"  {fuente}: {res}")
+        finally:
+            ARCHIVAR_LOCK.unlink(missing_ok=True)
+        cx.close()
+        return 0
+
     if accion in ("escanear", "revalidar"):
         print("escaneando discos...", flush=True)
-        print("  ", escanear(cx))
+        print("  ", escanear(cx, solo))
     if accion in ("volumen", "revalidar"):
         print("listando volumenes...", flush=True)
-        print("  ", reconciliar_volumen(cx))
+        print("  ", reconciliar_volumen(cx, solo))
     print()
     reporte(cx)
     cx.close()
