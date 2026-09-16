@@ -1049,8 +1049,12 @@ bloques:
     nombre: robusto (mediana / IQR)
     slug: prep_robust
     prioridad: P1
-    estado: falta
-    implementar: {donde: rio_search/train.py (Preprocessor), que: "scaling ∈ {standard, robust, minmax, quantile, none}", depende_de: [], esfuerzo: bajo}
+    estado: implementado
+    cmd: >-
+      -m rio_search.train --model mlp --loss gral --scaling robust --seeds 5
+      --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85
+      --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 14
     nota: "Con caudales de cola pesada la media y el desvío están dominados por las crecidas. Es la celda barata que más chance tiene de mover algo en B7."
 
   - id: B7.03
@@ -1495,8 +1499,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 47          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
-  faltan: 62
+  implementadas: 48          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  faltan: 61
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy

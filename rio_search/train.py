@@ -70,6 +70,8 @@ LOSS_CONFIGS: dict[str, tuple[str, str]] = {
 
 TARGET_TRANSFORMS = ("none", "log", "pow4", "boxcox", "yeojohnson")
 
+SCALINGS = ("standard", "robust", "minmax", "quantile", "none")
+
 
 def _yeojohnson(y, lam):
     """Yeo-Johnson hacia adelante. Definida en toda la recta: es la única de la
@@ -133,11 +135,15 @@ class Preprocessor:
     """
 
     target_transform: str = "none"
+    scaling: str = "standard"
     q_floor: float = metrics_mod.Q_FLOOR
     target_lambda: float | None = None
     x_median: np.ndarray | None = None
     x_mean: np.ndarray | None = None
     x_std: np.ndarray | None = None
+    x_center: np.ndarray | None = None
+    x_scale: np.ndarray | None = None
+    x_train_sorted: np.ndarray | None = None
     y_mean: float | None = None
     y_std: float | None = None
 
@@ -173,6 +179,25 @@ class Preprocessor:
         self.x_mean = Xi.mean(axis=0)
         std = Xi.std(axis=0)
         self.x_std = np.where(std > 1e-12, std, 1.0)
+        # B7: centro/escala según `scaling`. Con caudales de cola pesada la media
+        # y el desvío quedan dominados por las crecidas; mediana/IQR no.
+        if self.scaling == "standard":
+            self.x_center, self.x_scale = self.x_mean, self.x_std
+        elif self.scaling == "robust":
+            q25, q50, q75 = np.percentile(Xi, [25.0, 50.0, 75.0], axis=0)
+            iqr = q75 - q25
+            self.x_center = q50
+            self.x_scale = np.where(iqr > 1e-12, iqr, 1.0)
+        elif self.scaling == "minmax":
+            lo, hi = Xi.min(axis=0), Xi.max(axis=0)
+            ancho = hi - lo
+            self.x_center = lo
+            self.x_scale = np.where(ancho > 1e-12, ancho, 1.0)
+        elif self.scaling == "quantile":
+            self.x_train_sorted = np.sort(Xi, axis=0)
+        elif self.scaling != "none":
+            raise ValueError(f"scaling desconocido: {self.scaling!r}. "
+                             f"Opciones: {SCALINGS}")
 
         if self.target_transform in ("boxcox", "yeojohnson") and self.target_lambda is None:
             self.target_lambda = _ajustar_lambda(Y[np.isfinite(Y)], self.target_transform,
@@ -190,7 +215,18 @@ class Preprocessor:
         return out
 
     def transform_x(self, X):
-        return (self._impute(X) - self.x_mean) / self.x_std
+        Xi = self._impute(X)
+        if self.scaling == "none":
+            return Xi
+        if self.scaling == "quantile":
+            # CDF empírica de TRAIN, centrada en 0; fuera de rango, np.interp
+            # recorta a los extremos (±0,5).
+            n = self.x_train_sorted.shape[0]
+            cdf = (np.arange(n) + 0.5) / n
+            cols = [np.interp(Xi[:, j], self.x_train_sorted[:, j], cdf)
+                    for j in range(Xi.shape[1])]
+            return np.column_stack(cols) - 0.5
+        return (Xi - self.x_center) / self.x_scale
 
     def transform_y(self, Y):
         with np.errstate(invalid="ignore"):
@@ -231,7 +267,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    eval_tau=None, train_tau=None, on_epoch=None, verbose: bool = False,
                    evaluar_test: bool = True, per_horizon: bool = False,
                    target_param: str = "nivel",
-                   target_transform: str | None = None) -> dict:
+                   target_transform: str | None = None,
+                   scaling: str = "standard") -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
     `eval_tau` separa el τ con el que se **entrena** (`ds.tau`) del τ con el que
@@ -265,6 +302,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     puede ser negativo, así que sólo admite transformaciones del target que
     acepten negativos.
 
+    `scaling` (B7.02) elige el centrado/escala de las features — estándar,
+    mediana/IQR, minmax, CDF empírica o nada. Los estadísticos salen siempre de
+    TRAIN; el escalado del target no cambia (su transformación es el eje B3).
+
     `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
     forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
     una sola vez, al final, sobre la configuración campeona. Mientras el bloque
@@ -294,7 +335,9 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     # B3.04: con target delta el modelo aprende Q(t+h) − Q(t) — el residuo sobre
     # la persistencia — y la reconstrucción devuelve la parte trivial al final.
     Yobj = ds.Y - ds.q_actual[:, None] if target_param == "delta" else ds.Y
-    pre = Preprocessor(target_transform=transform).fit(ds.X[tr], Yobj[tr])
+    if scaling not in SCALINGS:
+        raise ValueError(f"scaling desconocido: {scaling!r}. Opciones: {SCALINGS}")
+    pre = Preprocessor(target_transform=transform, scaling=scaling).fit(ds.X[tr], Yobj[tr])
 
     Xtr, Xva, Xte = (pre.transform_x(ds.X[m]) for m in (tr, va, te))
     Ztr, Zva = pre.transform_y(Yobj[tr]), pre.transform_y(Yobj[va])
@@ -331,7 +374,7 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     out = {
         "model": model, "loss": loss, "elementwise_loss": loss_name,
         "target_transform": transform, "target_param": target_param,
-        "target_lambda": pre.target_lambda,
+        "target_lambda": pre.target_lambda, "scaling": scaling,
         "hidden": hidden if model == "mlp" else None,
         "lr": lr, "l2": l2, "patience": patience, "epochs_max": epochs,
         "seed": seed,
@@ -543,6 +586,9 @@ def main(argv=None) -> int:
     p.add_argument("--target-param", choices=["nivel", "delta"], default="nivel",
                    help="B3.04: qué se predice — el caudal (nivel) o su cambio "
                         "Q(t+h)−Q(t) (delta), reconstruido sumando q_actual")
+    p.add_argument("--scaling", choices=list(SCALINGS), default="standard",
+                   help="B7: escalado de features, con estadísticos de TRAIN "
+                        "(robust = mediana/IQR)")
     p.add_argument("--lookback", type=int, default=None, metavar="L",
                    help="ventana causal de features (B2.17): el MLP consume la "
                         "ventana aplanada; sin el flag, sólo los lags de siempre")
@@ -593,7 +639,8 @@ def main(argv=None) -> int:
               evaluar_test=not args.no_test,
               per_horizon=args.horizonte == "per_horizon",
               target_param=args.target_param,
-              target_transform=args.target_transform)
+              target_transform=args.target_transform,
+              scaling=args.scaling)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")
