@@ -24,6 +24,20 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/DDL_Silver_Gold
             source: WORKSPACE
 
+        - task_key: ETL_Bronze_GEFS
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
+            source: WORKSPACE
+
+        - task_key: ETL_Bronze_ECMWF_FC
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: DDL_Silver_Gold
@@ -34,9 +48,16 @@ resources:
               load_mode: full
               incremental_lookback_days: "14"
 
-        - task_key: ETL_Silver_Temperature_Daily
+        - task_key: ETL_Bronze_INMET
           depends_on:
             - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_INMET
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Bronze_INMET
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
             source: WORKSPACE
@@ -54,9 +75,37 @@ resources:
               load_mode: full
               incremental_lookback_days: "14"
 
+        - task_key: DDL_CPTEC_Obs
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_CPTEC_Obs
+            source: WORKSPACE
+
+        - task_key: ETL_Bronze_CPTEC_Obs
+          depends_on:
+            - task_key: DDL_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_CPTEC_Obs
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              lookback_days: "60"
+
+        - task_key: ETL_Silver_CPTEC_Grid_Daily
+          depends_on:
+            - task_key: ETL_Bronze_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_CPTEC_Grid_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "60"
+
         - task_key: ETL_Gold_Training_Dataset_v0
           depends_on:
             - task_key: ETL_Silver_Rainfall_Daily
+            - task_key: ETL_Silver_CPTEC_Grid_Daily
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
             source: WORKSPACE
@@ -69,6 +118,13 @@ resources:
             - task_key: ETL_Gold_Training_Dataset_v0
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+        - task_key: Export_Gold_Snapshot
+          depends_on:
+            - task_key: Validate_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/Export_Gold_Snapshot
             source: WORKSPACE
 
     silver_gold_daily_incremental:
@@ -90,6 +146,20 @@ resources:
             base_parameters:
               max_lag_days: "3"
 
+        - task_key: ETL_Bronze_GEFS
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
+            source: WORKSPACE
+
+        - task_key: ETL_Bronze_ECMWF_FC
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: Check_Bronze_Freshness
@@ -100,9 +170,16 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "14"
 
-        - task_key: ETL_Silver_Temperature_Daily
+        - task_key: ETL_Bronze_INMET
           depends_on:
             - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_INMET
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_Temperature_Daily
+          depends_on:
+            - task_key: ETL_Bronze_INMET
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_Temperature_Daily
             source: WORKSPACE
@@ -120,9 +197,20 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "14"
 
+        - task_key: ETL_Silver_CPTEC_Grid_Daily
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_CPTEC_Grid_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "60"
+
         - task_key: ETL_Gold_Training_Dataset_v0
           depends_on:
             - task_key: ETL_Silver_Rainfall_Daily
+            - task_key: ETL_Silver_CPTEC_Grid_Daily
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
             source: WORKSPACE
@@ -135,6 +223,13 @@ resources:
             - task_key: ETL_Gold_Training_Dataset_v0
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+        - task_key: Export_Gold_Snapshot
+          depends_on:
+            - task_key: Validate_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/Export_Gold_Snapshot
             source: WORKSPACE
 
     sg_rainfall_daily_incremental:
@@ -182,6 +277,59 @@ resources:
             base_parameters:
               load_mode: incremental
               incremental_lookback_days: "30"
+
+    cptec_obs_daily_incremental:
+      name: CPTEC_Obs_Daily_Incremental
+      max_concurrent_runs: 1
+      # 03:40 Montevideo = 06:40 UTC: MERGE del dia anterior se publica ~02:40 UTC y SAMeT
+      # ~03:10 UTC (medido 2026-08-26, Decision 033); Gold corre a las 04:30 y ya los encuentra
+      # en Silver. Landing re-baja una ventana hacia atras (45 dias MERGE / 14 dias SAMeT) para
+      # capturar las regeneraciones de CPTEC; Bronze/Silver mergean con la misma ventana.
+      schedule:
+        quartz_cron_expression: "0 40 3 * * ?"
+        timezone_id: America/Montevideo
+        pause_status: UNPAUSED
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: raw-bronze-silver
+        source: cptec-merge-samet
+        load_type: incremental
+      tasks:
+        - task_key: DDL_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_CPTEC_Obs
+            source: WORKSPACE
+
+        - task_key: Daily_CPTEC_Obs
+          depends_on:
+            - task_key: DDL_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/CPTEC/Daily_CPTEC_Obs
+            source: WORKSPACE
+            base_parameters:
+              merge_lookback_days: "45"
+              samet_lookback_days: "14"
+              force_reload: "false"
+
+        - task_key: ETL_Bronze_CPTEC_Obs
+          depends_on:
+            - task_key: Daily_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_CPTEC_Obs
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              lookback_days: "60"
+
+        - task_key: ETL_Silver_CPTEC_Grid_Daily
+          depends_on:
+            - task_key: ETL_Bronze_CPTEC_Obs
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_CPTEC_Grid_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "60"
 
     all_estacoes_ana_daily:
       name: All_Estacoes_ANA_Daily
@@ -284,30 +432,6 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/01_DDL/DDL_ECMWF_Forecast
             source: WORKSPACE
 
-        - task_key: Daily_ECMWF_FC
-          depends_on:
-            - task_key: DDL_ECMWF_Forecast
-          notebook_task:
-            notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/ECMWF/Daily_ECMWF_FC
-            source: WORKSPACE
-
-        - task_key: ETL_Bronze_ECMWF_FC
-          depends_on:
-            - task_key: Daily_ECMWF_FC
-          notebook_task:
-            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
-            source: WORKSPACE
-
-        - task_key: ETL_Silver_ECMWF_FC
-          depends_on:
-            - task_key: ETL_Bronze_ECMWF_FC
-          notebook_task:
-            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_FC
-            source: WORKSPACE
-            base_parameters:
-              load_mode: incremental
-              incremental_lookback_days: "3"
-
         - task_key: Daily_ECMWF_CF
           depends_on:
             - task_key: DDL_ECMWF_Forecast
@@ -331,6 +455,86 @@ resources:
             base_parameters:
               load_mode: incremental
               incremental_lookback_days: "3"
+
+        # pf no tiene task de Landing aca: el ensemble lo baja el backfill local continuo
+        # (notebooks_local/ecmwf/run_tigge_backfill.py), que ya cubre el frente diario porque
+        # su grilla de lotes llega hasta date.today() - TIGGE_LAG_DAYS, y sube los JSON al
+        # Volume cada pocas horas. Agregar aca una descarga de pf pondria un segundo cliente
+        # contra la misma cola de ECDS, que es exactamente lo que prohibe la Decision 012.
+        - task_key: ETL_Bronze_ECMWF_PF
+          depends_on:
+            - task_key: DDL_ECMWF_Forecast
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_PF
+            source: WORKSPACE
+            base_parameters:
+              lookback_days: "10"
+
+        - task_key: ETL_Silver_ECMWF_PF
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_PF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_PF
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "3"
+
+        # Los dos agregados por sub-cuenca cuelgan de Bronze, no de las tablas *_basin: leen
+        # Bronze contra el mapa materializado weather.silver.punto_subcuenca (Decision 048).
+        # Asi el camino a Gold no queda detras del tageo punto a punto de *_basin, que hace
+        # toPandas() + geopandas y es varios ordenes de magnitud mas lento.
+        - task_key: ETL_Silver_ECMWF_Subcuenca_CF
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_CF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: cf
+              load_mode: incremental
+              incremental_lookback_days: "5"
+
+        - task_key: ETL_Silver_ECMWF_Subcuenca_PF
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_PF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: pf
+              load_mode: incremental
+              incremental_lookback_days: "5"
+
+        # Gold se re-materializa aca, al final del job de pronostico, y no solo en
+        # Silver_Gold_Daily_Incremental: ese job corre 04:30 America/Montevideo (07:30 UTC),
+        # media hora ANTES que este (08:00 UTC), asi que por si solo publicaria siempre el
+        # pronostico del dia anterior. La ventana de Gold es delete+append sobre un rango, o
+        # sea idempotente: correrlo dos veces por dia no duplica ni una fila.
+        - task_key: ETL_Gold_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Silver_ECMWF_Subcuenca_CF
+            - task_key: ETL_Silver_ECMWF_Subcuenca_PF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
+        - task_key: Validate_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Gold_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+        - task_key: Export_Gold_Snapshot
+          depends_on:
+            - task_key: Validate_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/Export_Gold_Snapshot
+            source: WORKSPACE
 
     ecmwf_forecast_historic_backfill:
       name: ECMWF_Forecast_Historic_Backfill
@@ -357,7 +561,7 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/ECMWF/Historic_ECMWF_CF
             source: WORKSPACE
             base_parameters:
-              max_batches_per_run: "3"
+              max_batches_per_run: "25"
 
         - task_key: ETL_Bronze_ECMWF_CF_Historic
           depends_on:
@@ -384,7 +588,7 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/00_Landing/ECMWF/Historic_ECMWF_PF
             source: WORKSPACE
             base_parameters:
-              max_batches_per_run: "3"
+              max_batches_per_run: "50"
 
         - task_key: ETL_Bronze_ECMWF_PF_Historic
           depends_on:
@@ -403,6 +607,66 @@ resources:
               load_mode: backfill
               range_start: "{{tasks.Historic_ECMWF_PF.values.range_start}}"
               range_end: "{{tasks.Historic_ECMWF_PF.values.range_end}}"
+
+        # load_mode=incremental alcanza para el backfill: el notebook toma la diferencia de
+        # conjuntos entre Bronze y Silver, asi que levanta los dias historicos recien
+        # aterrizados aunque sean mas viejos que el maximo ya agregado.
+        - task_key: ETL_Silver_ECMWF_Subcuenca_CF_Historic
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_CF_Historic
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: cf
+              load_mode: incremental
+              max_days_per_run: "5000"
+
+        - task_key: ETL_Silver_ECMWF_Subcuenca_PF_Historic
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_PF_Historic
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: pf
+              load_mode: incremental
+              max_days_per_run: "5000"
+
+    rating_curve_discharge_initial_load:
+      name: Rating_Curve_Discharge_Initial_Load
+      max_concurrent_runs: 1
+      # Sin schedule: se dispara a mano ("Run now") mientras la Fase 1 (descarga local de
+      # curvas, ver notebooks_local/ana_rating_curve/) va completando estaciones. Una vez
+      # validado con el grupo A se encadena a silver_gold_initial_load_v0 /
+      # silver_gold_daily_incremental (ver docs/decisions.md (Decision 017)).
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: bronze-silver
+        source: ana-rating-curve
+        load_type: initial
+      tasks:
+        - task_key: ETL_Bronze_Rating_Curve
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_Rating_Curve
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_River_Discharge_Daily
+          depends_on:
+            - task_key: ETL_Bronze_Rating_Curve
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_River_Discharge_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: full
+              incremental_lookback_days: "14"
+
+        - task_key: Validate_River_Discharge
+          depends_on:
+            - task_key: ETL_Silver_River_Discharge_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_River_Discharge
+            source: WORKSPACE
 
 targets:
   dev:

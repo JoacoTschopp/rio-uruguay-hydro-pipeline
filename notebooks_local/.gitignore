@@ -1,0 +1,3 @@
+# Lock por PID del archivador (catalogo.py archivar). Es estado de una corrida en curso:
+# se crea al arrancar y se borra en el finally, nunca tiene sentido versionarlo.
+catalogo_archivar.lock
