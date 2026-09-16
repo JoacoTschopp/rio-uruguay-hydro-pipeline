@@ -91,6 +91,10 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
     # Índice de precipitación antecedente (B2.12): memoria exponencial de la
     # lluvia con tres constantes de decaimiento. Se construye en `_derive_rain`.
     "lluvia_api": ("api_k085", "api_k090", "api_k095"),
+    # Dinámica del caudal (B2.13): la firma de la recesión, en log. Se
+    # construye en `_derive_flow_dynamics`.
+    "dinamica_caudal": ("caudal_log_ratio_1d", "caudal_log_curvatura",
+                        "caudal_log_pendiente_7d", "caudal_dias_desde_pico"),
     "estacionalidad": ("doy_sin", "doy_cos"),
 }
 
@@ -302,6 +306,47 @@ def _derive_rain(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _derive_flow_dynamics(df: pd.DataFrame) -> pd.DataFrame:
+    """Dinámica del caudal en el punto de predicción (B2.13).
+
+    La curva de recesión es la firma física de la cuenca: a igual caudal
+    absoluto, "bajando desde un pico" y "estable" son estados distintos, y hoy
+    sólo `caudal_delta_1d` insinúa la diferencia. Todo en log porque la recesión
+    es exponencial (Q ≈ Q₀·e^(−t/τ)): ahí la bajada es una recta, su pendiente es
+    −1/τ y resulta comparable entre crecidas chicas y grandes.
+    """
+    out = df.copy()
+    q = out["caudal_actual_m3s"].where(out["caudal_actual_m3s"] > 0)
+    logq = np.log(q)
+    ratio = logq.diff()
+    out["caudal_log_ratio_1d"] = ratio
+    out["caudal_log_curvatura"] = ratio.diff()
+
+    # Pendiente OLS de log Q sobre los últimos 7 días: convolución con el kernel
+    # centrado (i−3)/28. Positiva subiendo; en recesión limpia vale −1/τ.
+    w = (np.arange(7.0) - 3.0) / 28.0
+    out["caudal_log_pendiente_7d"] = logq.rolling(7).apply(
+        lambda v: float(np.dot(w, v)), raw=True)
+
+    # Días desde el último pico CONOCIDO. Un pico en s (Q_s ≥ Q_{s−1} y
+    # Q_s > Q_{s+1}) recién se confirma al día siguiente, así que en t sólo
+    # cuentan los picos ≤ t−1: nada acá mira el futuro. Sin pico visto: NaN,
+    # que después se imputa con estadísticos de TRAIN como todo lo demás.
+    qv = out["caudal_actual_m3s"].to_numpy(dtype=float)
+    pico = np.zeros(len(qv), dtype=bool)
+    if len(qv) >= 3:
+        pico[1:-1] = (qv[1:-1] >= qv[:-2]) & (qv[1:-1] > qv[2:])
+    dias = np.full(len(qv), np.nan)
+    ultimo = -1
+    for t in range(len(qv)):
+        if t >= 1 and pico[t - 1]:
+            ultimo = t - 1
+        if ultimo >= 0:
+            dias[t] = t - ultimo
+    out["caudal_dias_desde_pico"] = dias
+    return out
+
+
 def build_dataset(
     df: pd.DataFrame | None = None,
     *,
@@ -333,6 +378,7 @@ def build_dataset(
     if df is None:
         df = load_snapshot(snapshot_path, permitir_legacy=permitir_legacy)
     df = _derive_rain(df)
+    df = _derive_flow_dynamics(df)
 
     feature_names: list[str] = []
     for g in groups:

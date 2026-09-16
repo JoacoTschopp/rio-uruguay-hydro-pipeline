@@ -485,9 +485,10 @@ bloques:
     nombre: derivadas de recesión del caudal
     slug: feats_recesion
     prioridad: P1
-    estado: falta
-    valor: "log(Q_t / Q_{t−1}), d²Q/dt², días desde el último pico, pendiente de recesión"
-    implementar: {donde: rio_search/data.py, que: "grupo `dinamica_caudal`", depende_de: [], esfuerzo: medio}
+    estado: implementado
+    valor: "log(Q_t / Q_{t−1}), curvatura log, días desde el último pico, pendiente log 7 d"
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,lluvia_ratio,dinamica_caudal,estacionalidad --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 14
     nota: >-
       Hoy sólo hay caudal_delta_1d. La curva de recesión es la firma física de la cuenca y
       es lo que distingue "el río está bajando desde un pico" de "el río está estable" a
@@ -1483,8 +1484,8 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 43          # medido sobre los `estado:` de este archivo (Tramo 3, 2026-09-16)
-  faltan: 66
+  implementadas: 44          # medido sobre los `estado:` de este archivo (Tramo 3, 2026-09-16)
+  faltan: 65
   bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
   celdas_P1: 56              # de las cuales 38 corren hoy
