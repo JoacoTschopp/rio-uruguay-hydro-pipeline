@@ -656,6 +656,11 @@ def main(argv=None) -> int:
                    help="capas apiladas del LSTM (B4.14)")
     p.add_argument("--lstm-dropout", type=float, default=0.0,
                    help="dropout entre capas del LSTM, sólo activo con --lstm-layers > 1")
+    p.add_argument("--lstm-bidirectional", action="store_true",
+                   help="BiLSTM (B4.15): bidireccional sobre la ventana de entrada "
+                        "(los L días de historia), nunca sobre el horizonte de salida — "
+                        "la cabeza sigue siendo una proyección lineal única desde el "
+                        "último paso, igual que en B4.14")
     p.add_argument("--snapshot", default=None)
     p.add_argument("--legacy", action="store_true",
                    help="permitir un snapshot previo a las Decisiones 039/040 "
@@ -707,7 +712,7 @@ def main(argv=None) -> int:
               scaling=args.scaling,
               lookback=args.lookback,
               lstm_hidden=args.lstm_hidden, lstm_layers=args.lstm_layers,
-              lstm_dropout=args.lstm_dropout)
+              lstm_dropout=args.lstm_dropout, lstm_bidirectional=args.lstm_bidirectional)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")

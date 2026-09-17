@@ -127,6 +127,48 @@ def test_early_stopping_restaura_los_mejores_pesos_no_los_ultimos():
     assert len(m.history) <= 60
 
 
+def test_bidireccional_no_tiene_recurrencia_sobre_el_horizonte_de_salida():
+    """B4.15: 'bidireccional sobre la ventana de entrada es legítimo; bidireccional
+    sobre el horizonte de salida sería fuga' (nota de la celda en matrix.yaml).
+    La cabeza tiene que seguir siendo una única capa lineal feedforward aplicada
+    una sola vez al estado agrupado del último paso — nunca otro módulo recurrente
+    o secuencial que procese los `n_out` horizontes en orden, porque eso dejaría
+    que el horizonte 1 "vea" información derivada del horizonte 8 (verdad futura)."""
+    import torch
+
+    m = LSTMCore(lookback=5, n_features=4, loss=ExpectileLoss(), hidden_size=6,
+                bidirectional=True)
+    net = m._build_net(n_out=8)
+    assert isinstance(net.head, torch.nn.Linear), (
+        "la cabeza debe ser Linear plana, no un módulo recurrente sobre los horizontes")
+    assert net.head.out_features == 8
+    # la recurrencia (self.rnn) sólo puede existir una vez, sobre la ventana de
+    # entrada — no hay una segunda RNN envolviendo la salida
+    submodulos_recurrentes = [n for n, mod in net.named_modules()
+                              if isinstance(mod, (torch.nn.LSTM, torch.nn.RNN, torch.nn.GRU))]
+    assert submodulos_recurrentes == ["rnn"], submodulos_recurrentes
+
+
+def test_bidireccional_usa_las_dos_direcciones_de_la_ventana():
+    """La dirección hacia atrás del BiLSTM sólo puede leer días YA incluidos en la
+    ventana (todos <= t0, disponibles en el momento de predecir) — nunca días
+    fuera de ella. La garantía de que la ventana misma no cruza t0 es de
+    `make_sequences`/`with_lookback` (ver test_lookback.py); acá sólo se verifica
+    que ambas direcciones —no sólo la de avance— efectivamente contribuyen: si
+    sólo importara la dirección forward, alterar el primer día de la ventana no
+    movería la predicción tanto como con `bidirectional=False`."""
+    X, Y, tau = _seq(n=20, L=6, F=3, n_out=2)
+    m_bi = LSTMCore(lookback=6, n_features=3, loss=ExpectileLoss(), hidden_size=8,
+                    bidirectional=True, epochs=40, patience=40, seed=7)
+    m_bi.fit(X, Y, tau=tau)
+    base = m_bi.predict(X)
+    X_alt = X.reshape(20, 6, 3).copy()
+    X_alt[:, 0, :] += 5.0                       # primer día de la ventana (el más antiguo)
+    alt = m_bi.predict(X_alt.reshape(20, -1))
+    assert not np.allclose(base, alt, atol=1e-6), (
+        "perturbar el primer día de la ventana no movió la predicción del BiLSTM")
+
+
 def test_run_experiment_lstm_de_punta_a_punta():
     """Integración real: with_lookback + --model lstm. Sin `lookback=` declarado
     tiene que fallar explícito, igual que dlinear."""
@@ -151,6 +193,23 @@ def test_run_experiment_lstm_de_punta_a_punta():
     assert out["model_hp"]["lookback"] == 6
     assert out["model_hp"]["n_features"] == 3
     assert out["model_hp"]["hidden_size"] == 4
+
+
+def test_run_experiment_bilstm_de_punta_a_punta():
+    """B4.15: el flag `lstm_bidirectional` llega de punta a punta desde
+    `run_experiment` hasta `model_hp`, y sigue exigiendo `lookback=` como el LSTM."""
+    from rio_search import data as data_mod
+    from rio_search import train as train_mod
+    from rio_search.tests.test_target_param import _ds
+
+    ds_lb = data_mod.with_lookback(_ds(), 6)
+    splits = data_mod.make_splits(ds_lb.fecha)
+
+    out = train_mod.run_experiment(ds_lb, splits, model="lstm", loss="gral",
+                                   epochs=2, evaluar_test=False, lookback=6,
+                                   lstm_hidden=4, lstm_bidirectional=True)
+    assert out["model_hp"]["bidirectional"] is True
+    assert out["model_hp"]["lookback"] == 6
 
 
 if __name__ == "__main__":

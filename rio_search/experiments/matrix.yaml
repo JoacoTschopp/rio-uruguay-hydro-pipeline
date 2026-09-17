@@ -846,12 +846,32 @@ bloques:
     nombre: BiLSTM
     slug: bilstm
     prioridad: P1
-    estado: falta
+    estado: implementado
+    valor: "el baseline que rio_search_plan.md Fase 3 pone como objetivo"
+    cmd: -m rio_search.train --model lstm --lookback 30 --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --lr 0.01 --l2 0.0001 --epochs 600 --patience 60 --lstm-hidden 32 --lstm-bidirectional --split val
+    tiempo_est_s: 25
     implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: alto}
     nota: >-
-      Es el baseline que `rio_search_plan.md` Fase 3 pone como objetivo. Ojo con el nombre:
-      bidireccional sobre la ventana de **entrada** (pasado) es legítimo; bidireccional
-      sobre el horizonte de salida sería fuga. Dejarlo escrito y verificarlo en la auditoría.
+      **Pierde, más establemente que el LSTM unidireccional: gral 0,5182 ± 0,0065**
+      sobre d303 (ancla 0,4948 ± 0,0098 — Δ = 0,0233, muy por fuera del umbral
+      ±0,0105; skill positivo, no cae por R6). Reusa `LSTMCore` (B4.14) con
+      `bidirectional=True`, expuesto acá por primera vez vía `--lstm-bidirectional`
+      en `train.py`. **Corrección deliberada de HP** respecto de B4.14: ese tramo
+      había reusado `lr=0,0492` del MLP tanh (Optuna), demasiado alto para una
+      recurrencia — cortaba en época ~10 con patience=60. Acá se usan los HP por
+      defecto del arnés (`lr=0,01`, no prestados de otra arquitectura): con eso el
+      entrenamiento llega a `best_epoch=18` antes de cortar, casi el doble, y el sd
+      entre semillas baja de 0,0159 (LSTM) a 0,0065 (BiLSTM) — evidencia de que la
+      corrección de lr, no la bidireccionalidad, es lo que estabilizó el
+      entrenamiento. La bidireccionalidad en sí no mueve el resultado contra el
+      LSTM simple de forma que supere el ruido.
+      **Verificación de fuga**: la cabeza sigue siendo una única `nn.Linear`
+      feedforward sobre el estado agrupado del último paso (`net.head`), nunca un
+      módulo recurrente sobre los 8 horizontes — verificado con un test estructural
+      (`test_bidireccional_no_tiene_recurrencia_sobre_el_horizonte_de_salida`) además
+      de `test_leakage.py` y la auditoría, que siguen en verde. La dirección hacia
+      atrás del BiLSTM sólo lee días ya incluidos en la ventana causal de
+      `make_sequences` (garantía estructural de B2.17, no de este modelo).
 
   - id: B4.16
     nombre: GRU
@@ -1574,13 +1594,13 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 57          # medido sobre los `estado:` de este archivo (Tramo 11, 2026-09-17)
-  faltan: 53
+  implementadas: 58          # medido sobre los `estado:` de este archivo (Tramo 13, 2026-09-17)
+  faltan: 52
   bloqueadas_por_dato: 0     # B2.19 y B8.05 salieron del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 53 corren hoy
+  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 54 corren hoy
   reloj_de_lo_implementado: >-
-    ~112 min para las 57 celdas implementadas; **~40 min sin las tres celdas de
+    ~112 min para las 58 celdas implementadas; **~40 min sin las tres celdas de
     walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
     2.861 s el 2026-09-15. Los tiempos de las
     celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
@@ -1588,19 +1608,24 @@ resumen:
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
     Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19),
-    B3 (4 de 6), B4 (6 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
+    B3 (4 de 6), B4 (7 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
     B10 (2 de 5). El grupo A de la fase está completo, el grupo B (B2.19, features de
     pronóstico ECMWF) es el mejor resultado de la fase (gral 0,4204 vs ancla 0,4948,
     confirmado en el subconjunto con cobertura completa), el grupo C abrió con B4.08
     XGBoost — segundo mejor resultado (gral 0,4570, Δ 0,0378, 4× el umbral) con una décima
     parte de la dispersión del ancla — y el grupo D, torch instalado con CUDA, corrió
-    B4.13 DLinear (**descarta** la ventana cruda incluso lineal, gral 0,6024) y B4.14
+    B4.13 DLinear (**descarta** la ventana cruda incluso lineal, gral 0,6024), B4.14
     LSTM (**pierde** con HP prestados del MLP tanh, gral 0,5196 ± 0,0159, Δ 0,0248; el
-    early stopping corta muy temprano con esos HP — no cierra la pregunta del LSTM, la
-    deja pendiente de B9 sobre su propio espacio de hiperparámetros). **No** alcanza para
-    el criterio de finalización: sin B4.15/B4.18 (BiLSTM/TCN, siguen en el grupo D), la
-    cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
-    es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo
+    early stopping corta muy temprano con esos HP) y B4.15 BiLSTM (**pierde** también,
+    gral 0,5182 ± 0,0065 — con HP propios del arnés en vez de los prestados del MLP el
+    entrenamiento converge más lejos y con un tercio de la dispersión entre semillas,
+    pero el resultado no cambia de signo; la bidireccionalidad no es lo que faltaba).
+    Ninguno de los tres modelos secuenciales/lineales de B4 le ganó todavía al MLP tanh
+    ni a los finalistas de B1/B4.08/B2.19 — la pregunta del LSTM/BiLSTM con búsqueda de
+    HP propia (B9) sigue abierta, no cerrada en contra. **No** alcanza para el criterio
+    de finalización: sin B4.18 (TCN, el último del grupo D), la cobertura de P1 queda
+    incompleta y la búsqueda sigue abierta. Lo que sí está cerrado es la
+    **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo
     entero sobre el dataset que haya, sin intervención.
   tres_desbloqueos_de_mayor_impacto:
     - "B2.17 (ventana / lookback) — hecha: las 13 celdas secuenciales de B4 quedan habilitadas"
