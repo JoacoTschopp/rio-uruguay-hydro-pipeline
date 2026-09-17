@@ -24,7 +24,7 @@ import numpy as np
 
 __all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "HuberLoss",
            "NSELoss", "LOSSES",
-           "LinearCore", "MLPCore", "XGBoostCore", "PersistenceBaseline",
+           "LinearCore", "MLPCore", "XGBoostCore", "DLinearCore", "PersistenceBaseline",
            "ClimatologyBaseline", "DampedPersistence", "SeasonalNaive"]
 
 
@@ -379,6 +379,73 @@ class MLPCore(_GradientModel):
 
     def _weight_keys(self):
         return tuple(f"W{i}" for i in range(1, len(self.widths) + 2))
+
+
+class DLinearCore(_GradientModel):
+    """DLinear (Zeng et al. 2023): descomposición tendencia+estacional de la
+    ventana y una capa lineal por componente.
+
+    B4.13, sobre las secuencias de B2.17. Consume el tensor que `with_lookback`
+    ya aplana a (N, L·F); acá se reconstruye a (N, L, F) para descomponer a lo
+    largo de L (media móvil por feature, kernel impar declarado — no tuneado),
+    y se aplana de nuevo antes de las dos capas lineales (trend/seasonal), que
+    se entrenan por gradiente como el resto del arnés — así acepta la misma
+    pérdida asimétrica que todo lo demás, no sólo MSE. Sin torch: es lineal, y
+    el resto del arnés corre en NumPy puro a propósito (ver módulo).
+    """
+
+    name = "dlinear"
+
+    def __init__(self, lookback: int, n_features: int, kernel: int | None = None, **kw):
+        super().__init__(**kw)
+        if lookback < 1 or n_features < 1:
+            raise ValueError(f"lookback y n_features deben ser >= 1: {lookback}, {n_features}")
+        self.lookback = lookback
+        self.n_features = n_features
+        k = kernel or min(lookback, 25)
+        self.kernel = k if k % 2 == 1 else k - 1        # impar, para padding simétrico
+        if self.kernel < 1:
+            raise ValueError(f"kernel inválido: {self.kernel}")
+
+    def _moving_average(self, seq: np.ndarray) -> np.ndarray:
+        """Media móvil causal-segura a lo largo de L (eje 1), padding por borde.
+
+        No mira fuera de la ventana ya recortada por `make_sequences` —el
+        padding repite el primer/último día de la ventana, no toma datos de
+        afuera— así que no introduce fuga nueva.
+        """
+        k, pad = self.kernel, self.kernel // 2
+        padded = np.pad(seq, ((0, 0), (pad, pad), (0, 0)), mode="edge")
+        csum = np.cumsum(padded, axis=1)
+        csum = np.concatenate([np.zeros((seq.shape[0], 1, seq.shape[2])), csum], axis=1)
+        return (csum[:, k:, :] - csum[:, :-k, :]) / k
+
+    def _decompose_flat(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        seq = X.reshape(X.shape[0], self.lookback, self.n_features)
+        trend = self._moving_average(seq)
+        seasonal = seq - trend
+        n = X.shape[0]
+        return trend.reshape(n, -1), seasonal.reshape(n, -1)
+
+    def _init_params(self, n_in, n_out, rng):
+        return {"Wt": np.zeros((n_in, n_out)), "Ws": np.zeros((n_in, n_out)),
+                "b": np.zeros(n_out)}
+
+    def _forward(self, X, params):
+        trend_flat, seasonal_flat = self._decompose_flat(X)
+        yhat = trend_flat @ params["Wt"] + seasonal_flat @ params["Ws"] + params["b"]
+        return yhat, {"trend_flat": trend_flat, "seasonal_flat": seasonal_flat}
+
+    def _backward(self, X, cache, G, params):
+        return {"Wt": cache["trend_flat"].T @ G, "Ws": cache["seasonal_flat"].T @ G,
+                "b": G.sum(axis=0)}
+
+    def _weight_keys(self):
+        return ("Wt", "Ws")
+
+    def hp(self) -> dict:
+        return {"lookback": self.lookback, "n_features": self.n_features,
+                "kernel_media_movil": self.kernel}
 
 
 class XGBoostCore:

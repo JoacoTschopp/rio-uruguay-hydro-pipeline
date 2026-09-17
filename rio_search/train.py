@@ -47,8 +47,9 @@ def _utf8_console() -> None:
 from . import data as data_mod
 from . import gate as gate_mod
 from . import metrics as metrics_mod
-from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, LinearCore,
-                     MLPCore, NSELoss, PersistenceBaseline, SeasonalNaive, XGBoostCore)
+from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, DLinearCore,
+                     LinearCore, MLPCore, NSELoss, PersistenceBaseline, SeasonalNaive,
+                     XGBoostCore)
 
 __all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
 
@@ -272,6 +273,7 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    target_param: str = "nivel",
                    target_transform: str | None = None,
                    scaling: str = "standard",
+                   lookback: int | None = None,
                    return_predictions: bool = False) -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
@@ -309,6 +311,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     `scaling` (B7.02) elige el centrado/escala de las features — estándar,
     mediana/IQR, minmax, CDF empírica o nada. Los estadísticos salen siempre de
     TRAIN; el escalado del target no cambia (su transformación es el eje B3).
+
+    `lookback` (obligatorio con `model="dlinear"`, B4.13) es el L de la ventana que
+    `with_lookback` ya aplanó en `ds.X`: `DLinearCore` lo necesita para reconstruir
+    (N, L, F) y descomponer tendencia/estacional antes de las dos capas lineales.
 
     `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
     forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
@@ -349,13 +355,26 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     if loss_name == "nse":                  # B1.10: σ²_h por horizonte, de TRAIN
         loss_fn = NSELoss(np.nanvar(Ztr, axis=0))
 
-    core_cls = {"mlp": MLPCore, "linear": LinearCore, "xgb": XGBoostCore}[model]
+    core_cls = {"mlp": MLPCore, "linear": LinearCore, "xgb": XGBoostCore,
+                "dlinear": DLinearCore}[model]
+    if model == "dlinear":
+        if not lookback:
+            raise ValueError("model='dlinear' necesita lookback: ds.X tiene que venir "
+                             "de with_lookback(ds, lookback) y el mismo L pasarse acá")
+        n_in = Xtr.shape[1]
+        if n_in % lookback != 0:
+            raise ValueError(f"lookback={lookback} no divide a n_in={n_in}: "
+                             "ds.X no parece venir de with_lookback con ese L")
     kw = dict(loss=loss_fn, epochs=epochs, lr=lr, l2=l2, patience=patience,
               seed=seed, verbose=verbose)
 
     def nuevo_core(loss_j=None):
         kw2 = kw if loss_j is None else dict(kw, loss=loss_j)
-        return core_cls(hidden=hidden, **kw2) if model == "mlp" else core_cls(**kw2)
+        if model == "mlp":
+            return core_cls(hidden=hidden, **kw2)
+        if model == "dlinear":
+            return core_cls(lookback=lookback, n_features=Xtr.shape[1] // lookback, **kw2)
+        return core_cls(**kw2)
 
     if per_horizon and on_epoch is not None:
         raise ValueError("per_horizon no soporta on_epoch: el podado por época está "
@@ -583,7 +602,7 @@ def _parse_hidden(s: str) -> int | list[int]:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", choices=["mlp", "linear", "xgb"], default="mlp")
+    p.add_argument("--model", choices=["mlp", "linear", "xgb", "dlinear"], default="mlp")
     p.add_argument("--loss", choices=list(LOSS_CONFIGS), default="mse")
     p.add_argument("--compare", action="store_true",
                    help="corre todas las pérdidas de LOSS_CONFIGS y compara")
@@ -672,7 +691,8 @@ def main(argv=None) -> int:
               per_horizon=args.horizonte == "per_horizon",
               target_param=args.target_param,
               target_transform=args.target_transform,
-              scaling=args.scaling)
+              scaling=args.scaling,
+              lookback=args.lookback)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")

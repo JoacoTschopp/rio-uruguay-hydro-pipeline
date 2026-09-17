@@ -25,6 +25,12 @@ el resto porque es la primera celda con una dependencia fuera de NumPy puro:
 
 Sólo lo necesita `--model xgb`; el resto del arnés sigue sin requerirlo.
 
+**`--model dlinear` (B4.13, Tramo 10) no agrega nada**: DLinear es lineal, así que
+corre en NumPy puro sobre las secuencias de `with_lookback` (B2.17) — el propósito
+original de mantener el arnés sin torch (ver el docstring de `models.py`) sigue
+intacto. Las siguientes celdas del grupo D del plan (B4.14 LSTM, B4.15 BiLSTM, B4.18
+TCN) sí son recurrentes/convolucionales y van a necesitar decidir sobre torch aparte.
+
 ## Uso
 
 ```bash

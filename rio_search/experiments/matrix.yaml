@@ -784,13 +784,30 @@ bloques:
     nombre: DLinear / NLinear
     slug: dlinear
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "descomposición tendencia+estacional y una capa lineal por componente sobre la ventana"
-    implementar: {donde: rio_search/models.py, que: "sobre las secuencias de B2.17; es lineal, corre en NumPy sin torch", depende_de: [B2.17], esfuerzo: medio}
+    cmd: -m rio_search.train --model dlinear --lookback 30 --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 15
     referencia: >-
       Zeng et al. 2023, "Are Transformers Effective for Time Series Forecasting?" (AAAI).
       **Control obligatorio antes de cualquier transformer.** Barato y sin dependencias
       nuevas: es la celda de mejor relación evidencia/costo de todo B4.
+    nota: >-
+      **Descartado por R6: gral 0,6024 ± 0,0000 sobre d303** (ancla 0,4948 ± 0,0098 —
+      muy por fuera del umbral; skill vs persistencia −0,277, V− 0,969 — sobrestima
+      brutalmente en seco). DLinearCore en NumPy puro (sin torch: `implementar` ya lo
+      pedía así, "corre en NumPy sin torch" — el docstring del módulo lo confirma como
+      decisión deliberada del arnés). Descompone la ventana (N, L, F) de
+      `with_lookback` con una media móvil causal-segura (kernel impar, tope 25,
+      declarado — no tuneado) en tendencia+estacional, y entrena dos capas lineales
+      (una por componente) con la misma pérdida asimétrica de siempre. L=30 por
+      continuidad con la exploración de B2.17 (el mejor punto de ese eje). El sd=0
+      entre semillas es real, no un bug: con init en cero y sin ninguna fuente de
+      aleatoriedad en el forward, el óptimo de un modelo lineal es el mismo para
+      cualquier semilla. Lectura: sin no-linealidad ni las derivadas de B2.13, ver la
+      ventana cruda a través de dos capas lineales pierde contra el MLP — el control
+      que Zeng et al. proponen contra los transformers no rescata la ventana cruda
+      acá; B2.13 (features hidrológicas a mano) ya había mostrado el mismo patrón.
 
   - id: B4.14
     nombre: LSTM
@@ -1535,13 +1552,13 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 55          # medido sobre los `estado:` de este archivo (Tramo 9, 2026-09-17)
-  faltan: 55
+  implementadas: 56          # medido sobre los `estado:` de este archivo (Tramo 10, 2026-09-17)
+  faltan: 54
   bloqueadas_por_dato: 0     # B2.19 y B8.05 salieron del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 51 corren hoy
+  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 52 corren hoy
   reloj_de_lo_implementado: >-
-    ~110 min para las 55 celdas implementadas; **~40 min sin las tres celdas de
+    ~112 min para las 56 celdas implementadas; **~40 min sin las tres celdas de
     walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
     2.861 s el 2026-09-15. Los tiempos de las
     celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
@@ -1549,17 +1566,21 @@ resumen:
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
     Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19),
-    B3 (4 de 6), B4 (4 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
+    B3 (4 de 6), B4 (5 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
     B10 (2 de 5). El grupo A de la fase está completo, el grupo B (B2.19, features de
     pronóstico ECMWF) es el mejor resultado de la fase (gral 0,4204 vs ancla 0,4948,
-    confirmado en el subconjunto con cobertura completa), y el grupo C abrió con B4.08
+    confirmado en el subconjunto con cobertura completa), el grupo C abrió con B4.08
     XGBoost — segundo mejor resultado (gral 0,4570, Δ 0,0378, 4× el umbral) con una décima
-    parte de la dispersión del ancla. **No** alcanza para el criterio de finalización: sin
-    B4.13/B4.14/B4.15/B4.18 (grupo D, torch), la cobertura de P1 queda incompleta y la
-    búsqueda sigue abierta. Lo que sí está cerrado es la **repetibilidad**:
-    `python -m rio_search.runner --todo` re-corre el catálogo entero sobre el dataset que
-    haya, sin intervención.
+    parte de la dispersión del ancla — y el grupo D abrió con B4.13 DLinear, que
+    **descarta** la ventana cruda incluso lineal (gral 0,6024, muy por fuera del umbral,
+    V− 0,969): sin no-linealidad ni las derivadas de B2.13, la ventana cruda pierde, igual
+    que ya había mostrado B2.17. **No** alcanza para el criterio de finalización: sin
+    B4.14/B4.15/B4.18 (LSTM/BiLSTM/TCN, siguen en el grupo D), la cobertura de P1 queda
+    incompleta y la búsqueda sigue abierta — y esas tres sí necesitan evaluar si instalar
+    torch, cosa que B4.13 deliberadamente evitó. Lo que sí está cerrado es la
+    **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero
+    sobre el dataset que haya, sin intervención.
   tres_desbloqueos_de_mayor_impacto:
     - "B2.17 (ventana / lookback) — hecha: las 13 celdas secuenciales de B4 quedan habilitadas"
     - "G-05 (guardar predicciones) — hecha en B10.01: ensemble.py y return_predictions"
-    - "B4.13 (DLinear) o B4.14 (LSTM) — el grupo D, la última familia P1 sin correr"
+    - "B4.14 (LSTM) — primera celda que necesita torch de verdad; B4.13 (DLinear) ya corrió y descartó la ventana cruda sin él"
