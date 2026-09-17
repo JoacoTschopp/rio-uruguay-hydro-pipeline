@@ -725,21 +725,38 @@ bloques:
     nombre: XGBoost
     slug: xgboost
     prioridad: P1
-    estado: falta
+    estado: implementado
     valor: "gradient boosting con objetivo custom"
     implementar: {donde: rio_search/models.py, que: "adaptador; objetivo custom con grad/hess — la pérdida expectil los tiene analíticos", depende_de: [xgboost], esfuerzo: medio}
+    cmd: -m rio_search.train --model xgb --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --lr 0.05 --l2 1.0 --epochs 500 --patience 30 --split val
+    tiempo_est_s: 10
     nota: >-
-      **La familia que más chance tiene de ganar** en un tabular de 9.600 filas y 19–26
-      columnas. Y acepta objetivo custom, así que gral se puede entrenar de verdad: es la
-      comparación fuerte de la tesis, no una concesión.
+      **La familia que más chance tenía de ganar, y ganó: gral 0,4570 ± 0,0004 sobre d303**
+      (ancla 0,4948 ± 0,0098 — Δ = 0,0378, más de 4× el umbral de ruido, con una décima
+      parte de la dispersión del ancla). Objetivo custom con grad/hess analíticos de
+      ExpectileLoss (mismo espacio log del ancla), un booster independiente por horizonte
+      (gradient boosting no comparte representación entre salidas), y el criterio de
+      early stopping monitorea esa misma pérdida asimétrica en VAL vía `custom_metric` —
+      no un RMSE simétrico que no vería la asimetría que se está entrenando.
+      Hiperparámetros de árbol (`max_depth=4, subsample=0.8, colsample_bytree=0.8,
+      min_child_weight=5, reg_lambda=1.0`) son valores de literatura para tabular de este
+      tamaño, **declarados, no tuneados por VAL** — ver `model_hp` en el JSON. Mismas 19
+      features que el ancla: la comparación es de familia de modelo, no de información.
+      **No arregla el defecto seco**: V− 0,807, peor que el 0,729 del ancla — la mejora es
+      toda en precisión, como huber_log y per_horizon, no en ese sesgo (que sólo B2.19
+      tocó hasta ahora). Con este resultado, B4.09 (LightGBM) pasa a P2 por la regla ya
+      declarada en su propia nota.
 
   - id: B4.09
     nombre: LightGBM
     slug: lightgbm
-    prioridad: P1
+    prioridad: P2
     estado: falta
     implementar: {donde: rio_search/models.py, que: "adaptador; objetivo custom + soporte nativo de cuantiles", depende_de: [lightgbm], esfuerzo: medio}
-    nota: "Más rápido que XGBoost en este tamaño y con objetivo cuantílico nativo. Uno de los dos (B4.08/B4.09) es P1 obligatorio; el otro pasa a P2 si el primero corre."
+    nota: "Más rápido que XGBoost en este tamaño y con objetivo cuantílico nativo. Bajó de
+      P1 a P2 el 2026-09-17: B4.08 ya corrió y ganó (gral 0,4570), así que deja de ser
+      obligatoria para cerrar la fase — sigue siendo la comparación GBM alternativa si el
+      cierre quiere confirmar que el resultado no depende de la implementación."
 
   - id: B4.10
     nombre: CatBoost
@@ -1518,13 +1535,13 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 54          # medido sobre los `estado:` de este archivo (Tramo 8, 2026-09-17)
-  faltan: 56
-  bloqueadas_por_dato: 0     # B2.19 salió del bloqueo: implementada y es el mejor resultado de la fase
+  implementadas: 55          # medido sobre los `estado:` de este archivo (Tramo 9, 2026-09-17)
+  faltan: 55
+  bloqueadas_por_dato: 0     # B2.19 y B8.05 salieron del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 56              # de las cuales 50 corren hoy
+  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 51 corren hoy
   reloj_de_lo_implementado: >-
-    ~100 min para las 41 celdas implementadas; **~40 min sin las tres celdas de
+    ~110 min para las 55 celdas implementadas; **~40 min sin las tres celdas de
     walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
     2.861 s el 2026-09-15. Los tiempos de las
     celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
@@ -1532,16 +1549,17 @@ resumen:
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
     Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19),
-    B3 (4 de 6), B4 (3 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
-    B10 (2 de 5). El grupo A de la fase está completo, y el grupo B abrió con B2.19
-    (features de pronóstico ECMWF) — el mejor resultado de la fase hasta ahora, gral
-    0,4204 vs ancla 0,4948, confirmado en el subconjunto de fechas con cobertura completa.
-    **No** alcanza para el criterio de finalización: sin B4.08/B4.09 (GBM) y
-    B4.13/B4.14/B4.15/B4.18 (torch),
-    la cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
-    es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero
-    sobre el dataset que haya, sin intervención.
+    B3 (4 de 6), B4 (4 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
+    B10 (2 de 5). El grupo A de la fase está completo, el grupo B (B2.19, features de
+    pronóstico ECMWF) es el mejor resultado de la fase (gral 0,4204 vs ancla 0,4948,
+    confirmado en el subconjunto con cobertura completa), y el grupo C abrió con B4.08
+    XGBoost — segundo mejor resultado (gral 0,4570, Δ 0,0378, 4× el umbral) con una décima
+    parte de la dispersión del ancla. **No** alcanza para el criterio de finalización: sin
+    B4.13/B4.14/B4.15/B4.18 (grupo D, torch), la cobertura de P1 queda incompleta y la
+    búsqueda sigue abierta. Lo que sí está cerrado es la **repetibilidad**:
+    `python -m rio_search.runner --todo` re-corre el catálogo entero sobre el dataset que
+    haya, sin intervención.
   tres_desbloqueos_de_mayor_impacto:
     - "B2.17 (ventana / lookback) — hecha: las 13 celdas secuenciales de B4 quedan habilitadas"
     - "G-05 (guardar predicciones) — hecha en B10.01: ensemble.py y return_predictions"
-    - "B4.09 o B4.13 (LightGBM o DLinear) — la comparación fuerte que hoy no existe"
+    - "B4.13 (DLinear) o B4.14 (LSTM) — el grupo D, la última familia P1 sin correr"

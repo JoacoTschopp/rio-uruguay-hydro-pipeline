@@ -48,7 +48,7 @@ from . import data as data_mod
 from . import gate as gate_mod
 from . import metrics as metrics_mod
 from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, LinearCore,
-                     MLPCore, NSELoss, PersistenceBaseline, SeasonalNaive)
+                     MLPCore, NSELoss, PersistenceBaseline, SeasonalNaive, XGBoostCore)
 
 __all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
 
@@ -349,7 +349,7 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     if loss_name == "nse":                  # B1.10: σ²_h por horizonte, de TRAIN
         loss_fn = NSELoss(np.nanvar(Ztr, axis=0))
 
-    core_cls = {"mlp": MLPCore, "linear": LinearCore}[model]
+    core_cls = {"mlp": MLPCore, "linear": LinearCore, "xgb": XGBoostCore}[model]
     kw = dict(loss=loss_fn, epochs=epochs, lr=lr, l2=l2, patience=patience,
               seed=seed, verbose=verbose)
 
@@ -400,6 +400,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
         "imputed_fraction_train": round(pre.imputed_fraction(ds.X[tr]), 4),
         "splits": splits.describe(ds.fecha),
     }
+    if hasattr(cores[0], "hp"):        # B4.08: hiperparámetros de árbol declarados,
+        out["model_hp"] = cores[0].hp()  # sin equivalente en lr/l2/epochs/patience
     tau_eval = ds.tau if eval_tau is None else np.asarray(eval_tau, dtype=float)
     out["eval_tau_is_train_tau"] = eval_tau is None and train_tau is None
     out["train_tau_es_el_del_modulador"] = train_tau is None
@@ -581,7 +583,7 @@ def _parse_hidden(s: str) -> int | list[int]:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", choices=["mlp", "linear"], default="mlp")
+    p.add_argument("--model", choices=["mlp", "linear", "xgb"], default="mlp")
     p.add_argument("--loss", choices=list(LOSS_CONFIGS), default="mse")
     p.add_argument("--compare", action="store_true",
                    help="corre todas las pérdidas de LOSS_CONFIGS y compara")

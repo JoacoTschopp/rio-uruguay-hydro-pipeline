@@ -24,8 +24,8 @@ import numpy as np
 
 __all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "HuberLoss",
            "NSELoss", "LOSSES",
-           "LinearCore", "MLPCore", "PersistenceBaseline", "ClimatologyBaseline",
-           "DampedPersistence", "SeasonalNaive"]
+           "LinearCore", "MLPCore", "XGBoostCore", "PersistenceBaseline",
+           "ClimatologyBaseline", "DampedPersistence", "SeasonalNaive"]
 
 
 # --------------------------------------------------------------------------
@@ -379,6 +379,145 @@ class MLPCore(_GradientModel):
 
     def _weight_keys(self):
         return tuple(f"W{i}" for i in range(1, len(self.widths) + 2))
+
+
+class XGBoostCore:
+    """Adaptador de XGBoost al mismo contrato que `MLPCore`/`LinearCore` (B4.08).
+
+    Gradient boosting no comparte representación entre horizontes como el MLP:
+    acá cada columna de salida entrena su propio booster, así que el multi-salida
+    y el `per_horizon` externo de B5.02 dan exactamente lo mismo — esta clase no
+    necesita saber cuál de los dos la está llamando.
+
+    El objetivo es el custom que pide la celda: grad/hess **analíticos** de
+    `ExpectileLoss`, no el objetivo cuadrático por defecto de XGBoost — así
+    entrena de verdad con G-RAL, no con una aproximación. Con
+    `e = y − ŷ` y `w = τ` (o `1−τ` si `e<0`): `L = 2·w·e²`,
+    `∂L/∂ŷ = −4·w·e`, `∂²L/∂ŷ² = 4·w` (w se trata como localmente constante en
+    el kink de e=0, el tratamiento de subgradiente habitual). El criterio de
+    early stopping usa esa misma pérdida, vía `custom_metric`, para que la
+    parada temprana monitoree lo mismo que el MLP monitorea con `_mean_loss` —
+    no un RMSE simétrico que no ve la asimetría que se está entrenando.
+
+    Los hiperparámetros de árbol (profundidad, submuestreo, `min_child_weight`)
+    no tienen equivalente en el arnés genérico de `lr`/`l2`/`epochs`/`patience`
+    que comparten MLP y lineal — quedan declarados acá con valores de literatura
+    para tabular de este tamaño (~10⁴ filas), no tuneados por VAL. `hp()` los
+    expone para que `run_experiment` los deje en el JSON de salida.
+    """
+
+    name = "xgb"
+
+    def __init__(self, *, loss, epochs: int = 600, lr: float = 0.05, l2: float = 1.0,
+                 patience: int = 30, seed: int = 20260828, verbose: bool = False,
+                 max_depth: int = 4, subsample: float = 0.8,
+                 colsample_bytree: float = 0.8, min_child_weight: float = 5.0):
+        if not isinstance(loss, ExpectileLoss):
+            raise NotImplementedError(
+                "XGBoostCore sólo tiene objetivo custom para ExpectileLoss (lo que "
+                f"pide B4.08); pérdida recibida = {loss.name!r}")
+        self.loss = loss
+        self.epochs = epochs
+        self.lr = lr
+        self.l2 = l2
+        self.patience = patience
+        self.seed = seed
+        self.verbose = verbose
+        self.max_depth = max_depth
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
+        self.min_child_weight = min_child_weight
+        self.boosters: list = []
+        self.history: list = []
+        self.best_epoch: int | list[int] | None = None
+        self.pruned = False
+
+    def hp(self) -> dict:
+        return {"max_depth": self.max_depth, "eta": self.lr, "reg_lambda": self.l2,
+                "subsample": self.subsample, "colsample_bytree": self.colsample_bytree,
+                "min_child_weight": self.min_child_weight,
+                "n_estimators_max": self.epochs, "early_stopping_rounds": self.patience}
+
+    def _params(self):
+        return {"max_depth": self.max_depth, "eta": self.lr, "lambda": self.l2,
+                "subsample": self.subsample, "colsample_bytree": self.colsample_bytree,
+                "min_child_weight": self.min_child_weight, "seed": self.seed,
+                "tree_method": "hist", "verbosity": 0}
+
+    def _custom_metric(self, dtr, tau_tr, dva=None, tau_va=None):
+        def feval(preds, dmat):
+            tau_col = tau_va if (dva is not None and dmat is dva) else tau_tr
+            e = dmat.get_label() - preds
+            w = np.where(e < 0.0, 1.0 - tau_col, tau_col)
+            return "expectile", float(np.mean(2.0 * w * e ** 2))
+        return feval
+
+    @staticmethod
+    def _objective(tau_col):
+        def obj(preds, dmat):
+            e = dmat.get_label() - preds
+            w = np.where(e < 0.0, 1.0 - tau_col, tau_col)
+            return -4.0 * w * e, 4.0 * w
+        return obj
+
+    def fit(self, X, Y, tau=None, *, mask=None, X_val=None, Y_val=None,
+            tau_val=None, mask_val=None, on_epoch=None):
+        if on_epoch is not None:
+            raise NotImplementedError("XGBoostCore no soporta podado por época (on_epoch)")
+        import xgboost as xgb
+
+        Y = np.asarray(Y, dtype=float)
+        n_out = Y.shape[1]
+        tau = (np.asarray(tau, dtype=float) if tau is not None
+              else np.full(Y.shape[0], 0.5))
+        con_val = X_val is not None and Y_val is not None
+        if con_val:
+            Yv = np.asarray(Y_val, dtype=float)
+            tau_val = (np.asarray(tau_val, dtype=float) if tau_val is not None
+                      else np.full(Yv.shape[0], 0.5))
+
+        self.boosters, self.history = [], []
+        best_epochs = []
+        for j in range(n_out):
+            yj = Y[:, j]
+            mj = np.isfinite(yj) if mask is None else (np.asarray(mask, bool)[:, j] & np.isfinite(yj))
+            dtr = xgb.DMatrix(X[mj], label=yj[mj])
+            tau_tr_j = tau[mj]
+
+            dva, tau_va_j, watch = None, None, [(dtr, "train")]
+            if con_val:
+                yvj = Yv[:, j]
+                mvj = (np.isfinite(yvj) if mask_val is None
+                      else (np.asarray(mask_val, bool)[:, j] & np.isfinite(yvj)))
+                dva = xgb.DMatrix(X_val[mvj], label=yvj[mvj])
+                tau_va_j = tau_val[mvj]
+                watch.append((dva, "val"))
+
+            evals_result: dict = {}
+            booster = xgb.train(
+                self._params(), dtr, num_boost_round=self.epochs,
+                obj=self._objective(tau_tr_j),
+                custom_metric=self._custom_metric(dtr, tau_tr_j, dva, tau_va_j),
+                evals=watch, evals_result=evals_result,
+                early_stopping_rounds=self.patience if dva is not None else None,
+                verbose_eval=self.verbose)
+
+            self.boosters.append(booster)
+            best_it = getattr(booster, "best_iteration", None)
+            best_epochs.append(int(best_it) + 1 if best_it is not None
+                               else booster.num_boosted_rounds())
+            self.history.append(evals_result)
+
+        self.best_epoch = best_epochs[0] if n_out == 1 else best_epochs
+        return self
+
+    def predict(self, X) -> np.ndarray:
+        import xgboost as xgb
+        d = xgb.DMatrix(X)
+        cols = [b.predict(d, iteration_range=(0, b.best_iteration + 1))
+               if hasattr(b, "best_iteration") else b.predict(d)
+               for b in self.boosters]
+        return np.column_stack(cols)
 
 
 # --------------------------------------------------------------------------

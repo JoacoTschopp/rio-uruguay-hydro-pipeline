@@ -14,8 +14,16 @@ arnés, así que la app los importa tal cual cuando exista.
 
 ## Requisitos
 
-Sólo `numpy`, `pandas` y `pyarrow` — ya están en el `.venv` del repo. Sin torch,
-sin sklearn, sin instalación adicional.
+`numpy`, `pandas` y `pyarrow` — ya están en el `.venv` del repo. Sin torch, sin sklearn.
+
+Desde B4.08 (XGBoost, Tramo 9 de `PLAN.md`) hace falta además `xgboost` — no viene con
+el resto porque es la primera celda con una dependencia fuera de NumPy puro:
+
+```bash
+.venv/Scripts/python.exe -m pip install xgboost    # 3.4.1 al instalarlo (trae scipy)
+```
+
+Sólo lo necesita `--model xgb`; el resto del arnés sigue sin requerirlo.
 
 ## Uso
 
