@@ -94,8 +94,10 @@ tramo con la regla de arriba.
 
 **C — nueva dependencia (pip install xgboost lightgbm):**
 
-14. B4.08 — XGBoost
-15. B4.09 — LightGBM
+14. B4.08 — XGBoost. La matriz declara que de B4.08/B4.09 uno es P1 obligatorio y el
+    otro pasa a P2 si el primero corre; XGBoost va primero por su nota ("la familia que
+    más chance tiene de ganar" en este tamaño de tabla). Si gana, B4.09 queda anotada
+    P2 para la fase siguiente en vez de correrse acá.
 
 **D — torch (instalación CUDA local, GPU disponible):**
 
