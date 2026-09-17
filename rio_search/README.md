@@ -28,8 +28,20 @@ Sólo lo necesita `--model xgb`; el resto del arnés sigue sin requerirlo.
 **`--model dlinear` (B4.13, Tramo 10) no agrega nada**: DLinear es lineal, así que
 corre en NumPy puro sobre las secuencias de `with_lookback` (B2.17) — el propósito
 original de mantener el arnés sin torch (ver el docstring de `models.py`) sigue
-intacto. Las siguientes celdas del grupo D del plan (B4.14 LSTM, B4.15 BiLSTM, B4.18
-TCN) sí son recurrentes/convolucionales y van a necesitar decidir sobre torch aparte.
+intacto.
+
+Desde B4.14 (LSTM, Tramo 11) hace falta además `torch` — es recurrente, no lineal,
+y acá sí hace falta autograd en vez de backprop a mano. Instalar la variante CUDA
+si hay GPU NVIDIA (la wheel por defecto de PyPI es CPU-only):
+
+```bash
+.venv/Scripts/python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cu124
+# 2.6.0+cu124 al instalarlo — sin --index-url, pip trae la wheel CPU-only (2.14.0+cpu)
+```
+
+Sólo lo necesitan `--model lstm` (y B4.15/B4.18 más adelante); el resto del arnés
+sigue sin requerirlo. `LSTMCore` detecta el device solo (`cuda` si `torch.cuda.
+is_available()`, si no `cpu`) y lo deja declarado en `model_hp` del JSON de salida.
 
 ## Uso
 

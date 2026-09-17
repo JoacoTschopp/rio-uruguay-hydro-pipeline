@@ -813,12 +813,34 @@ bloques:
     nombre: LSTM
     slug: lstm
     prioridad: P1
-    estado: falta
+    estado: implementado
+    valor: "estado del arte declarado en rainfall-runoff (Kratzert et al.)"
+    cmd: -m rio_search.train --model lstm --lookback 30 --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --lr 0.0492 --l2 0.000217 --epochs 378 --lstm-hidden 32 --split val
+    tiempo_est_s: 20
     implementar: {donde: rio_search/models.py (torch), que: "adaptador torch con detección de device", depende_de: [torch, B2.17], esfuerzo: alto}
     referencia: >-
       Kratzert et al. 2018/2019: el LSTM es el estado del arte en rainfall-runoff y supera
       a los modelos conceptuales calibrados. Es la referencia contra la que la tesis se va
       a medir, quiera o no.
+    nota: >-
+      **Pierde, con las salvedades que importan: gral 0,5196 ± 0,0159 sobre d303**
+      (ancla 0,4948 ± 0,0098 — Δ = 0,0248, por fuera del umbral ±0,0167; skill 0,088,
+      así que no cae por R6, simplemente pierde). `LSTMCore` entrena con autograd de
+      torch (no el backprop a mano del resto del arnés: no tiene sentido para una
+      recurrencia) sobre el tensor (N, L, F) de `with_lookback`, mismas 19 features y
+      L=30 que B4.13, cabeza lineal sobre el hidden state del último paso, sólo con
+      ExpectileLoss (igual que XGBoostCore). `torch.cuda.is_available()` detectó la
+      GPU sola: corrida en `cuda`, 8,4 s las 5 semillas. **La salvedad honesta**: los
+      HP de Adam (`lr=0,0492, l2=0,000217, epochs=378`) son los que Optuna encontró
+      para el MLP tanh, reusados acá sin retunear — declarado, no tuneado por VAL,
+      como pide el protocolo, pero eso significa que este número mide "LSTM con
+      hiperparámetros prestados", no el mejor LSTM posible. Con esos HP el early
+      stopping corta muy temprano (mediana de época ~10, patience=60): sugiere que el
+      lr es alto para esta arquitectura. Un juicio definitivo del LSTM pediría B9
+      (búsqueda de HP) sobre su propio espacio — igual que ya se anotó para B2.17.
+      Con 9.600 filas, la ventaja del LSTM sobre el MLP tanh (que ya ve la historia
+      vía lags y `dinamica_caudal`) no aparece con esta configuración; no descarta
+      que aparezca con una mejor.
 
   - id: B4.15
     nombre: BiLSTM
@@ -1552,13 +1574,13 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 56          # medido sobre los `estado:` de este archivo (Tramo 10, 2026-09-17)
-  faltan: 54
+  implementadas: 57          # medido sobre los `estado:` de este archivo (Tramo 11, 2026-09-17)
+  faltan: 53
   bloqueadas_por_dato: 0     # B2.19 y B8.05 salieron del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 52 corren hoy
+  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 53 corren hoy
   reloj_de_lo_implementado: >-
-    ~112 min para las 56 celdas implementadas; **~40 min sin las tres celdas de
+    ~112 min para las 57 celdas implementadas; **~40 min sin las tres celdas de
     walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
     2.861 s el 2026-09-15. Los tiempos de las
     celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
@@ -1566,21 +1588,21 @@ resumen:
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
     Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19),
-    B3 (4 de 6), B4 (5 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
+    B3 (4 de 6), B4 (6 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
     B10 (2 de 5). El grupo A de la fase está completo, el grupo B (B2.19, features de
     pronóstico ECMWF) es el mejor resultado de la fase (gral 0,4204 vs ancla 0,4948,
     confirmado en el subconjunto con cobertura completa), el grupo C abrió con B4.08
     XGBoost — segundo mejor resultado (gral 0,4570, Δ 0,0378, 4× el umbral) con una décima
-    parte de la dispersión del ancla — y el grupo D abrió con B4.13 DLinear, que
-    **descarta** la ventana cruda incluso lineal (gral 0,6024, muy por fuera del umbral,
-    V− 0,969): sin no-linealidad ni las derivadas de B2.13, la ventana cruda pierde, igual
-    que ya había mostrado B2.17. **No** alcanza para el criterio de finalización: sin
-    B4.14/B4.15/B4.18 (LSTM/BiLSTM/TCN, siguen en el grupo D), la cobertura de P1 queda
-    incompleta y la búsqueda sigue abierta — y esas tres sí necesitan evaluar si instalar
-    torch, cosa que B4.13 deliberadamente evitó. Lo que sí está cerrado es la
-    **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero
-    sobre el dataset que haya, sin intervención.
+    parte de la dispersión del ancla — y el grupo D, torch instalado con CUDA, corrió
+    B4.13 DLinear (**descarta** la ventana cruda incluso lineal, gral 0,6024) y B4.14
+    LSTM (**pierde** con HP prestados del MLP tanh, gral 0,5196 ± 0,0159, Δ 0,0248; el
+    early stopping corta muy temprano con esos HP — no cierra la pregunta del LSTM, la
+    deja pendiente de B9 sobre su propio espacio de hiperparámetros). **No** alcanza para
+    el criterio de finalización: sin B4.15/B4.18 (BiLSTM/TCN, siguen en el grupo D), la
+    cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
+    es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo
+    entero sobre el dataset que haya, sin intervención.
   tres_desbloqueos_de_mayor_impacto:
     - "B2.17 (ventana / lookback) — hecha: las 13 celdas secuenciales de B4 quedan habilitadas"
     - "G-05 (guardar predicciones) — hecha en B10.01: ensemble.py y return_predictions"
-    - "B4.14 (LSTM) — primera celda que necesita torch de verdad; B4.13 (DLinear) ya corrió y descartó la ventana cruda sin él"
+    - "B4.14 (LSTM) — hecha; torch con CUDA queda instalado y LSTMCore es reutilizable para B4.15 (BiLSTM, mismo adaptador con bidirectional=True)"

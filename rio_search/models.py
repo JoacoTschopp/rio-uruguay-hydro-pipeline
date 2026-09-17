@@ -24,8 +24,8 @@ import numpy as np
 
 __all__ = ["Loss", "SquaredLoss", "AbsoluteLoss", "ExpectileLoss", "HuberLoss",
            "NSELoss", "LOSSES",
-           "LinearCore", "MLPCore", "XGBoostCore", "DLinearCore", "PersistenceBaseline",
-           "ClimatologyBaseline", "DampedPersistence", "SeasonalNaive"]
+           "LinearCore", "MLPCore", "XGBoostCore", "DLinearCore", "LSTMCore",
+           "PersistenceBaseline", "ClimatologyBaseline", "DampedPersistence", "SeasonalNaive"]
 
 
 # --------------------------------------------------------------------------
@@ -585,6 +585,172 @@ class XGBoostCore:
                if hasattr(b, "best_iteration") else b.predict(d)
                for b in self.boosters]
         return np.column_stack(cols)
+
+
+class LSTMCore:
+    """Adaptador de torch a un LSTM, mismo contrato que `MLPCore`/`XGBoostCore` (B4.14).
+
+    Kratzert et al. 2018/2019: el LSTM es el estado del arte en rainfall-runoff y
+    la referencia contra la que la tesis se mide. Consume el tensor aplanado
+    `(N, L·F)` que `with_lookback` ya arma para B2.17 y lo reconstruye a
+    `(N, L, F)` — mismo patrón de reconstrucción que `DLinearCore`, mismo L que
+    esa celda usó (declarado, no tuneado acá).
+
+    No hereda de `_GradientModel`: ese backprop a mano tiene sentido para MLP
+    tanh/lineal, no para una recurrencia — acá se entrena con autograd de torch,
+    mismo bucle de Adam + early stopping que el resto del arnés (mismo criterio
+    de parada, mismos pesos "mejores" restaurados al final).
+
+    Sólo entrena con `ExpectileLoss` (igual que `XGBoostCore` y por la misma
+    razón: es la pérdida asimétrica que el catálogo pide entrenar acá — gral o
+    expectile_raw —, no una aproximación cuadrática). `bidirectional` es el
+    parámetro que B4.15 (BiLSTM) necesita reusando esta misma clase: "igual que
+    B4.14" según su propia spec en la matriz.
+    """
+
+    name = "lstm"
+
+    def __init__(self, *, loss, lookback: int, n_features: int,
+                 hidden_size: int = 32, num_layers: int = 1, dropout: float = 0.0,
+                 bidirectional: bool = False, epochs: int = 600, lr: float = 0.01,
+                 l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
+                 verbose: bool = False):
+        if not isinstance(loss, ExpectileLoss):
+            raise NotImplementedError(
+                "LSTMCore sólo tiene entrenamiento para ExpectileLoss (gral / "
+                f"expectile_raw); pérdida recibida = {loss.name!r}")
+        if lookback < 1 or n_features < 1:
+            raise ValueError(f"lookback y n_features deben ser >= 1: {lookback}, {n_features}")
+        self.loss = loss
+        self.lookback = lookback
+        self.n_features = n_features
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.dropout = dropout
+        self.bidirectional = bidirectional
+        self.epochs = epochs
+        self.lr = lr
+        self.l2 = l2
+        self.patience = patience
+        self.seed = seed
+        self.verbose = verbose
+        self.history: list[dict] = []
+        self.best_epoch: int | None = None
+        self.pruned = False
+        self.device = None
+        self._net = None
+
+    def hp(self) -> dict:
+        return {"hidden_size": self.hidden_size, "num_layers": self.num_layers,
+                "dropout": self.dropout, "bidirectional": self.bidirectional,
+                "lookback": self.lookback, "n_features": self.n_features,
+                "device": str(self.device)}
+
+    def _build_net(self, n_out: int):
+        import torch.nn as nn
+
+        class _Net(nn.Module):
+            def __init__(self, n_in, hidden, layers, out, dropout, bidir):
+                super().__init__()
+                self.rnn = nn.LSTM(n_in, hidden, num_layers=layers, batch_first=True,
+                                   dropout=dropout if layers > 1 else 0.0,
+                                   bidirectional=bidir)
+                self.head = nn.Linear(hidden * (2 if bidir else 1), out)
+
+            def forward(self, x):
+                seq, _ = self.rnn(x)
+                return self.head(seq[:, -1, :])          # último paso = el día t
+
+        return _Net(self.n_features, self.hidden_size, self.num_layers, n_out,
+                   self.dropout, self.bidirectional)
+
+    @staticmethod
+    def _expectile(yhat, y, tau, mask):
+        import torch
+        e = torch.where(mask, y - yhat, torch.zeros_like(y))
+        w = torch.where(e < 0.0, 1.0 - tau, tau)
+        denom = mask.sum().clamp(min=1)
+        return (2.0 * w * e ** 2 * mask).sum() / denom
+
+    def _to_seq(self, X):
+        n = X.shape[0]
+        return np.asarray(X, dtype=np.float32).reshape(n, self.lookback, self.n_features)
+
+    def fit(self, X, Y, tau=None, *, mask=None, X_val=None, Y_val=None,
+            tau_val=None, mask_val=None, on_epoch=None):
+        import torch
+
+        if on_epoch is not None:
+            raise NotImplementedError("LSTMCore no soporta podado por época (on_epoch)")
+        if tau is None:
+            raise ValueError("LSTMCore necesita tau: sólo entrena con ExpectileLoss")
+        torch.manual_seed(self.seed)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        def prep(Xs, Ys, m, t):
+            Y_ = np.asarray(Ys, dtype=np.float32)
+            m_ = np.isfinite(Y_) if m is None else (np.asarray(m, bool) & np.isfinite(Y_))
+            Yz = np.where(m_, Y_, 0.0)
+            t_ = np.broadcast_to(np.asarray(t, np.float32).reshape(-1, 1), Yz.shape)
+            return (torch.tensor(self._to_seq(Xs), device=self.device),
+                    torch.tensor(Yz, device=self.device),
+                    torch.tensor(m_, device=self.device),
+                    torch.tensor(t_, device=self.device))
+
+        Xtr_t, Ytr_t, Mtr_t, Taut_t = prep(X, Y, mask, tau)
+        con_val = X_val is not None and Y_val is not None
+        if con_val:
+            Xva_t, Yva_t, Mva_t, Tauva_t = prep(X_val, Y_val, mask_val, tau_val)
+
+        net = self._build_net(Y.shape[1]).to(self.device)
+        opt = torch.optim.Adam(net.parameters(), lr=self.lr, weight_decay=self.l2)
+
+        best = float("inf")
+        best_state = None
+        stale = 0
+        self.history = []
+
+        for epoch in range(1, self.epochs + 1):
+            net.train()
+            opt.zero_grad()
+            loss_val = self._expectile(net(Xtr_t), Ytr_t, Taut_t, Mtr_t)
+            loss_val.backward()
+            opt.step()
+
+            row = {"epoch": epoch, "train_loss": float(loss_val.detach().cpu())}
+            if con_val:
+                net.eval()
+                with torch.no_grad():
+                    monitor = float(self._expectile(net(Xva_t), Yva_t, Tauva_t, Mva_t)
+                                    .detach().cpu())
+                row["val_loss"] = monitor
+            else:
+                monitor = row["train_loss"]
+            self.history.append(row)
+
+            if monitor < best - 1e-9:
+                best, stale = monitor, 0
+                best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+                self.best_epoch = epoch
+            else:
+                stale += 1
+                if stale >= self.patience:
+                    break
+            if self.verbose and epoch % 50 == 0:
+                print(f"  epoch {epoch:4d}  {row}")
+
+        if best_state is not None:
+            net.load_state_dict(best_state)
+        net.eval()
+        self._net = net
+        return self
+
+    def predict(self, X) -> np.ndarray:
+        import torch
+        with torch.no_grad():
+            Xt = torch.tensor(self._to_seq(X), device=self.device)
+            yhat = self._net(Xt).detach().cpu().numpy()
+        return yhat.astype(np.float64)
 
 
 # --------------------------------------------------------------------------

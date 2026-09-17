@@ -48,8 +48,8 @@ from . import data as data_mod
 from . import gate as gate_mod
 from . import metrics as metrics_mod
 from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, DLinearCore,
-                     LinearCore, MLPCore, NSELoss, PersistenceBaseline, SeasonalNaive,
-                     XGBoostCore)
+                     LinearCore, LSTMCore, MLPCore, NSELoss, PersistenceBaseline,
+                     SeasonalNaive, XGBoostCore)
 
 __all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
 
@@ -274,6 +274,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    target_transform: str | None = None,
                    scaling: str = "standard",
                    lookback: int | None = None,
+                   lstm_hidden: int = 32, lstm_layers: int = 1, lstm_dropout: float = 0.0,
+                   lstm_bidirectional: bool = False,
                    return_predictions: bool = False) -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
@@ -312,9 +314,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     mediana/IQR, minmax, CDF empírica o nada. Los estadísticos salen siempre de
     TRAIN; el escalado del target no cambia (su transformación es el eje B3).
 
-    `lookback` (obligatorio con `model="dlinear"`, B4.13) es el L de la ventana que
-    `with_lookback` ya aplanó en `ds.X`: `DLinearCore` lo necesita para reconstruir
-    (N, L, F) y descomponer tendencia/estacional antes de las dos capas lineales.
+    `lookback` (obligatorio con `model="dlinear"` o `model="lstm"`, B4.13/B4.14) es
+    el L de la ventana que `with_lookback` ya aplanó en `ds.X`: tanto `DLinearCore`
+    como `LSTMCore` lo necesitan para reconstruir (N, L, F). `lstm_*` son la
+    arquitectura del LSTM (B4.14), declarados, no tuneados por VAL.
 
     `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
     forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
@@ -356,10 +359,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
         loss_fn = NSELoss(np.nanvar(Ztr, axis=0))
 
     core_cls = {"mlp": MLPCore, "linear": LinearCore, "xgb": XGBoostCore,
-                "dlinear": DLinearCore}[model]
-    if model == "dlinear":
+                "dlinear": DLinearCore, "lstm": LSTMCore}[model]
+    if model in ("dlinear", "lstm"):
         if not lookback:
-            raise ValueError("model='dlinear' necesita lookback: ds.X tiene que venir "
+            raise ValueError(f"model={model!r} necesita lookback: ds.X tiene que venir "
                              "de with_lookback(ds, lookback) y el mismo L pasarse acá")
         n_in = Xtr.shape[1]
         if n_in % lookback != 0:
@@ -374,6 +377,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
             return core_cls(hidden=hidden, **kw2)
         if model == "dlinear":
             return core_cls(lookback=lookback, n_features=Xtr.shape[1] // lookback, **kw2)
+        if model == "lstm":
+            return core_cls(lookback=lookback, n_features=Xtr.shape[1] // lookback,
+                            hidden_size=lstm_hidden, num_layers=lstm_layers,
+                            dropout=lstm_dropout, bidirectional=lstm_bidirectional, **kw2)
         return core_cls(**kw2)
 
     if per_horizon and on_epoch is not None:
@@ -602,7 +609,7 @@ def _parse_hidden(s: str) -> int | list[int]:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", choices=["mlp", "linear", "xgb", "dlinear"], default="mlp")
+    p.add_argument("--model", choices=["mlp", "linear", "xgb", "dlinear", "lstm"], default="mlp")
     p.add_argument("--loss", choices=list(LOSS_CONFIGS), default="mse")
     p.add_argument("--compare", action="store_true",
                    help="corre todas las pérdidas de LOSS_CONFIGS y compara")
@@ -643,6 +650,12 @@ def main(argv=None) -> int:
     p.add_argument("--lookback", type=int, default=None, metavar="L",
                    help="ventana causal de features (B2.17): el MLP consume la "
                         "ventana aplanada; sin el flag, sólo los lags de siempre")
+    p.add_argument("--lstm-hidden", type=int, default=32,
+                   help="ancho del hidden state del LSTM (B4.14)")
+    p.add_argument("--lstm-layers", type=int, default=1,
+                   help="capas apiladas del LSTM (B4.14)")
+    p.add_argument("--lstm-dropout", type=float, default=0.0,
+                   help="dropout entre capas del LSTM, sólo activo con --lstm-layers > 1")
     p.add_argument("--snapshot", default=None)
     p.add_argument("--legacy", action="store_true",
                    help="permitir un snapshot previo a las Decisiones 039/040 "
@@ -692,7 +705,9 @@ def main(argv=None) -> int:
               target_param=args.target_param,
               target_transform=args.target_transform,
               scaling=args.scaling,
-              lookback=args.lookback)
+              lookback=args.lookback,
+              lstm_hidden=args.lstm_hidden, lstm_layers=args.lstm_layers,
+              lstm_dropout=args.lstm_dropout)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")
