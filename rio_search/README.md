@@ -39,12 +39,19 @@ si hay GPU NVIDIA (la wheel por defecto de PyPI es CPU-only):
 # 2.6.0+cu124 al instalarlo — sin --index-url, pip trae la wheel CPU-only (2.14.0+cpu)
 ```
 
-Sólo lo necesita `--model lstm` (y B4.18/TCN más adelante); el resto del arnés
-sigue sin requerirlo. `LSTMCore` detecta el device solo (`cuda` si `torch.cuda.
-is_available()`, si no `cpu`) y lo deja declarado en `model_hp` del JSON de salida.
-`--lstm-bidirectional` (B4.15, Tramo 13) reusa la misma clase con `bidirectional=True`:
-la ventana de entrada se lee en ambas direcciones, la cabeza de salida sigue siendo
-una única capa lineal sobre los 8 horizontes — nunca recurrente sobre ellos.
+Sólo lo necesita `--model lstm`/`tcn`; el resto del arnés sigue sin requerirlo.
+`LSTMCore` detecta el device solo (`cuda` si `torch.cuda.is_available()`, si no
+`cpu`) y lo deja declarado en `model_hp` del JSON de salida. `--lstm-bidirectional`
+(B4.15, Tramo 13) reusa la misma clase con `bidirectional=True`: la ventana de
+entrada se lee en ambas direcciones, la cabeza de salida sigue siendo una única
+capa lineal sobre los 8 horizontes — nunca recurrente sobre ellos.
+
+`--model tcn` (B4.18, Tramo 14) es `TCNCore`: convolución causal dilatada (Bai,
+Kolter & Koltun 2018), causalidad **estructural** por padding a la izquierda —
+a diferencia del LSTM, no depende de que nadie le dé a leer el futuro, es una
+propiedad de la arquitectura, verificada por un test sobre el mapa de
+activaciones interno. Comparte con `LSTMCore` la misma pérdida expectil en torch
+(`_expectile_loss_torch`, módulo `models.py`) y el mismo bucle de Adam.
 
 ## Uso
 

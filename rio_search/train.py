@@ -49,7 +49,7 @@ from . import gate as gate_mod
 from . import metrics as metrics_mod
 from .models import (LOSSES, ClimatologyBaseline, DampedPersistence, DLinearCore,
                      LinearCore, LSTMCore, MLPCore, NSELoss, PersistenceBaseline,
-                     SeasonalNaive, XGBoostCore)
+                     SeasonalNaive, TCNCore, XGBoostCore)
 
 __all__ = ["LOSS_CONFIGS", "Preprocessor", "run_experiment", "run_comparison", "main"]
 
@@ -276,6 +276,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
                    lookback: int | None = None,
                    lstm_hidden: int = 32, lstm_layers: int = 1, lstm_dropout: float = 0.0,
                    lstm_bidirectional: bool = False,
+                   tcn_channels: int = 32, tcn_blocks: int = 4, tcn_kernel: int = 3,
+                   tcn_dropout: float = 0.0,
                    return_predictions: bool = False) -> dict:
     """Entrena una configuración y la evalúa en VAL y, si se pide, en TEST.
 
@@ -314,10 +316,11 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
     mediana/IQR, minmax, CDF empírica o nada. Los estadísticos salen siempre de
     TRAIN; el escalado del target no cambia (su transformación es el eje B3).
 
-    `lookback` (obligatorio con `model="dlinear"` o `model="lstm"`, B4.13/B4.14) es
-    el L de la ventana que `with_lookback` ya aplanó en `ds.X`: tanto `DLinearCore`
-    como `LSTMCore` lo necesitan para reconstruir (N, L, F). `lstm_*` son la
-    arquitectura del LSTM (B4.14), declarados, no tuneados por VAL.
+    `lookback` (obligatorio con `model` en `{"dlinear", "lstm", "tcn"}`,
+    B4.13/B4.14/B4.18) es el L de la ventana que `with_lookback` ya aplanó en
+    `ds.X`: `DLinearCore`, `LSTMCore` y `TCNCore` lo necesitan para reconstruir
+    (N, L, F). `lstm_*` y `tcn_*` son la arquitectura de cada uno, declarados,
+    no tuneados por VAL.
 
     `evaluar_test=False` **no calcula** TEST y no lo deja en la salida. Es la
     forma estructural de sostener la regla del protocolo de búsqueda: TEST se mira
@@ -359,8 +362,8 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
         loss_fn = NSELoss(np.nanvar(Ztr, axis=0))
 
     core_cls = {"mlp": MLPCore, "linear": LinearCore, "xgb": XGBoostCore,
-                "dlinear": DLinearCore, "lstm": LSTMCore}[model]
-    if model in ("dlinear", "lstm"):
+                "dlinear": DLinearCore, "lstm": LSTMCore, "tcn": TCNCore}[model]
+    if model in ("dlinear", "lstm", "tcn"):
         if not lookback:
             raise ValueError(f"model={model!r} necesita lookback: ds.X tiene que venir "
                              "de with_lookback(ds, lookback) y el mismo L pasarse acá")
@@ -381,6 +384,10 @@ def run_experiment(ds, splits, *, model: str = "mlp", loss: str = "mse",
             return core_cls(lookback=lookback, n_features=Xtr.shape[1] // lookback,
                             hidden_size=lstm_hidden, num_layers=lstm_layers,
                             dropout=lstm_dropout, bidirectional=lstm_bidirectional, **kw2)
+        if model == "tcn":
+            return core_cls(lookback=lookback, n_features=Xtr.shape[1] // lookback,
+                            channels=tcn_channels, n_blocks=tcn_blocks,
+                            kernel_size=tcn_kernel, dropout=tcn_dropout, **kw2)
         return core_cls(**kw2)
 
     if per_horizon and on_epoch is not None:
@@ -609,7 +616,8 @@ def _parse_hidden(s: str) -> int | list[int]:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", choices=["mlp", "linear", "xgb", "dlinear", "lstm"], default="mlp")
+    p.add_argument("--model", choices=["mlp", "linear", "xgb", "dlinear", "lstm", "tcn"],
+                   default="mlp")
     p.add_argument("--loss", choices=list(LOSS_CONFIGS), default="mse")
     p.add_argument("--compare", action="store_true",
                    help="corre todas las pérdidas de LOSS_CONFIGS y compara")
@@ -661,6 +669,14 @@ def main(argv=None) -> int:
                         "(los L días de historia), nunca sobre el horizonte de salida — "
                         "la cabeza sigue siendo una proyección lineal única desde el "
                         "último paso, igual que en B4.14")
+    p.add_argument("--tcn-channels", type=int, default=32,
+                   help="canales por bloque de la TCN (B4.18)")
+    p.add_argument("--tcn-blocks", type=int, default=4,
+                   help="bloques residuales de la TCN, dilatación 2**i por bloque (B4.18)")
+    p.add_argument("--tcn-kernel", type=int, default=3,
+                   help="tamaño del kernel causal de la TCN (B4.18)")
+    p.add_argument("--tcn-dropout", type=float, default=0.0,
+                   help="dropout dentro de cada bloque de la TCN (B4.18)")
     p.add_argument("--snapshot", default=None)
     p.add_argument("--legacy", action="store_true",
                    help="permitir un snapshot previo a las Decisiones 039/040 "
@@ -712,7 +728,9 @@ def main(argv=None) -> int:
               scaling=args.scaling,
               lookback=args.lookback,
               lstm_hidden=args.lstm_hidden, lstm_layers=args.lstm_layers,
-              lstm_dropout=args.lstm_dropout, lstm_bidirectional=args.lstm_bidirectional)
+              lstm_dropout=args.lstm_dropout, lstm_bidirectional=args.lstm_bidirectional,
+              tcn_channels=args.tcn_channels, tcn_blocks=args.tcn_blocks,
+              tcn_kernel=args.tcn_kernel, tcn_dropout=args.tcn_dropout)
     if args.tau_constante is not None:
         if not 0.0 < args.tau_constante < 1.0:
             p.error("--tau-constante debe estar en (0, 1)")

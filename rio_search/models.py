@@ -587,6 +587,16 @@ class XGBoostCore:
         return np.column_stack(cols)
 
 
+def _expectile_loss_torch(yhat, y, tau, mask):
+    """La misma pérdida expectil que `ExpectileLoss`, en torch — compartida por
+    `LSTMCore` y `TCNCore` para que no puedan divergir en dos copias."""
+    import torch
+    e = torch.where(mask, y - yhat, torch.zeros_like(y))
+    w = torch.where(e < 0.0, 1.0 - tau, tau)
+    denom = mask.sum().clamp(min=1)
+    return (2.0 * w * e ** 2 * mask).sum() / denom
+
+
 class LSTMCore:
     """Adaptador de torch a un LSTM, mismo contrato que `MLPCore`/`XGBoostCore` (B4.14).
 
@@ -664,13 +674,7 @@ class LSTMCore:
         return _Net(self.n_features, self.hidden_size, self.num_layers, n_out,
                    self.dropout, self.bidirectional)
 
-    @staticmethod
-    def _expectile(yhat, y, tau, mask):
-        import torch
-        e = torch.where(mask, y - yhat, torch.zeros_like(y))
-        w = torch.where(e < 0.0, 1.0 - tau, tau)
-        denom = mask.sum().clamp(min=1)
-        return (2.0 * w * e ** 2 * mask).sum() / denom
+    _expectile = staticmethod(_expectile_loss_torch)
 
     def _to_seq(self, X):
         n = X.shape[0]
@@ -722,6 +726,192 @@ class LSTMCore:
                 net.eval()
                 with torch.no_grad():
                     monitor = float(self._expectile(net(Xva_t), Yva_t, Tauva_t, Mva_t)
+                                    .detach().cpu())
+                row["val_loss"] = monitor
+            else:
+                monitor = row["train_loss"]
+            self.history.append(row)
+
+            if monitor < best - 1e-9:
+                best, stale = monitor, 0
+                best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+                self.best_epoch = epoch
+            else:
+                stale += 1
+                if stale >= self.patience:
+                    break
+            if self.verbose and epoch % 50 == 0:
+                print(f"  epoch {epoch:4d}  {row}")
+
+        if best_state is not None:
+            net.load_state_dict(best_state)
+        net.eval()
+        self._net = net
+        return self
+
+    def predict(self, X) -> np.ndarray:
+        import torch
+        with torch.no_grad():
+            Xt = torch.tensor(self._to_seq(X), device=self.device)
+            yhat = self._net(Xt).detach().cpu().numpy()
+        return yhat.astype(np.float64)
+
+
+class TCNCore:
+    """Adaptador de torch a una TCN (Bai, Kolter & Koltun 2018), mismo contrato
+    que `LSTMCore`/`DLinearCore` (B4.18).
+
+    La causalidad acá es **estructural**, no una convención de entrenamiento
+    (a diferencia del LSTM, que es causal porque nadie le da a leer el futuro,
+    no porque la arquitectura lo impida): cada bloque aplica `nn.functional.pad`
+    únicamente del lado izquierdo, `(kernel_size - 1) · dilatación` ceros, antes
+    de una `nn.Conv1d` sin padding propio — la salida en el paso t queda, por
+    construcción del tensor, en función sólo de entradas en pasos <= t. No hay
+    padding del lado derecho que después haya que recortar (el `Chomp1d` del
+    paper original), así que no hay nada que se pueda desalinear.
+
+    Dilatación creciente por bloque (1, 2, 4, ...) para un campo receptivo
+    largo con pocos parámetros; conexión residual por bloque (proyección 1×1
+    si cambian los canales), como en el paper. Reconstruye `(N, L, F)` desde
+    el tensor aplanado de `with_lookback`, igual que `LSTMCore`, y comparte con
+    esa clase la misma pérdida expectil en torch (`_expectile_loss_torch`) y el
+    mismo bucle de Adam + early stopping — se repite acá en vez de heredar
+    porque no hay una base torch común todavía y esfuerzo declarado es medio,
+    no una refactorización del arnés.
+    """
+
+    name = "tcn"
+
+    def __init__(self, *, loss, lookback: int, n_features: int,
+                 channels: int = 32, n_blocks: int = 4, kernel_size: int = 3,
+                 dropout: float = 0.0, epochs: int = 600, lr: float = 0.01,
+                 l2: float = 1e-4, patience: int = 60, seed: int = 20260828,
+                 verbose: bool = False):
+        if not isinstance(loss, ExpectileLoss):
+            raise NotImplementedError(
+                "TCNCore sólo tiene entrenamiento para ExpectileLoss (gral / "
+                f"expectile_raw); pérdida recibida = {loss.name!r}")
+        if lookback < 1 or n_features < 1:
+            raise ValueError(f"lookback y n_features deben ser >= 1: {lookback}, {n_features}")
+        if kernel_size < 2:
+            raise ValueError(f"kernel_size debe ser >= 2: {kernel_size}")
+        self.loss = loss
+        self.lookback = lookback
+        self.n_features = n_features
+        self.channels = channels
+        self.n_blocks = n_blocks
+        self.kernel_size = kernel_size
+        self.dropout = dropout
+        self.epochs = epochs
+        self.lr = lr
+        self.l2 = l2
+        self.patience = patience
+        self.seed = seed
+        self.verbose = verbose
+        self.history: list[dict] = []
+        self.best_epoch: int | None = None
+        self.pruned = False
+        self.device = None
+        self._net = None
+
+    def hp(self) -> dict:
+        campo_receptivo = 1 + 2 * (self.kernel_size - 1) * (2 ** self.n_blocks - 1)
+        return {"channels": self.channels, "n_blocks": self.n_blocks,
+                "kernel_size": self.kernel_size, "dropout": self.dropout,
+                "campo_receptivo": campo_receptivo, "lookback": self.lookback,
+                "n_features": self.n_features, "device": str(self.device)}
+
+    def _build_net(self, n_out: int):
+        import torch.nn as nn
+        import torch.nn.functional as tf
+
+        class _BloqueCausal(nn.Module):
+            def __init__(self, in_ch, out_ch, kernel_size, dilation, dropout):
+                super().__init__()
+                self.pad = (kernel_size - 1) * dilation
+                self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, dilation=dilation)
+                self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, dilation=dilation)
+                self.relu = nn.ReLU()
+                self.drop = nn.Dropout(dropout)
+                self.ajuste = nn.Conv1d(in_ch, out_ch, 1) if in_ch != out_ch else None
+
+            def _causal(self, conv, x):
+                return conv(tf.pad(x, (self.pad, 0)))   # sólo a la izquierda
+
+            def forward(self, x):
+                out = self.drop(self.relu(self._causal(self.conv1, x)))
+                out = self.drop(self.relu(self._causal(self.conv2, out)))
+                res = x if self.ajuste is None else self.ajuste(x)
+                return self.relu(out + res)
+
+        class _Net(nn.Module):
+            def __init__(self, n_in, channels, n_blocks, kernel_size, dropout, n_out):
+                super().__init__()
+                bloques, in_ch = [], n_in
+                for i in range(n_blocks):
+                    bloques.append(_BloqueCausal(in_ch, channels, kernel_size, 2 ** i, dropout))
+                    in_ch = channels
+                self.bloques = nn.Sequential(*bloques)
+                self.head = nn.Linear(channels, n_out)
+
+            def forward(self, x):
+                x = x.transpose(1, 2)              # (N, L, F) -> (N, F, L)
+                out = self.bloques(x)               # (N, channels, L)
+                return self.head(out[:, :, -1])     # último paso = el día t
+
+        return _Net(self.n_features, self.channels, self.n_blocks, self.kernel_size,
+                   self.dropout, n_out)
+
+    def _to_seq(self, X):
+        n = X.shape[0]
+        return np.asarray(X, dtype=np.float32).reshape(n, self.lookback, self.n_features)
+
+    def fit(self, X, Y, tau=None, *, mask=None, X_val=None, Y_val=None,
+            tau_val=None, mask_val=None, on_epoch=None):
+        import torch
+
+        if on_epoch is not None:
+            raise NotImplementedError("TCNCore no soporta podado por época (on_epoch)")
+        if tau is None:
+            raise ValueError("TCNCore necesita tau: sólo entrena con ExpectileLoss")
+        torch.manual_seed(self.seed)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        def prep(Xs, Ys, m, t):
+            Y_ = np.asarray(Ys, dtype=np.float32)
+            m_ = np.isfinite(Y_) if m is None else (np.asarray(m, bool) & np.isfinite(Y_))
+            Yz = np.where(m_, Y_, 0.0)
+            t_ = np.broadcast_to(np.asarray(t, np.float32).reshape(-1, 1), Yz.shape)
+            return (torch.tensor(self._to_seq(Xs), device=self.device),
+                    torch.tensor(Yz, device=self.device),
+                    torch.tensor(m_, device=self.device),
+                    torch.tensor(t_, device=self.device))
+
+        Xtr_t, Ytr_t, Mtr_t, Taut_t = prep(X, Y, mask, tau)
+        con_val = X_val is not None and Y_val is not None
+        if con_val:
+            Xva_t, Yva_t, Mva_t, Tauva_t = prep(X_val, Y_val, mask_val, tau_val)
+
+        net = self._build_net(Y.shape[1]).to(self.device)
+        opt = torch.optim.Adam(net.parameters(), lr=self.lr, weight_decay=self.l2)
+
+        best = float("inf")
+        best_state = None
+        stale = 0
+        self.history = []
+
+        for epoch in range(1, self.epochs + 1):
+            net.train()
+            opt.zero_grad()
+            loss_val = _expectile_loss_torch(net(Xtr_t), Ytr_t, Taut_t, Mtr_t)
+            loss_val.backward()
+            opt.step()
+
+            row = {"epoch": epoch, "train_loss": float(loss_val.detach().cpu())}
+            if con_val:
+                net.eval()
+                with torch.no_grad():
+                    monitor = float(_expectile_loss_torch(net(Xva_t), Yva_t, Tauva_t, Mva_t)
                                     .detach().cpu())
                 row["val_loss"] = monitor
             else:

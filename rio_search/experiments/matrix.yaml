@@ -893,12 +893,38 @@ bloques:
     nombre: TCN (convolución causal dilatada)
     slug: tcn
     prioridad: P1
-    estado: falta
+    estado: implementado
+    cmd: -m rio_search.train --model tcn --lookback 30 --loss gral --seeds 5 --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --lr 0.01 --l2 0.0001 --epochs 600 --patience 60 --tcn-channels 32 --tcn-blocks 4 --tcn-kernel 3 --split val
+    tiempo_est_s: 27
     implementar: {donde: "igual que B4.14", depende_de: [torch, B2.17], esfuerzo: medio}
     referencia: >-
       Bai, Kolter & Koltun 2018. Campo receptivo largo con pocos parámetros y sin estado
       recurrente; la causalidad es estructural, no una convención — encaja con el invariante
       del proyecto. Entrena más rápido que un LSTM y suele empatarle.
+    nota: >-
+      **Descartado por R6: gral 0,5155 ± 0,0097** sobre d303 (skill vs persistencia
+      −0,024 ≤ 0 — no llega a compararse contra el ancla por umbral, RMSE 1121, KGE 0,44).
+      HP: 32 canales, 4 bloques residuales, kernel 3 → campo receptivo 61 días, cubre de
+      sobra la ventana declarada de L=30. Mismos HP de Adam "corregidos" que dejó el
+      Tramo BiLSTM (`lr=0,01, l2=0,0001, epochs=600, patience=60`), no los prestados del
+      MLP que habían arruinado el primer LSTM.
+      **No fue más rápido que el LSTM**, al contrario de lo que sugiere la referencia de
+      arriba: 26,9 s las 5 semillas en CUDA contra los 8,4 s del LSTM (Tramo 11) — con
+      4 bloques de 2 convoluciones causales cada uno, el costo por paso de la TCN superó
+      al de la recurrencia secuencial para una ventana corta (L=30). Tampoco le empató:
+      pierde contra LSTM (0,5196) y BiLSTM (0,5182), aunque por menos que el umbral de
+      ruido entre los tres — los tres torch quedan indistinguibles entre sí y todos por
+      debajo del ancla.
+      **Causalidad estructural verificada directamente**, a diferencia del LSTM (donde es
+      una convención de entrenamiento, no una propiedad de la arquitectura): un test sobre
+      el mapa de activaciones interno, antes de la cabeza, confirma que perturbar un paso
+      posterior de la ventana no mueve ni un bit (igualdad exacta de tensores) las
+      activaciones en los pasos anteriores — el padding causal a la izquierda hace
+      estructuralmente imposible leer hacia adelante.
+      Cierra el grupo D del plan: LSTM, BiLSTM y TCN pierden los tres con HP declarados
+      (no tuneados); ninguno le gana al ancla ni a los finalistas de NumPy/XGBoost/ECMWF.
+      La pregunta de si una arquitectura secuencial puede ganar queda abierta para B9
+      (búsqueda real de HP), no cerrada en contra.
 
   - id: B4.19
     nombre: N-BEATS
@@ -1594,40 +1620,43 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 58          # medido sobre los `estado:` de este archivo (Tramo 13, 2026-09-17)
-  faltan: 52
+  implementadas: 59          # medido sobre los `estado:` de este archivo (Tramo 14, 2026-09-17)
+  faltan: 51
   bloqueadas_por_dato: 0     # B2.19 y B8.05 salieron del bloqueo con las columnas ECMWF
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — 54 corren hoy
+  celdas_P1: 55              # bajó de 56: B4.09 pasó a P2 al correr B4.08 — LAS 55 CORREN HOY
   reloj_de_lo_implementado: >-
-    ~112 min para las 58 celdas implementadas; **~40 min sin las tres celdas de
+    ~113 min para las 59 celdas implementadas; **~40 min sin las tres celdas de
     walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
     2.861 s el 2026-09-15. Los tiempos de las
     celdas de entrenamiento se recalibraron el 2026-09-05 contra lo medido: una corrida de
     5 semillas con `--no-test` tarda 3–7 s, no los ~60 que se habían estimado. El replay
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
-    Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19),
-    B3 (4 de 6), B4 (7 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
-    B10 (2 de 5). El grupo A de la fase está completo, el grupo B (B2.19, features de
-    pronóstico ECMWF) es el mejor resultado de la fase (gral 0,4204 vs ancla 0,4948,
-    confirmado en el subconjunto con cobertura completa), el grupo C abrió con B4.08
-    XGBoost — segundo mejor resultado (gral 0,4570, Δ 0,0378, 4× el umbral) con una décima
-    parte de la dispersión del ancla — y el grupo D, torch instalado con CUDA, corrió
-    B4.13 DLinear (**descarta** la ventana cruda incluso lineal, gral 0,6024), B4.14
-    LSTM (**pierde** con HP prestados del MLP tanh, gral 0,5196 ± 0,0159, Δ 0,0248; el
-    early stopping corta muy temprano con esos HP) y B4.15 BiLSTM (**pierde** también,
-    gral 0,5182 ± 0,0065 — con HP propios del arnés en vez de los prestados del MLP el
-    entrenamiento converge más lejos y con un tercio de la dispersión entre semillas,
-    pero el resultado no cambia de signo; la bidireccionalidad no es lo que faltaba).
-    Ninguno de los tres modelos secuenciales/lineales de B4 le ganó todavía al MLP tanh
-    ni a los finalistas de B1/B4.08/B2.19 — la pregunta del LSTM/BiLSTM con búsqueda de
-    HP propia (B9) sigue abierta, no cerrada en contra. **No** alcanza para el criterio
-    de finalización: sin B4.18 (TCN, el último del grupo D), la cobertura de P1 queda
-    incompleta y la búsqueda sigue abierta. Lo que sí está cerrado es la
+    **Las 55 celdas P1 del catálogo están completas** (Tramo 14, B4.18 cierra el grupo D).
+    Se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19), B3 (4 de 6),
+    B4 (8 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y B10 (2 de 5) — lo
+    que falta en cada bloque es todo P2/P3, fuera del alcance P1 de esta fase.
+    El grupo B (B2.19, features de pronóstico ECMWF) sigue siendo el mejor resultado de la
+    fase (gral 0,4204 vs ancla 0,4948, confirmado en el subconjunto con cobertura
+    completa); el grupo C (B4.08 XGBoost) el segundo (gral 0,4570, Δ 0,0378, 4× el
+    umbral, una décima parte de la dispersión del ancla); el grupo D (torch con CUDA)
+    corrió los cuatro modelos y **ninguno le ganó al ancla ni a los otros finalistas**:
+    B4.13 DLinear descarta la ventana cruda incluso lineal (gral 0,6024), B4.14 LSTM
+    pierde con HP prestados del MLP (gral 0,5196 ± 0,0159), B4.15 BiLSTM pierde con HP
+    propios del arnés y un tercio de esa dispersión (gral 0,5182 ± 0,0065), y B4.18 TCN
+    pierde por R6 —no supera a la persistencia— con causalidad estructural verificada
+    (gral 0,5155 ± 0,0097; ni fue más rápido que el LSTM, al revés de lo que sugería la
+    literatura para este tamaño de ventana). La pregunta de si algún secuencial puede
+    ganar con una búsqueda de HP real (B9) sigue abierta, no cerrada en contra — con HP
+    declarados, ninguno compite.
+    Con el catálogo P1 completo, lo que queda para cerrar la fase no es más código: es
+    **elegir campeón** entre los finalistas ya medidos (B2.19 ECMWF, B4.08 XGBoost, los
+    ensembles B10.01/B10.02, huber_log, per_horizon) y correr B11 de confirmación sólo
+    sobre ese campeón — la única mirada a TEST de toda la fase. Sigue estando cerrada la
     **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo
     entero sobre el dataset que haya, sin intervención.
   tres_desbloqueos_de_mayor_impacto:
     - "B2.17 (ventana / lookback) — hecha: las 13 celdas secuenciales de B4 quedan habilitadas"
     - "G-05 (guardar predicciones) — hecha en B10.01: ensemble.py y return_predictions"
-    - "B4.14 (LSTM) — hecha; torch con CUDA queda instalado y LSTMCore es reutilizable para B4.15 (BiLSTM, mismo adaptador con bidirectional=True)"
+    - "Grupo D completo (B4.13/14/15/18) — cierra la cobertura P1: lo que sigue es elegir campeón, no escribir más código"
