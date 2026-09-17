@@ -96,6 +96,24 @@ detalle por horizonte y por semilla, y una fila por corrida en `results/ledger.j
 JSON sueltos en la raíz de `results/` son de antes del protocolo: se conservan y no cuentan
 como celdas.
 
+### La serie diaria (vista de análisis, no una celda)
+
+El escalar de VAL que guarda cada celda promedia 365 días × 8 horizontes a propósito —
+es lo que hace comparable una celda con otra. Para ver si los modelos fallan en los
+mismos días o en días distintos, y cruzarlo con el régimen (τ) de esos días,
+`daily_series.py` abre esa media día por día, para los finalistas de la fase:
+
+```bash
+python -m rio_search.daily_series --modelo ancla       # un finalista
+python -m rio_search.daily_series --todos               # los 5
+```
+
+Escribe `results/<DATASET_ID>/diario/<modelo>.parquet` con columnas
+`modelo, fecha, horizonte, tau, psi_tau` (ψ_τ en escala log, la misma que `gral`
+promedia). **Opt-in y sin efecto sobre la búsqueda:** no corre por `runner.py`, no
+escribe en `ledger.jsonl`, no toca ningún `estado` de `matrix.yaml` — hay que
+invocarlo a mano.
+
 ## Módulos
 
 | Archivo | Qué hace |
@@ -108,6 +126,7 @@ como celdas.
 | `sensitivity.py` | Barrido de τ_max y contraste de modos de modulador. |
 | `audit.py` | Auditoría de fuga sobre features, modulador y splits. Corre como CLI y como test. |
 | `runner.py` | Corredor del catálogo: corre las celdas en orden, calcula el veredicto contra el ancla con el umbral de ruido, y hace append al ledger. Sostiene por código las reglas que antes dependían de la disciplina de quien ejecutaba. |
+| `daily_series.py` | Serie diaria de ψ_τ por modelo y horizonte, para los finalistas — vista de análisis, no toca el ledger ni el veredicto. Ver más abajo. |
 | `experiments/matrix.yaml` | Catálogo de combinaciones: 111 celdas en 12 bloques sobre 11 ejes, con su comando o con qué habría que escribir para poder correrlas. |
 | `tests/` | 71 tests: métricas contra valores conocidos, invariantes del modulador, guardas de esquema y frescura, la auditoría de fuga con sus pruebas negativas, y la coherencia del catálogo más las reglas del corredor. |
 

@@ -23,8 +23,8 @@ import numpy as np
 
 __all__ = [
     "rmse", "mae", "mape", "nse", "kge", "pbias", "r2",
-    "expectile_se", "gral", "violation_rates", "skill_score", "evaluate",
-    "dm_test", "WET_THRESHOLD", "DRY_THRESHOLD", "Q_FLOOR",
+    "expectile_se", "expectile_se_series", "gral", "violation_rates",
+    "skill_score", "evaluate", "dm_test", "WET_THRESHOLD", "DRY_THRESHOLD", "Q_FLOOR",
 ]
 
 #: Por encima de este τ el día se considera de régimen húmedo al reportar
@@ -185,6 +185,34 @@ def expectile_se_grad(e, tau):
     return -4.0 * w * e
 
 
+def expectile_se_series(y_true, y_pred, tau, *, log: bool = True, q_floor: float = Q_FLOOR):
+    """La serie ψ_τ elemento a elemento que `gral` promedia, más la máscara de
+    qué filas sobrevivieron el filtro de NaN, en el orden de entrada original.
+
+    `gral()` es sólo `sqrt(media(psi))` de esta serie: existe como función
+    aparte para que un llamador (p. ej. una serie diaria por fecha) pueda
+    quedarse con el detalle por fila sin reimplementar el filtrado ni el
+    espacio (log o crudo) — sería fácil que las dos copias del cálculo
+    divergieran con el tiempo.
+
+    Devuelve `(psi, ok)`. `psi` tiene `ok.sum()` elementos; `ok` es un array
+    booleano del mismo largo que `y_true`, así se puede indexar una fecha
+    externa (`fecha[ok]`) para alinearla con `psi` sin volver a filtrar.
+    """
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    if np.isscalar(tau):
+        tau = np.full(y_true.shape, float(tau))
+    tau = np.asarray(tau, dtype=float).ravel()
+    ok = np.isfinite(y_true) & np.isfinite(y_pred) & np.isfinite(tau)
+    yt, yp, tau_c = y_true[ok], y_pred[ok], tau[ok]
+    if log:
+        eps = np.log(np.maximum(yt, q_floor)) - np.log(np.maximum(yp, q_floor))
+    else:
+        eps = yt - yp
+    return expectile_se(eps, tau_c), ok
+
+
 def gral(y_true, y_pred, tau, *, log: bool = True, q_floor: float = Q_FLOOR) -> float:
     """G-RAL: ganancia regime-asimétrica, opcionalmente en escala logarítmica.
 
@@ -203,16 +231,10 @@ def gral(y_true, y_pred, tau, *, log: bool = True, q_floor: float = Q_FLOOR) -> 
     Con `log=True` el resultado es adimensional (error relativo): **no** se puede
     comparar contra un RMSE en m³/s. Con `log=False` queda en m³/s.
     """
-    if np.isscalar(tau):
-        tau = np.full(np.asarray(y_true, dtype=float).ravel().shape, float(tau))
-    yt, yp, tau_c, _ = _pairs(y_true, y_pred, tau)
-    if _empty(yt):
+    psi, ok = expectile_se_series(y_true, y_pred, tau, log=log, q_floor=q_floor)
+    if not ok.any():
         return float("nan")
-    if log:
-        eps = np.log(np.maximum(yt, q_floor)) - np.log(np.maximum(yp, q_floor))
-    else:
-        eps = yt - yp
-    return float(np.sqrt(np.mean(expectile_se(eps, tau_c))))
+    return float(np.sqrt(np.mean(psi)))
 
 
 def dm_test(loss1, loss2, h: int = 1) -> dict:
