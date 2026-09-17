@@ -96,6 +96,14 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
     "dinamica_caudal": ("caudal_log_ratio_1d", "caudal_log_curvatura",
                         "caudal_log_pendiente_7d", "caudal_dias_desde_pico"),
     "estacionalidad": ("doy_sin", "doy_cos"),
+    # Pronóstico ECMWF (B2.19, Fase 4 del roadmap): control a 1-3 y 1-7 días y
+    # ensemble-mean a 1-7 vienen de Gold; la cola 8-14 y el desacuerdo cf/pf se
+    # construyen en `_derive_forecast`. Cobertura temporal 68 % (2006-11-29→hoy,
+    # hueco de 580 días en 2017-18); VAL y TEST están cubiertos por entero.
+    "pronostico_ecmwf": (
+        "ecmwf_cf_tp_acum_3d_mm", "ecmwf_cf_tp_acum_7d_mm", "ecmwf_cf_tp_8_14d_mm",
+        "ecmwf_pf_tp_acum_7d_mm", "ecmwf_fc_desacuerdo_7d_mm",
+    ),
 }
 
 #: Grupos por defecto. `cptec_grid` queda fuera para que el default reproduzca
@@ -306,6 +314,36 @@ def _derive_rain(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _derive_forecast(df: pd.DataFrame) -> pd.DataFrame:
+    """Agregados del pronóstico ECMWF por lead (B2.19).
+
+    La Fase 4 del roadmap sumó 35 columnas: 15 leads del control (`cf`) y 15 del
+    ensemble de 50 miembros ya promediado por Gold (`pf`), más los acumulados a
+    3 y 7 días de cada uno. Acá sólo se agrega lo que Gold no trae: la cola
+    8-14 días, y un proxy de desacuerdo cf/pf — la única señal de incertidumbre
+    disponible, porque Gold guarda la media del ensemble, no el pronóstico
+    miembro a miembro.
+
+    Todo es información legítimamente del futuro **emitida en t₀** (el
+    pronóstico de hoy sobre los próximos días), no una fuga — entra a
+    `audit.FUTURO_LEGITIMO`. Y es causal por construcción: no hay `.rolling` ni
+    lectura de otra fila, así que el valor en t no puede depender de t+1.
+
+    Sólo corre si el snapshot trae las columnas de Gold (desde d297). Un
+    snapshot legacy sin Fase 4 queda sin estas dos columnas derivadas; pedir el
+    grupo `pronostico_ecmwf` ahí dispara el KeyError habitual de
+    `build_dataset` en vez de fallar acá en silencio.
+    """
+    out = df.copy()
+    cola_cols = [f"ecmwf_cf_tp_mm_d{k}" for k in range(8, 15)]
+    if all(c in out.columns for c in cola_cols):
+        out["ecmwf_cf_tp_8_14d_mm"] = out[cola_cols].sum(axis=1, skipna=False)
+    if {"ecmwf_cf_tp_acum_7d_mm", "ecmwf_pf_tp_acum_7d_mm"} <= set(out.columns):
+        out["ecmwf_fc_desacuerdo_7d_mm"] = (
+            out["ecmwf_cf_tp_acum_7d_mm"] - out["ecmwf_pf_tp_acum_7d_mm"]).abs()
+    return out
+
+
 def _derive_flow_dynamics(df: pd.DataFrame) -> pd.DataFrame:
     """Dinámica del caudal en el punto de predicción (B2.13).
 
@@ -379,6 +417,7 @@ def build_dataset(
         df = load_snapshot(snapshot_path, permitir_legacy=permitir_legacy)
     df = _derive_rain(df)
     df = _derive_flow_dynamics(df)
+    df = _derive_forecast(df)
 
     feature_names: list[str] = []
     for g in groups:

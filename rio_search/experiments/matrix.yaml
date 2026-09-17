@@ -559,14 +559,18 @@ bloques:
     nombre: features de pronóstico numérico
     slug: feats_forecast
     prioridad: P1
-    estado: bloqueado_dato
-    valor: "TIGGE / GEFS: lluvia y temperatura pronosticadas por lead"
-    bloqueado_por: "Fase 4 del roadmap del dataset. Gold v278 no tiene ninguna columna de pronóstico (66 columnas verificadas)."
+    estado: implementado
+    valor: "control 1-3d/1-7d, cola 8-14d, ensemble-mean 1-7d y desacuerdo cf/pf — grupo `pronostico_ecmwf`"
+    cmd: -m rio_search.train --model mlp --loss gral --seeds 5 --groups caudal_estado,caudal_agregado_alta_frontera,lluvia_ratio,estacionalidad,pronostico_ecmwf --gate-rain lluvia_media_est_mm --tau-mode oracle --tau-max 0.85 --hidden 38 --lr 0.0492 --l2 0.000217 --epochs 378 --split val
+    tiempo_est_s: 15
     nota: >-
-      Cuando lleguen: son legítimamente información sobre el futuro emitida en t₀, así que
-      pueden superar el umbral de la auditoría de fuga. La salida correcta es declararlas
-      en `audit.FUTURO_LEGITIMO` con justificación — **nunca** bajar el umbral. Desbloquea
-      también B8.05 (modo `forecast` del modulador), que es el único operable de verdad.
+      Desbloqueada por la Fase 4 del roadmap: 35 columnas ECMWF desde d297. Son
+      legítimamente información sobre el futuro emitida en t₀ y quedaron declaradas en
+      `audit.FUTURO_LEGITIMO` con su justificación — el umbral de la auditoría no se tocó.
+      Cobertura temporal 68 % (2006-11-29→hoy, hueco de 580 días en 2017-18); VAL y TEST
+      están cubiertos por entero, así que el veredicto oficial no está diluido por el hueco.
+      Comparación limpia sobre el subconjunto cubierto en `results/`. Desbloqueó también
+      B8.05 (modo `forecast` del modulador).
 
 # ================================================================================
 - id: B3
@@ -1514,11 +1518,11 @@ gaps:
 # --------------------------------------------------------------------------------
 resumen:
   celdas_totales: 111
-  implementadas: 53          # medido sobre los `estado:` de este archivo (Tramo 5, 2026-09-16)
+  implementadas: 54          # medido sobre los `estado:` de este archivo (Tramo 8, 2026-09-17)
   faltan: 56
-  bloqueadas_por_dato: 1     # B2.19 — B8.05 salió del bloqueo con las columnas ECMWF
+  bloqueadas_por_dato: 0     # B2.19 salió del bloqueo: implementada y es el mejor resultado de la fase
   requieren_autorizacion: 1  # B2.11 — contradice la Decisión 018
-  celdas_P1: 56              # de las cuales 38 corren hoy
+  celdas_P1: 56              # de las cuales 50 corren hoy
   reloj_de_lo_implementado: >-
     ~100 min para las 41 celdas implementadas; **~40 min sin las tres celdas de
     walk-forward** (B6.02, B6.04, B11.01), que solas se llevan el resto — B6.02 midió
@@ -1527,11 +1531,12 @@ resumen:
     5 semillas con `--no-test` tarda 3–7 s, no los ~60 que se habían estimado. El replay
     completo del catálogo implementado es, en la práctica, media hora.
   camino_mas_corto_a_un_cierre: >-
-    Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (10 de 19),
+    Con lo implementado hoy se corren B0, B8 y B11 completos, B1 (8 de 14), B2 (11 de 19),
     B3 (4 de 6), B4 (3 de 28), B5 (2 de 5), B6 (4 de 6), B7 (2 de 5), B9 (2 de 7) y
-    B10 (2 de 5). El grupo A de la fase (rio_search/PLAN.md) está completo — controles,
-    features, target, pérdidas, preproceso, profundidad y ensembles — pero **no** alcanza
-    para el criterio de finalización: sin B2.19 (features ECMWF), B4.08/B4.09 (GBM) y
+    B10 (2 de 5). El grupo A de la fase está completo, y el grupo B abrió con B2.19
+    (features de pronóstico ECMWF) — el mejor resultado de la fase hasta ahora, gral
+    0,4204 vs ancla 0,4948, confirmado en el subconjunto de fechas con cobertura completa.
+    **No** alcanza para el criterio de finalización: sin B4.08/B4.09 (GBM) y
     B4.13/B4.14/B4.15/B4.18 (torch),
     la cobertura de P1 queda incompleta y la búsqueda sigue abierta. Lo que sí está cerrado
     es la **repetibilidad**: `python -m rio_search.runner --todo` re-corre el catálogo entero

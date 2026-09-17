@@ -58,14 +58,20 @@ __all__ = ["FUTURO_LEGITIMO", "abs_corr", "audit_features", "audit_gate",
            "audit_splits", "main"]
 
 #: Features que son **legítimamente** información sobre el futuro, emitida en t₀.
-#: Hoy está vacío. Cuando entren las columnas de pronóstico (Fase 4 del roadmap)
-#: van acá, con su justificación.
 #:
 #: La tentación al ver el primer falso positivo va a ser bajar el umbral. **No.**
 #: Bajarlo pierde la protección entera para acomodar un caso previsto; declarar la
 #: columna acá deja escrito cuál es la excepción y por qué. Una lista que crece de
 #: a una entrada documentada es auditable; un umbral relajado no.
-FUTURO_LEGITIMO: frozenset[str] = frozenset()
+#:
+#: B2.19 (Fase 4 del roadmap, grupo `pronostico_ecmwf`): el pronóstico ECMWF de
+#: lluvia futura, emitido el mismo día t que la fila. Es exactamente el caso que
+#: motivó la lista — anticipa el caudal de mañana mejor que el caudal de hoy
+#: porque es información real sobre el clima que vendrá, no una copia del target.
+FUTURO_LEGITIMO: frozenset[str] = frozenset({
+    "ecmwf_cf_tp_acum_3d_mm", "ecmwf_cf_tp_acum_7d_mm", "ecmwf_cf_tp_8_14d_mm",
+    "ecmwf_pf_tp_acum_7d_mm", "ecmwf_fc_desacuerdo_7d_mm",
+})
 
 #: Por debajo de esto la línea base no es creíble y el resto del test no significa
 #: nada: conviene fallar antes que dar un visto bueno vacío.
