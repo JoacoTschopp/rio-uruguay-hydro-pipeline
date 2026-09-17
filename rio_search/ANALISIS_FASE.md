@@ -11,7 +11,7 @@ detalle, y los parquet de `d303-a6262712/diario/` para la serie día a día.
 
 Se corrieron 18 estrategias de modelado, 5 controles/diagnósticos y 2 walk-forward de
 confirmación — 25 celdas en total, todas contra el mismo ancla (MLP tanh, gral
-0,4948 ± 0,0098). Siete estrategias le ganan al ancla dentro del umbral de ruido; la
+0,4948 ± 0,0098). Seis estrategias le ganan al ancla dentro del umbral de ruido; la
 mejor por un margen grande es **B2.19 (features de pronóstico ECMWF, gral 0,4204)**,
 casi el doble de la mejora del segundo mejor resultado individual (XGBoost, 0,4570).
 Pero el hallazgo que atraviesa toda la fase es otro: **ninguna de las 18 estrategias
