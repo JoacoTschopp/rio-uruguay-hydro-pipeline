@@ -23,6 +23,15 @@ req.json
 notebooks_local/ana_rating_curve/output/raw_json/
 notebooks_local/ana_rating_curve/rating_curve_state.json
 
+# Mismo criterio para el resto de los backfills locales: JSON crudos de descarga, no codigo.
+notebooks_local/ana_historic_backfill/output_json/
+notebooks_local/ana_historic_backfill/output_probe_chuva/
+notebooks_local/ana_historic_backfill/output_stateful_test/
+notebooks_local/ana_historic_backfill/output_test/
+notebooks_local/inmet_backfill/output_json/
+notebooks_local/gefs_reforecast/output_json/
+notebooks_local/gefs_reforecast/output_json_staged/
+
 # Rio_Search (docs/rio_search_plan.md, Fase 0): entorno, dependencias y datos/artefactos generados,
 # no codigo. El .venv de uv, node_modules y las cache/checkpoints locales no se versionan.
 rio_search/backend/.venv
