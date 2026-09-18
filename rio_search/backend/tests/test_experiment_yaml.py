@@ -31,7 +31,6 @@ def test_load_real_bilstm_baseline_config() -> None:
     assert config.split_policy.train_window.start == date(2008, 1, 1)
     assert config.feature_groups == (
         "caudal_estado",
-        "nivel_estado",
         "caudal_agregado_alta_frontera",
         "cptec_grid",
     )

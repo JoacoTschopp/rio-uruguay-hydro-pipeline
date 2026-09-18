@@ -34,7 +34,7 @@ split:
     start: 2008-01-01        # o  years: 10
 
 features:
-  groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
+  groups: [caudal_estado, caudal_agregado_alta_frontera, cptec_grid]  # nivel_estado sacado 2026-09-18: Gold ya no tiene esas columnas
   # Decision 043 (docs/decisions.md): `caudal_registros_validos`/`nivel_registros_validos` son
   # banderas casi constantes en TRAIN (std ~0.013 para caudal: >99% de los dias vale 1) -- un
   # escalador `standard` las convierte en z-scores extremos (~-77 en TRAIN real) que

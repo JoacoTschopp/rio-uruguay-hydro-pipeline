@@ -47,7 +47,7 @@ split:
     start: 2008-01-01
 
 features:
-  groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
+  groups: [caudal_estado, caudal_agregado_alta_frontera, cptec_grid]  # nivel_estado sacado 2026-09-18: Gold ya no tiene esas columnas
   # Decision 043: mismo fix que bilstm_baseline_v1.yaml -- *_registros_validos son banderas
   # casi constantes en TRAIN, un escalador standard las vuelve z-scores extremos (~-77) y
   # desestabiliza el entrenamiento (NaN desde epoch 1, verificado real).

@@ -42,19 +42,11 @@ groups:
       - caudal_media_7d
       - caudal_delta_1d
 
-  nivel_estado:
-    default_on: true
-    description: Estado hidrologico de nivel en ana_74100000 (§3.6).
-    columns:
-      - nivel_rio_actual_cm
-      - nivel_rio_actual_m
-      - nivel_registros_validos
-      - nivel_rio_lag_1d
-      - nivel_rio_lag_3d
-      - nivel_rio_lag_7d
-      - nivel_rio_media_3d
-      - nivel_rio_media_7d
-      - nivel_rio_delta_1d
+  # nivel_estado y targets_nivel se sacaron (2026-09-18): Gold dropeo el nivel del dataset,
+  # queda un solo target, el caudal (ver docs/decisions.md del repo de prediccion, y el commit
+  # "Sacar el nivel del target de Gold" -- ninguna columna nivel_rio_* existe mas en Gold, asi
+  # que declararlas acá rompia validate_against en cualquier refresh, incluso para corridas de
+  # caudal que nunca las usaban.
 
   caudal_agregado_alta_frontera:
     default_on: true
@@ -153,15 +145,3 @@ groups:
       - caudal_t_mas_7d
       - caudal_t_mas_14d
 
-  targets_nivel:
-    default_on: false # se selecciona via `dataset.target: nivel`, no via `features.groups`
-    description: Targets de nivel, horizontes t+1..t+7 y t+14 (§2.1).
-    columns:
-      - nivel_rio_t_mas_1d
-      - nivel_rio_t_mas_2d
-      - nivel_rio_t_mas_3d
-      - nivel_rio_t_mas_4d
-      - nivel_rio_t_mas_5d
-      - nivel_rio_t_mas_6d
-      - nivel_rio_t_mas_7d
-      - nivel_rio_t_mas_14d

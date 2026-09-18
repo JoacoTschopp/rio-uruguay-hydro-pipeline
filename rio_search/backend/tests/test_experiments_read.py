@@ -68,7 +68,9 @@ def test_list_runs_returns_all_records_newest_first() -> None:
 
 
 def test_list_runs_default_families_match_documented_set() -> None:
-    assert DEFAULT_EXPERIMENT_FAMILIES == ("baselines", "bilstm", "smoke", "daily_forecast")
+    # fase_estrategias se sumo 2026-09-18: migracion de las 26 celdas del framework rio_search/
+    # (feature/fase-estrategias) a MLflow, para que aparezcan en Busquedas sin filtro manual.
+    assert DEFAULT_EXPERIMENT_FAMILIES == ("baselines", "bilstm", "smoke", "daily_forecast", "fase_estrategias")
 
 
 def test_list_searches_groups_direct_trials_only() -> None:

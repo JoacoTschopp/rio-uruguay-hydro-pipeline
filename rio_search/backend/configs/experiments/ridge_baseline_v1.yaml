@@ -27,7 +27,7 @@ split:
     start: 2008-01-01        # mismo train_window que bilstm_baseline_v1.yaml
 
 features:
-  groups: [caudal_estado, nivel_estado, caudal_agregado_alta_frontera, cptec_grid]
+  groups: [caudal_estado, caudal_agregado_alta_frontera, cptec_grid]  # nivel_estado sacado 2026-09-18: Gold ya no tiene esas columnas
   # Mismas columnas excluidas que bilstm_baseline_v1.yaml (Decision 043): banderas casi
   # constantes en TRAIN, no aportan a un modelo lineal y mantienen el feature set identico
   # entre bilstm y ridge para la comparacion.
