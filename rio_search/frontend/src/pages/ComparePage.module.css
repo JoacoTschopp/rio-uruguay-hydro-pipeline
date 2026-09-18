@@ -67,3 +67,11 @@
   margin-left: 6px;
   vertical-align: middle;
 }
+
+.splitTag {
+  margin-left: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  vertical-align: middle;
+}

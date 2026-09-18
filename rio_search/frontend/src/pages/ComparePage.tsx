@@ -36,9 +36,12 @@ export function ComparePage() {
   )
 
   // "mejores resultados": el run con menor G-RAL (es una perdida, menor=mejor) y el de mayor NSE
-  // (eficiencia, mayor=mejor) entre los seleccionados, resaltados en la tabla resumen.
-  const bestGralRunId = useMemo(() => bestBy(runs, 'test/gral/mean', 'min'), [runs])
-  const bestNseRunId = useMemo(() => bestBy(runs, 'test/nse/mean', 'max'), [runs])
+  // (eficiencia, mayor=mejor) entre los seleccionados, resaltados en la tabla resumen. Cada
+  // celda prefiere test/ y cae a val/ si el run no tiene test evaluado (la fase de estrategias
+  // corre casi entera en VAL por protocolo: TEST se reserva para el cierre) -- pickSplit deja
+  // registrado de que split salio el numero, para no mezclar silenciosamente ambos.
+  const bestGralRunId = useMemo(() => bestBy(runs, 'gral', 'min'), [runs])
+  const bestNseRunId = useMemo(() => bestBy(runs, 'nse', 'max'), [runs])
 
   const metricNames = useMemo(() => {
     const set = new Set<string>()
@@ -142,37 +145,51 @@ export function ComparePage() {
                     <th>modelo</th>
                     <th>estrategia</th>
                     <th>estado</th>
-                    <th className={tableStyles.num}>test/gral/mean</th>
-                    <th className={tableStyles.num}>test/nse/mean</th>
-                    <th className={tableStyles.num}>test/kge/mean</th>
-                    <th className={tableStyles.num}>test/rmse/mean</th>
+                    <th className={tableStyles.num}>gral/mean</th>
+                    <th className={tableStyles.num}>nse/mean</th>
+                    <th className={tableStyles.num}>kge/mean</th>
+                    <th className={tableStyles.num}>rmse/mean</th>
                     <th className={tableStyles.num}>train_total_s</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {runs.map((r) => (
-                    <tr key={r.run_id}>
-                      <td>
-                        <Link to={`/runs/${r.run_id}`}>{shortLabel(r.run_name)}</Link>
-                      </td>
-                      <td>{r.tags['rio_search.model'] ?? '—'}</td>
-                      <td>{r.tags['rio_search.horizon_strategy'] ?? '—'}</td>
-                      <td>
-                        <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                      </td>
-                      <td className={`${tableStyles.num} ${r.run_id === bestGralRunId ? styles.bestCell : ''}`}>
-                        {formatNumber(r.metrics['test/gral/mean'], 4)}
-                        {r.run_id === bestGralRunId && <Badge tone="good">mejor</Badge>}
-                      </td>
-                      <td className={`${tableStyles.num} ${r.run_id === bestNseRunId ? styles.bestCell : ''}`}>
-                        {formatNumber(r.metrics['test/nse/mean'], 3)}
-                        {r.run_id === bestNseRunId && <Badge tone="good">mejor</Badge>}
-                      </td>
-                      <td className={tableStyles.num}>{formatNumber(r.metrics['test/kge/mean'], 3)}</td>
-                      <td className={tableStyles.num}>{formatNumber(r.metrics['test/rmse/mean'], 1)}</td>
-                      <td className={tableStyles.num}>{formatSeconds(r.metrics['time/train_total_s'])}</td>
-                    </tr>
-                  ))}
+                  {runs.map((r) => {
+                    const gral = pickSplit(r, 'gral')
+                    const nse = pickSplit(r, 'nse')
+                    const kge = pickSplit(r, 'kge')
+                    const rmse = pickSplit(r, 'rmse')
+                    return (
+                      <tr key={r.run_id}>
+                        <td>
+                          <Link to={`/runs/${r.run_id}`}>{shortLabel(r.run_name)}</Link>
+                        </td>
+                        <td>{r.tags['rio_search.model'] ?? '—'}</td>
+                        <td>{r.tags['rio_search.horizon_strategy'] ?? '—'}</td>
+                        <td>
+                          <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                        </td>
+                        <td className={`${tableStyles.num} ${r.run_id === bestGralRunId ? styles.bestCell : ''}`}>
+                          {formatNumber(gral?.value, 4)}
+                          {gral && <span className={styles.splitTag}>{gral.split}</span>}
+                          {r.run_id === bestGralRunId && <Badge tone="good">mejor</Badge>}
+                        </td>
+                        <td className={`${tableStyles.num} ${r.run_id === bestNseRunId ? styles.bestCell : ''}`}>
+                          {formatNumber(nse?.value, 3)}
+                          {nse && <span className={styles.splitTag}>{nse.split}</span>}
+                          {r.run_id === bestNseRunId && <Badge tone="good">mejor</Badge>}
+                        </td>
+                        <td className={tableStyles.num}>
+                          {formatNumber(kge?.value, 3)}
+                          {kge && <span className={styles.splitTag}>{kge.split}</span>}
+                        </td>
+                        <td className={tableStyles.num}>
+                          {formatNumber(rmse?.value, 1)}
+                          {rmse && <span className={styles.splitTag}>{rmse.split}</span>}
+                        </td>
+                        <td className={tableStyles.num}>{formatSeconds(r.metrics['time/train_total_s'])}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -252,16 +269,27 @@ function shortLabel(runName: string): string {
   return runName.length > 34 ? `${runName.slice(0, 34)}…` : runName
 }
 
-/** id del run con el mejor valor de `metricKey` entre los pasados ('min' para perdidas como
- * G-RAL, 'max' para eficiencias como NSE); null si ninguno tiene esa metrica logueada. */
-function bestBy(runs: RunOut[], metricKey: string, dir: 'min' | 'max'): string | null {
+/** Valor de `<split>/<metric>/mean` para un run, prefiriendo test y cayendo a val -- la fase
+ * de estrategias corre en VAL por protocolo, asi que la mayoria de sus trials no tienen test.
+ * Devuelve tambien de que split salio, para mostrarlo y no mezclar silenciosamente ambos. */
+function pickSplit(r: RunOut, metric: string): { value: number; split: 'test' | 'val' } | null {
+  const test = r.metrics[`test/${metric}/mean`]
+  if (test !== undefined) return { value: test, split: 'test' }
+  const val = r.metrics[`val/${metric}/mean`]
+  if (val !== undefined) return { value: val, split: 'val' }
+  return null
+}
+
+/** id del run con el mejor valor de `metric` entre los pasados ('min' para perdidas como
+ * G-RAL, 'max' para eficiencias como NSE), via pickSplit; null si ninguno lo tiene logueado. */
+function bestBy(runs: RunOut[], metric: string, dir: 'min' | 'max'): string | null {
   let bestId: string | null = null
   let bestValue = dir === 'min' ? Infinity : -Infinity
   for (const r of runs) {
-    const v = r.metrics[metricKey]
-    if (v === undefined) continue
-    if ((dir === 'min' && v < bestValue) || (dir === 'max' && v > bestValue)) {
-      bestValue = v
+    const picked = pickSplit(r, metric)
+    if (!picked) continue
+    if ((dir === 'min' && picked.value < bestValue) || (dir === 'max' && picked.value > bestValue)) {
+      bestValue = picked.value
       bestId = r.run_id
     }
   }
