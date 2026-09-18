@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/datasets', label: 'Datasets' },
   { to: '/forecast', label: 'Pronóstico de hoy' },
   { to: '/research', label: 'Research' },
+  { to: '/funcion-ganancia', label: 'Función de ganancia' },
 ]
 
 export function Layout() {

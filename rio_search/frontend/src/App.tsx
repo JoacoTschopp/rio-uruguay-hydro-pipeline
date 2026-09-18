@@ -9,6 +9,7 @@ import { DatasetsPage } from './pages/DatasetsPage'
 import { ForecastPage } from './pages/ForecastPage'
 import { ResearchPage } from './pages/ResearchPage'
 import { HealthPage } from './pages/HealthPage'
+import { FuncionGananciaPage } from './pages/FuncionGananciaPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } },
@@ -27,6 +28,7 @@ function App() {
             <Route path="/datasets" element={<DatasetsPage />} />
             <Route path="/forecast" element={<ForecastPage />} />
             <Route path="/research" element={<ResearchPage />} />
+            <Route path="/funcion-ganancia" element={<FuncionGananciaPage />} />
             <Route path="/health" element={<HealthPage />} />
           </Route>
         </Routes>

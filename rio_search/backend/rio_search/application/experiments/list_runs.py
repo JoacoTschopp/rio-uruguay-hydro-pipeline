@@ -15,8 +15,15 @@ from rio_search.application.ports.tracking_read import RunRecord, TrackingReadPo
 # Familias documentadas en §3.5: "Experimentos: /Users/<profile>/rio_search/<familia> --
 # baselines, bilstm, <modelo_futuro>, daily_forecast, smoke." `daily_forecast` llega recien en
 # la Fase 6 pero listarla ya no hace dano (`TrackingReadPort.list_runs` salta experimentos que
-# todavia no existen).
-DEFAULT_EXPERIMENT_FAMILIES: tuple[str, ...] = ("baselines", "bilstm", "smoke", "daily_forecast")
+# todavia no existen). `fase_estrategias` se agrega por la migracion de la fase de busqueda de
+# modelos del framework rio_search/ (feature/fase-estrategias, 26 trials, campana d303).
+DEFAULT_EXPERIMENT_FAMILIES: tuple[str, ...] = (
+    "baselines",
+    "bilstm",
+    "smoke",
+    "daily_forecast",
+    "fase_estrategias",
+)
 
 
 @dataclass(frozen=True, slots=True)

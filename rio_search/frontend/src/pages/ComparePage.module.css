@@ -57,3 +57,13 @@
   padding: 4px 10px;
   font-size: 12px;
 }
+
+.bestCell {
+  font-weight: 700;
+  color: var(--status-good, #3a9d5d);
+}
+
+.bestCell > span {
+  margin-left: 6px;
+  vertical-align: middle;
+}

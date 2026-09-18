@@ -1,0 +1,161 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: 40px;
+}
+
+.page > p {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.eq {
+  background: var(--surface-hover, rgba(127, 127, 127, 0.08));
+  border-left: 2.5px solid var(--accent, #0e7490);
+  padding: 8px 12px;
+  margin: 6px 0 10px;
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+
+.eqNote {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: -2px 0 8px;
+}
+
+.steps {
+  counter-reset: p;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  counter-increment: p;
+  position: relative;
+  padding-left: 26px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.steps li::before {
+  content: counter(p);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent, #0e7490);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invariantBox {
+  border: 1px solid var(--border);
+  border-left: 2.5px solid var(--accent, #0e7490);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+
+.invariantBox h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.invariantBox p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .twoCol {
+    grid-template-columns: 1fr;
+  }
+}
+
+.refList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.refItem {
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.refTitle {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.refMeta {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 1px 0 3px;
+}
+
+.refRole {
+  font-size: 12px;
+  color: var(--ink-2, var(--text-muted));
+}
+
+.pendienteList {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pendienteList li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.pendienteTag {
+  flex: none;
+}
+
+.warnBox {
+  border: 1px solid var(--status-critical, #c0392b);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: rgba(192, 57, 43, 0.08);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.warnBox b {
+  color: var(--status-critical, #c0392b);
+}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { compareRuns } from '../lib/api'
+import { compareRuns, type RunOut } from '../lib/api'
 import { extractMetricByHorizon, parseHorizonMetrics } from '../lib/metrics'
 import { colorForIndex } from '../lib/chartData'
 import { formatNumber, formatSeconds, statusTone } from '../lib/format'
@@ -34,6 +34,11 @@ export function ComparePage() {
     () => runs.map((r) => ({ run: r, test: parseHorizonMetrics(r.metrics, 'test'), val: parseHorizonMetrics(r.metrics, 'val') })),
     [runs],
   )
+
+  // "mejores resultados": el run con menor G-RAL (es una perdida, menor=mejor) y el de mayor NSE
+  // (eficiencia, mayor=mejor) entre los seleccionados, resaltados en la tabla resumen.
+  const bestGralRunId = useMemo(() => bestBy(runs, 'test/gral/mean', 'min'), [runs])
+  const bestNseRunId = useMemo(() => bestBy(runs, 'test/nse/mean', 'max'), [runs])
 
   const metricNames = useMemo(() => {
     const set = new Set<string>()
@@ -137,6 +142,8 @@ export function ComparePage() {
                     <th>modelo</th>
                     <th>estrategia</th>
                     <th>estado</th>
+                    <th className={tableStyles.num}>test/gral/mean</th>
+                    <th className={tableStyles.num}>test/nse/mean</th>
                     <th className={tableStyles.num}>test/kge/mean</th>
                     <th className={tableStyles.num}>test/rmse/mean</th>
                     <th className={tableStyles.num}>train_total_s</th>
@@ -152,6 +159,14 @@ export function ComparePage() {
                       <td>{r.tags['rio_search.horizon_strategy'] ?? '—'}</td>
                       <td>
                         <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                      </td>
+                      <td className={`${tableStyles.num} ${r.run_id === bestGralRunId ? styles.bestCell : ''}`}>
+                        {formatNumber(r.metrics['test/gral/mean'], 4)}
+                        {r.run_id === bestGralRunId && <Badge tone="good">mejor</Badge>}
+                      </td>
+                      <td className={`${tableStyles.num} ${r.run_id === bestNseRunId ? styles.bestCell : ''}`}>
+                        {formatNumber(r.metrics['test/nse/mean'], 3)}
+                        {r.run_id === bestNseRunId && <Badge tone="good">mejor</Badge>}
                       </td>
                       <td className={tableStyles.num}>{formatNumber(r.metrics['test/kge/mean'], 3)}</td>
                       <td className={tableStyles.num}>{formatNumber(r.metrics['test/rmse/mean'], 1)}</td>
@@ -235,4 +250,20 @@ export function ComparePage() {
 
 function shortLabel(runName: string): string {
   return runName.length > 34 ? `${runName.slice(0, 34)}…` : runName
+}
+
+/** id del run con el mejor valor de `metricKey` entre los pasados ('min' para perdidas como
+ * G-RAL, 'max' para eficiencias como NSE); null si ninguno tiene esa metrica logueada. */
+function bestBy(runs: RunOut[], metricKey: string, dir: 'min' | 'max'): string | null {
+  let bestId: string | null = null
+  let bestValue = dir === 'min' ? Infinity : -Infinity
+  for (const r of runs) {
+    const v = r.metrics[metricKey]
+    if (v === undefined) continue
+    if ((dir === 'min' && v < bestValue) || (dir === 'max' && v > bestValue)) {
+      bestValue = v
+      bestId = r.run_id
+    }
+  }
+  return bestId
 }
