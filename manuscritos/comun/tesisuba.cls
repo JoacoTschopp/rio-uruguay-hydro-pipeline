@@ -56,23 +56,30 @@
 % Van con \newcommand* (no \long) para que \ifx\campo\empty detecte bien un campo vacio.
 \newcommand*{\tu@institucion}{Universidad de Buenos Aires}
 \newcommand*{\tu@facultad}{Facultad de Ciencias Exactas y Naturales}
+\newcommand*{\tu@facultadb}{}
 \newcommand*{\tu@carrera}{Maestr\'ia en Explotaci\'on de Datos y Descubrimiento de Conocimiento}
 \newcommand*{\tu@etapa}{}
 \newcommand*{\tu@titulo}{}
+\newcommand*{\tu@leyenda}{}
 \newcommand*{\tu@autor}{}
 \newcommand*{\tu@director}{}
 \newcommand*{\tu@codirector}{}
 \newcommand*{\tu@lugar}{}
 \newcommand*{\tu@anio}{\the\year}
+\newcommand*{\tu@fecha}{}
 
+\newcommand*{\facultad}[1]{\renewcommand*{\tu@facultad}{#1}}
+\newcommand*{\facultadsecundaria}[1]{\renewcommand*{\tu@facultadb}{#1}}
 \newcommand*{\carrera}[1]{\renewcommand*{\tu@carrera}{#1}}
 \newcommand*{\etapa}[1]{\renewcommand*{\tu@etapa}{#1}}
 \newcommand*{\titulo}[1]{\renewcommand*{\tu@titulo}{#1}}
+\newcommand*{\leyenda}[1]{\renewcommand*{\tu@leyenda}{#1}}
 \newcommand*{\autor}[1]{\renewcommand*{\tu@autor}{#1}}
 \newcommand*{\director}[1]{\renewcommand*{\tu@director}{#1}}
 \newcommand*{\codirector}[1]{\renewcommand*{\tu@codirector}{#1}}
 \newcommand*{\lugardetrabajo}[1]{\renewcommand*{\tu@lugar}{#1}}
 \newcommand*{\anio}[1]{\renewcommand*{\tu@anio}{#1}}
+\newcommand*{\fecha}[1]{\renewcommand*{\tu@fecha}{#1}}
 
 % Portada del modelo validado: escudo, 1cm, institucion, 3cm, titulo, 6cm, autor, 0.5cm, anio.
 % Los campos etapa/director/codirector/lugar no estaban en el modelo: si se completan, se acortan
@@ -84,19 +91,30 @@
   \setlength{\tu@antesdelautor}{6cm}%
   \ifx\tu@etapa\empty\else\setlength{\tu@antesdeltitulo}{1.5cm}\setlength{\tu@antesdelautor}{4cm}\fi
   \ifx\tu@director\empty\else\setlength{\tu@antesdelautor}{3cm}\fi
+  \ifx\tu@leyenda\empty\else\addtolength{\tu@antesdelautor}{-2.5cm}\fi
   \begin{titlepage}
     \begin{center}
       \includegraphics[width=5cm]{escudo_uba.png}\\[1cm]
 
       {\Large \textbf{\tu@institucion}}\\[0.2cm]
       \textbf{\tu@facultad}\\[0.2cm]
+      \ifx\tu@facultadb\empty\else
+        \textbf{\tu@facultadb}\\[0.2cm]
+      \fi
       \textbf{\tu@carrera}\\[\tu@antesdeltitulo]
 
       \ifx\tu@etapa\empty\else
         {\large \textbf{\tu@etapa}}\\[1cm]
       \fi
 
-      {\Huge \textbf{\tu@titulo}}\\[\tu@antesdelautor]
+      % El \par va DENTRO del grupo a proposito: sin el, la ultima linea de un titulo de varios
+      % renglones toma el interlineado de \normalsize y se superpone con la anterior.
+      {\Huge \textbf{\tu@titulo}\par}
+      \vspace{\tu@antesdelautor}
+
+      \ifx\tu@leyenda\empty\else
+        \tu@leyenda\\[1cm]
+      \fi
 
       \tu@autor\\[0.5cm]
       \ifx\tu@director\empty\else
@@ -109,7 +127,11 @@
         Lugar de trabajo: \tu@lugar\\[0.5cm]
       \fi
 
-      {\normalsize \textbf{A\~no \tu@anio}}
+      \ifx\tu@fecha\empty
+        {\normalsize \textbf{A\~no \tu@anio}}
+      \else
+        {\normalsize \textbf{\tu@fecha}}
+      \fi
     \end{center}
   \end{titlepage}
 }

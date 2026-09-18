@@ -4,18 +4,29 @@
 %   .\manuscritos\herramientas\compilar.ps1 -Documento plan-de-tesis
 % Salida: manuscritos/plan-de-tesis/build/main.pdf (fuera de git).
 %
-% Estructura PROVISORIA: se ajusta al reglamento de presentacion del plan de tesis de la carrera
-% (pendiente, ver manuscritos/PLAN.md).
+% ESTRUCTURA: calcada del plan de tesis aprobado que el autor aporto como ejemplo,
+%   manuscritos/info-institucional/plan-tesis/Ejemplos/Plan Tesis de Maestria - Joaquin Ignacio
+%   Aramendia_v2.pdf (4 capitulos, ~10 paginas de cuerpo + bibliografia).
+% Requisitos de forma: manuscritos/info-institucional/plan-tesis/Instructivo _Aprobacion plan
+%   tesis + Director (estudiantes).docx y 2-Caratula-PLAN de tesis.docx.
 \documentclass{../comun/tesisuba}
 
 \etapa{Plan de Tesis}
-% PROVISORIO: titulo, director, codirector y lugar de trabajo los define el autor.
-\titulo{Proyección del caudal del Río Uruguay\\ mediante aprendizaje automático}
-\autor{Esp. Joaquín Sebastian Tschopp}
-\director{}
+\facultadsecundaria{Facultad de Ingenier\'ia}
+
+% El instructivo pide el titulo sin mayusculas salvo nombres propios, y avisa que ya en esta
+% instancia se mira con atencion porque arrastra a las siguientes. PROVISORIO hasta que el autor
+% y el director lo cierren.
+\titulo{Pron\'ostico de caudal\\ del r\'io Uruguay\\ con funciones\\ de p\'erdida asim\'etricas}
+\leyenda{Plan de tesis presentado para optar al t\'itulo de Mag\'ister\\
+en Explotaci\'on de Datos y Descubrimiento de Conocimiento}
+\autor{Tesista: Esp. Joaquín Sebastian Tschopp}
+\director{Gustavo Denicolay}
+% FALTA: el autor confirma nombre y grado academico del codirector.
 \codirector{}
 \lugardetrabajo{}
-\anio{2026}
+% FALTA: fecha de elevacion de la nota al director de la maestria.
+\fecha{Buenos Aires, \ldots\ de 2026}
 
 \begin{document}
 
@@ -25,18 +36,11 @@
 
 \newpage
 
-\section*{Resumen}
-% Pendiente.
-
-\textbf{Palabras clave:}
-
-\newpage
-
+\input{capitulos/00_direccion}
 \input{capitulos/01_introduccion}
-\input{capitulos/02_antecedentes}
-\input{capitulos/03_area_y_datos}
-\input{capitulos/04_metodologia}
-\input{capitulos/05_plan_de_trabajo}
+\input{capitulos/02_materiales_y_metodos}
+\input{capitulos/03_experimentos_preliminares}
+\input{capitulos/04_tiempo_estimado}
 
 \bibliografia
 

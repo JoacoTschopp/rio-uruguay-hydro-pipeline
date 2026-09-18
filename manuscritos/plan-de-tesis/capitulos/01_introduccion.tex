@@ -1,7 +1,73 @@
 % Plan de tesis -- Capitulo 1.
+%
+% Correlato en el plan de ejemplo: capitulo 1 (Introduccion), con 1.1 Descripcion del problema y
+% motivacion, 1.2 Trabajos previos y 1.3 Objetivos. Extension del ejemplo: ~3 paginas.
 \chapter{Introducción}
-\section{Problema y motivación}
-\section{Pregunta de investigación e hipótesis}
+
+\section{Descripción del problema y motivación}
+
+% PROVISORIO. Esbozo para discutir con el director; las afirmaciones cuantitativas todavia no
+% estan referenciadas y hay que cerrarlas contra fuente antes de elevar el plan.
+El pronóstico de caudal a pocos días de anticipación es la información que ordena la operación de
+un aprovechamiento hidroeléctrico: define cuánta agua se turbina, cuánta se eroga y con cuánta
+antelación se avisa aguas abajo.
+En el río Uruguay esa decisión se toma sobre una cuenca de respuesta rápida, donde el tiempo entre
+la lluvia en las nacientes y el paso de la onda de crecida por el embalse es del orden de los días.
+
+El problema no es solamente predecir bien en promedio.
+Los errores no cuestan lo mismo en las dos direcciones ni en todos los regímenes: subestimar una
+crecida obliga a erogar de apuro y traslada el problema aguas abajo, mientras que sobreestimarla
+tiene un costo de oportunidad en generación.
+Sin embargo, los modelos de pronóstico de caudal se entrenan casi siempre minimizando un error
+simétrico --- error cuadrático medio, o su versión normalizada como el coeficiente de
+Nash--Sutcliffe --- que trata ambos errores como equivalentes.
+
+Esta tesis parte de esa brecha: la función que se optimiza durante el entrenamiento no representa
+el costo real de la decisión que el pronóstico alimenta.
+
+% FALTA: cerrar la motivacion con el encuadre institucional (el autor trabaja en un aprovechamiento
+% de la cuenca) una vez que el autor defina cuanto de eso quiere que aparezca en el documento.
+
+\section{Trabajos previos}
+
+% PENDIENTE: este es el nucleo del relevamiento bibliografico en curso. Se organiza en dos ejes,
+% que son los dos que pidio el autor:
+%   (a) modelos documentados y probados en la industria / en operacion;
+%   (b) funciones de ganancia y de perdida documentadas.
+% La bibliografia vive en research/catalog/*.yaml y se exporta a manuscritos/comun/referencias.bib
+% con manuscritos/herramientas/exportar_bib.py. Ver manuscritos/PLAN.md.
+
+\subsection{Modelos en operación}
+
+% PENDIENTE (eje a).
+
+\subsection{Funciones objetivo}
+
+% PENDIENTE (eje b).
+
 \section{Objetivos}
+
+% PROVISORIO: el objetivo general y los especificos los cierra el autor con el director. Lo que
+% sigue es la formulacion que se desprende del trabajo ya hecho en el repositorio.
+
 \subsection{Objetivo general}
+
+Evaluar si reemplazar la función de pérdida simétrica habitual por una función asimétrica y
+sensible al régimen hidrológico mejora el pronóstico operativo de caudal diario del río Uruguay en
+horizontes de 1 a 7 días, respecto de las alternativas documentadas en la literatura y de una
+línea de base de persistencia.
+
 \subsection{Objetivos específicos}
+
+\begin{enumerate}[nosep]
+  \item Relevar el estado del arte en modelos de pronóstico de caudal efectivamente probados en
+        operación, y en funciones de ganancia y pérdida documentadas para este problema.
+  \item Construir un conjunto de datos diario reproducible para la cuenca, integrando registros de
+        caudal y nivel, precipitación observada y precipitación pronosticada.
+  \item Implementar y comparar, bajo un mismo protocolo de validación, las funciones objetivo
+        relevadas frente a la función asimétrica propuesta.
+  \item Establecer si las diferencias observadas entre modelos son estadísticamente distinguibles,
+        y no atribuibles al azar del período de evaluación.
+  \item Cuantificar la mejora en términos de la decisión operativa, y no sólo en términos de error
+        estadístico.
+\end{enumerate}
