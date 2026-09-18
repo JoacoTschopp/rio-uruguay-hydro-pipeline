@@ -21,6 +21,15 @@ import { LossCurveChart } from '../components/charts/LossCurveChart'
 import tableStyles from '../styles/table.module.css'
 import styles from './RunPage.module.css'
 
+/** Tono del badge de `rio_search.veredicto` (runner.py, protocolo de busqueda): gana/empata son
+ * resultado normal, pierde/descartado es lo que hace que una celda no compita mas. */
+function veredictoTone(v: string): 'good' | 'warning' | 'critical' | 'neutral' {
+  if (v === 'gana') return 'good'
+  if (v === 'empata') return 'neutral'
+  if (v === 'pierde' || v === 'descartado') return 'critical'
+  return 'warning'
+}
+
 // Artefactos que `RunSearch` loguea de verdad (§3.5 del plan, verificado contra
 // `application/experiments/run_search.py`: `log_artifact_dir(..., artifact_path=...)`). La API de
 // la Fase 4 no expone un endpoint para listar/descargar artefactos de un run -- por eso esto es
@@ -100,6 +109,20 @@ export function RunPage() {
         <div>
           <Link to="/">← Búsquedas</Link>
           <h1>{run.run_name}</h1>
+          {(run.tags['rio_search.model'] || run.tags['rio_search.celda_id']) && (
+            <p className={styles.identityLine}>
+              {run.tags['rio_search.model'] && <Badge tone="neutral">{run.tags['rio_search.model']}</Badge>}
+              {run.tags['rio_search.celda_id'] && (
+                <span>
+                  <strong>{run.tags['rio_search.celda_id']}</strong>
+                  {run.tags['rio_search.nombre'] && <> — {run.tags['rio_search.nombre']}</>}
+                </span>
+              )}
+              {run.tags['rio_search.veredicto'] && (
+                <Badge tone={veredictoTone(run.tags['rio_search.veredicto'])}>{run.tags['rio_search.veredicto']}</Badge>
+              )}
+            </p>
+          )}
           <p className={styles.subline}>
             <span className="mono">{run.run_id}</span>
             <Badge tone={statusTone(run.status)}>{run.status}</Badge>
