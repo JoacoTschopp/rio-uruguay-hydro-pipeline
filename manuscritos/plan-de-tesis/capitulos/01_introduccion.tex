@@ -30,20 +30,168 @@ el costo real de la decisión que el pronóstico alimenta.
 
 \section{Trabajos previos}
 
-% PENDIENTE: este es el nucleo del relevamiento bibliografico en curso. Se organiza en dos ejes,
-% que son los dos que pidio el autor:
-%   (a) modelos documentados y probados en la industria / en operacion;
-%   (b) funciones de ganancia y de perdida documentadas.
-% La bibliografia vive en research/catalog/*.yaml y se exporta a manuscritos/comun/referencias.bib
-% con manuscritos/herramientas/exportar_bib.py. Ver manuscritos/PLAN.md.
+% BORRADOR PROVISORIO del 2026-09-18, escrito sobre el relevamiento de 71 referencias que vive en
+% research/catalog/. Los metadatos de todas las citas estan verificados contra Crossref, pero las
+% AFIRMACIONES sobre el contenido de cada trabajo salen del relevamiento y no de la lectura del
+% paper: hay que confirmarlas contra la fuente antes de elevar el plan. Ver PLAN.md, seccion 5.
 
 \subsection{Modelos en operación}
 
-% PENDIENTE (eje a).
+El pronóstico hidrológico operativo se reparte hoy entre dos linajes.
+El primero es físico y distribuido, con dos décadas de rodaje: GloFAS acopla los ensambles
+meteorológicos del Centro Europeo con un modelo hidrológico distribuido para dar alerta de
+crecidas a escala global \cite{alfieri-2013-glofas}; el \textit{National Water Model} de la NOAA
+hace lo propio sobre los Estados Unidos y documenta además cómo un sistema en producción trata
+los embalses y la regulación antrópica \cite{cosgrove-2024-national-water-model}; y sobre esta
+región el modelo continental MGB cubre explícitamente la cuenca del Plata
+\cite{siqueira-2018-mgb-sudamerica}.
+El aporte más transferible de esta familia no es el modelo sino el protocolo de verificación:
+reportar el desempeño contra líneas de base de persistencia y de climatología, y mostrar cómo se
+degrada con el horizonte \cite{harrigan-2023-glofas-reforecast}.
+
+El segundo linaje es aprendizaje profundo, y llegó a producción muy rápido.
+La red LSTM aplicada a lluvia-escorrentía iguala o supera a los modelos conceptuales calibrados
+cuenca por cuenca \cite{kratzert-2018-lstm-lluvia-escorrentia}, y entrenada sobre muchas cuencas a
+la vez aprende comportamiento compartido que luego modula con atributos locales
+\cite{kratzert-2019-universal-regional-local}.
+Sobre esa base se construyó un sistema de alerta de crecidas que hoy opera en decenas de países
+\cite{nevo-2022-pronostico-operativo-ml, nearing-2024-global-extreme-floods}.
+Importa registrar que la evaluación de ese sistema está en disputa: se le objetó que las
+decisiones metodológicas de su evaluación --- cómo se define un evento extremo, qué ventana se
+usa, contra qué se compara --- inflaron las métricas reportadas
+\cite{li-2026-critica-despliegue-ia}.
+La lección para este trabajo no es tomar partido, sino declarar y defender cada decisión de
+evaluación en lugar de darla por obvia.
+
+Sobre las arquitecturas más nuevas, la evidencia es menos entusiasta de lo que suele suponerse.
+En series temporales generales, un modelo lineal de una sola capa iguala o supera a toda la
+familia de transformadores de horizonte largo \cite{zeng-2023-dlinear}.
+En hidrología, el transformador común no resulta competitivo frente a la LSTM, y falla
+especialmente en caudales altos \cite{liu-2024-transformer-limite-hidrologico}.
+Los modelos fundacionales de series temporales, evaluados sin entrenamiento específico, todavía
+quedan por debajo de una LSTM entrenada \cite{sun-2026-tsfm-zeroshot-caudal}.
+El matiz importante es que la ventaja de la LSTM se concentra en los horizontes cortos, y los
+mecanismos de atención ganan terreno a medida que el horizonte se alarga
+\cite{liu-2025-rnn-a-transformers}; combinada con recurrencia, la atención sí mejora el
+pronóstico de caudal \cite{rasiyakoya-2024-tft-caudal}, y existe una arquitectura pensada
+exactamente para este problema, multi-horizonte y con covariables conocidas a futuro
+\cite{lim-2021-tft}, que es la situación que crea disponer del pronóstico de lluvia.
+La ventana de 1 a 7 días de este trabajo cae justo en esa zona de transición.
+
+Para datos tabulares, que es la forma que tiene el conjunto de datos de esta tesis, los modelos de
+árboles siguen siendo estado del arte frente a las redes profundas
+\cite{grinsztajn-2022-arboles-tabular}, dominaron la competencia M5
+\cite{makridakis-2022-m5-accuracy} y ganaron una competencia hidrológica con evaluación externa
+\cite{drivendata-2025-water-supply-rodeo}.
+La contracara también está documentada: con más datos la LSTM los supera
+\cite{gauch-2021-camels-datos-limitados}, y los árboles no extrapolan fuera del rango observado
+\cite{januschowski-2022-forecasting-trees}, que es precisamente el régimen de las crecidas
+extremas.
+
+Dos advertencias metodológicas quedan pendientes de respuesta.
+La primera es que entrenar una LSTM sobre una sola cuenca está explícitamente desaconsejado
+\cite{kratzert-2024-nunca-una-sola-cuenca}; la salida publicada es preentrenar sobre un conjunto
+grande y ajustar localmente \cite{ryd-2025-fine-tuning-local}, para lo cual existen los datos
+\cite{chagas-2020-camels-br, kratzert-2023-caravan}.
+La segunda es que entrenar con lluvia observada y operar con lluvia pronosticada abre una brecha
+de desempeño real, para la que también hay una receta publicada \cite{taccari-2026-aifl}.
+
+Sobre el área de estudio, el antecedente más cercano evalúa un sistema operativo de pronóstico de
+caudal en el alto río Uruguay, corrido a diario con diez días de anticipación, y reporta que la
+ocurrencia de crecidas se anticipa con dos o tres días útiles
+\cite{fan-2017-uruguai-operacional}; la verificación de afluencias a embalses de la región con
+ensambles meteorológicos tiene tratamiento propio \cite{fan-2015-tigge-embalses}.
+En cuanto a aprendizaje automático sobre el propio río, lo publicado predice \emph{nivel} a tres
+días \cite{mattiuzi-2021-m5-uruguai}, y el producto operativo vigente en la cuenca es también de
+nivel y de muy corto plazo \cite{mattiuzi-2023-sah-uruguai}.
+Para las afluencias a Salto Grande, el trabajo disponible opera en escala mensual y estacional
+\cite{talento-2013-salto-grande}.
+% AFIRMACION FUERTE, a sostener o retirar: de este relevamiento no surge ningun trabajo publicado
+% de pronostico de CAUDAL del rio Uruguay con aprendizaje automatico en horizontes de 1 a 7 dias.
+% Es el hueco que justifica la tesis. Conviene que el director y el codirector lo confirmen antes
+% de escribirlo en el plan.
 
 \subsection{Funciones objetivo}
 
-% PENDIENTE (eje b).
+La teoría moderna de evaluación de pronósticos fija una regla que ordena este campo: una función
+de pérdida sirve para comparar modelos sólo si es \textit{consistente} para algún funcional
+estadístico, y ese funcional debe declararse de antemano
+\cite{gneiting-2011-making-evaluating-point-forecasts, gneiting-raftery-2007-scoring-rules}.
+El error cuadrático es consistente para la media; la pérdida \textit{pinball}, para el cuantil
+\cite{koenker-bassett-1978}; la cuadrática asimétrica, para el expectil
+\cite{newey-powell-1987}; y la de Huber asimétrica, para un funcional intermedio entre los dos
+\cite{taggart-2022-generalized-huber-loss}.
+Toda pérdida consistente para un cuantil o un expectil se descompone en \textit{scores}
+elementales, lo que habilita comparaciones robustas \cite{ehm-2016-quantiles-expectiles}.
+De ahí se desprende la principal dificultad metodológica de este trabajo: cambiar la asimetría
+cambia el funcional que se estima, y no sólo el peso de los errores, de modo que comparar con una
+métrica única a modelos entrenados con pérdidas distintas es evaluarlos con la directiva
+equivocada.
+
+En hidrología las funciones objetivo tienen su propia genealogía.
+El coeficiente de Nash--Sutcliffe \cite{nash-sutcliffe-1970} es el error cuadrático reescalado por
+la varianza observada, y por lo tanto estima el mismo funcional.
+El de Kling--Gupta lo descompone en correlación, sesgo y variabilidad \cite{gupta-2009-kge}, y
+tiene variantes sucesivas que corrigen sus supuestos \cite{kling-2012-modified-kge,
+pool-2018-nonparametric-kge}; no es, en cambio, una pérdida consistente para ningún funcional
+conocido.
+Ambos índices tienen una incertidumbre muestral grande, porque unos pocos días de crecida dominan
+su valor \cite{clark-2021-abuse-performance-metrics}: es un argumento contra ordenar modelos por
+un único número.
+Las transformaciones del caudal son, de hecho, un cambio encubierto de función de pérdida
+\cite{santos-2018-log-kge-pitfalls, thirel-2024-streamflow-transformations}, algo que recién ahora
+se formalizó en el lenguaje de la consistencia \cite{tyralis-2026-variable-transformations-loss};
+y volver de la escala logarítmica a metros cúbicos por segundo introduce un sesgo de
+retransformación conocido \cite{duan-1983-smearing-retransformation}.
+
+La familia asimétrica tiene respaldo teórico y algunos antecedentes empíricos.
+El resultado clásico es que bajo pérdida asimétrica el predictor óptimo es sesgado, y su sesgo
+varía en el tiempo \cite{christoffersen-diebold-1997-optimal-prediction-asymmetric}: el sesgo es
+el objetivo, no un defecto.
+La alternativa suave es la pérdida LINEX \cite{zellner-1986-asymmetric-loss-linex}.
+En hidrología ya se usaron funciones de error asimétricas para fijar umbrales de alerta
+\cite{toth-2016-asymmetric-flood-warning}, se propuso una pérdida asimétrica de picos
+\cite{tofighi-2025-asymmetric-peak-loss}, y se entrenaron redes con ocho funciones de pérdida
+distintas, incluidas expectílicas
+\cite{dahal-2026-ensemble-diverse-loss-functions}.
+La regresión expectílica en hidrología ya tiene tratamiento propio
+\cite{tyralis-2023-expectile-hydrological} y una implementación en redes profundas que anida los
+casos cuantílico y expectílico \cite{tyralis-2025-deep-huber-quantile-networks}; si se opta por
+estimar varios cuantiles a la vez, hay que resolver que no se crucen
+\cite{cannon-2018-mcqrnn-noncrossing}.
+Conviene además registrar que los sistemas operativos más recientes no usan una pérdida simétrica
+sino distribuciones asimétricas aprendidas \cite{klotz-2022-uncertainty-deep-learning-rainfall-runoff,
+nearing-2024-global-extreme-floods}: la asimetría ya está en producción, y el aporte de esta tesis
+tiene que ser más específico que introducirla.
+Fuera de la hidrología, hay evidencia fuerte en energía de que una pérdida asimétrica calibrada
+con el cociente de costos real reduce el costo de operación
+\cite{wu-2021-asymmetric-svr-load-forecasting}, y de que la pérdida que maximiza el beneficio no es
+la que minimiza el error cuadrático \cite{serafin-weron-2025-loss-functions-trading}.
+
+El eslabón que conecta la función de pérdida con la operación es la teoría de la decisión.
+La relación costo-pérdida establece que el nivel de cuantil óptimo es el cociente entre el costo
+de actuar y la pérdida de no hacerlo \cite{richardson-2000-relative-economic-value}, criterio ya
+aplicado a sistemas reales de alerta \cite{verkade-werner-2011-flood-warning-benefits} y discutido
+para decisiones hidrológicas con aversión al riesgo \cite{matte-2017-beyond-cost-loss}.
+Dicho de otro modo, el nivel de asimetría no es un hiperparámetro: es un dato del problema de
+decisión.
+La línea que lleva ese razonamiento hasta el final entrena minimizando directamente el costo de la
+decisión \cite{elmachtoub-grigas-2022-smart-predict-optimize}.
+Hay que registrar, sin embargo, que más precisión no implica más valor en la operación de un
+embalse: la relación no es monótona y depende del objetivo operativo
+\cite{turner-2017-forecast-skill-value-reservoir}.
+
+Por último, dos límites que este trabajo debe asumir de entrada.
+El primero es que evaluar sólo sobre los eventos extremos distorsiona la comparación
+\cite{lerch-2017-forecasters-dilemma}; la forma correcta de mirar el desempeño en crecidas es
+descomponer un \textit{score} consistente por regiones del rango
+\cite{taggart-2022-extreme-events-scoring} o usar \textit{scores} ponderados por umbral que
+conserven la propiedad \cite{gneiting-ranjan-2011-weighted-scoring,
+allen-2023-transformed-kernel-scores}.
+El segundo es un resultado negativo duro: las propiedades de cola no son elicitables
+\cite{brehmer-strokorb-2019-tail-properties}.
+Una pérdida asimétrica puede mejorar el desempeño en la región alta del rango; no puede prometer
+que el modelo aprenda la cola.
 
 \section{Objetivos}
 
