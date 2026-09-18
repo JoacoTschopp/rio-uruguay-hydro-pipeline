@@ -1,0 +1,25 @@
+slug: tyralis-2025-deep-huber-quantile-networks
+title: >-
+  Deep Huber quantile regression networks
+authors:
+  - "Tyralis, Hristos"
+  - "Papacharalampous, Georgia"
+  - "Dogulu, Nilay"
+  - "Chun, Kwok P."
+year: 2025
+venue: "Neural Networks"
+volume: "187"
+number: null
+pages: "107364"
+doi: "10.1016/j.neunet.2025.107364"
+url: "https://arxiv.org/abs/2306.10306"
+bibtype: article
+tipo: paper
+tags: [huber, expectil, cuantil, redes-neuronales, implementacion]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Implementacion en aprendizaje profundo de la funcion de Huber-cuantil, que anida como casos
+  borde la red cuantilica y la expectilica. Es la plantilla arquitectonica mas directa para el
+  aporte de la tesis: una sola red y el nivel de asimetria como parametro.

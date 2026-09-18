@@ -1,0 +1,23 @@
+slug: pool-2018-nonparametric-kge
+title: >-
+  Evaluating model performance: towards a non-parametric variant of the Kling-Gupta efficiency
+authors:
+  - "Pool, Sandra"
+  - "Vis, Marc"
+  - "Seibert, Jan"
+year: 2018
+venue: "Hydrological Sciences Journal"
+volume: "63"
+number: "13-14"
+pages: "1941--1953"
+doi: "10.1080/02626667.2018.1552002"
+bibtype: article
+tipo: paper
+tags: [kge, metricas-hidrologicas, no-parametrico]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Propone el KGE no parametrico: correlacion de Spearman en lugar de Pearson y curva de duracion
+  de caudales en lugar del cociente de desvios. Levanta los supuestos de linealidad y
+  normalidad, que el caudal del Uruguay no cumple.

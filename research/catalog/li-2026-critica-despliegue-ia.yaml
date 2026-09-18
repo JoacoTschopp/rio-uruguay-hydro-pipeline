@@ -1,0 +1,30 @@
+slug: li-2026-critica-despliegue-ia
+title: >-
+  When are AI models ready for deployment? Reassessing Google's global AI flood forecasting
+  system through the lens of responsible modelling
+authors:
+  - "Li, Kailong"
+  - "Razavi, Saman"
+  - "Maier, Holger R."
+  - "Hrachowitz, Markus"
+  - "Nabavi, Ehsan"
+  - "Harvey, Natasha"
+  - "Akhtar, Khaled"
+  - "Unduche, Fisaha"
+year: 2026
+venue: "Journal of Hydrology X"
+volume: "30"
+number: null
+pages: "100215"
+doi: "10.1016/j.hydroa.2026.100215"
+bibtype: article
+tipo: paper
+tags: [critica, evaluacion, riesgos, resultado-negativo]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El contrapeso critico al sistema de Google: sostiene que las decisiones subjetivas de
+  evaluacion (umbrales, definicion de extremo, ventanas de evento, eleccion del benchmark)
+  inflaron las metricas reportadas. No cuestiona el modelo sino el protocolo. Es la guia de que
+  decisiones metodologicas hay que declarar y defender para que un resultado sea creible.

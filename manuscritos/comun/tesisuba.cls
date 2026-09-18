@@ -48,6 +48,11 @@
 % Sin \hypersetup: el PDF validado usa los valores por defecto de hyperref (recuadros en los
 % enlaces, que no se imprimen). Si se prefieren enlaces sin recuadro: \hypersetup{hidelinks}.
 
+% Las URL largas de la bibliografia (repositorios institucionales, DOI con guiones) no tienen
+% puntos de corte y se salen del margen derecho. Se habilita el corte en la puntuacion.
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\=\do\&\do\?\do\#\do\:}
+\Urlmuskip=0mu plus 1mu\relax
+
 \graphicspath{{./figuras/}{../comun/img/}}
 
 % ---------------------------------------------------------------------------

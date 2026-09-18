@@ -142,17 +142,28 @@ Aparte del documento, la presentación pide dos notas (modelos en `info-instituc
 
 **Cierre:** versión para el director y, después, para la entrega.
 
-## 5. Bibliografía que falta (candidatos, **a buscar y verificar**)
+## 5. Bibliografía
 
-Salen de lo que la metodología ya usa y todavía no está en `research/catalog/`. No se cargan sin verificarlos contra la fuente.
+El catálogo pasó de 15 a 71 entradas el 2026-09-18, con dos relevamientos pedidos por el autor: **modelos documentados y probados en la industria** y **funciones de ganancia y pérdida documentadas**. De las 71, hay **69 con el DOI resuelto y los metadatos confirmados campo por campo contra Crossref**; las 2 restantes son literatura gris sin DOI y están marcadas `verificado: false`, que es lo que dispara el aviso de `exportar_bib.py`.
 
-- **LSTM en hidrología:** Hochreiter y Schmidhuber (1997); Kratzert et al. (2018). Están en la biblioteca de la UI, no en la raíz.
+### 5.1 Lo que el relevamiento dejó en claro
+
+- **No hay trabajo publicado de pronóstico de caudal del Río Uruguay con aprendizaje automático a 1–10 días.** Lo más cercano es `mattiuzi-2021-m5-uruguai`, que predice **nivel** a 3 días. El hueco existe y está delimitado.
+- El piso a superar es medible: `fan-2017-uruguai-operacional` reporta 2–3 días útiles de anticipación con MGB-IPH en el alto Uruguay.
+- **Ya hay un sistema de aprendizaje automático operando sobre la cuenca:** el de `nearing-2024-global-extreme-floods`, que además **no usa una pérdida simétrica** sino la verosimilitud de una laplaciana asimétrica. Es el antecedente más incómodo y más importante: la idea de asimetría ya está en producción.
+- El antecedente más cercano al aporte es `dahal-2026-ensemble-diverse-loss-functions`, que ya entrena con pérdidas expectílicas, aunque con τ fijo y sin modular por régimen.
+- Hay un resultado teórico que **acota lo que se puede prometer**: `brehmer-strokorb-2019-tail-properties` prueba que las propiedades de cola no son elicitables.
+- Y una advertencia metodológica directa contra el diseño: `kratzert-2024-nunca-una-sola-cuenca`.
+
+### 5.2 Lo que todavía falta (**a buscar y verificar**)
+
+- **LSTM, origen:** Hochreiter y Schmidhuber (1997).
 - **Comparación de pronósticos:** Diebold y Mariano (1995); Harvey, Leybourne y Newbold (1997), por la corrección HLN que usa B11.03.
 - **Validación en series temporales:** Bergmeir y Benítez (2012), o equivalente.
 - **Pronóstico numérico:** TIGGE, Bougeault et al. (2010); GEFS Reforecast v12, Hamill et al. (2022).
 - **Productos observacionales de CPTEC:** MERGE, Rozante et al. (2010), y SAMeT.
-- **Hidrología de la cuenca del Río Uruguay** y operación de embalses en cascada. Además de `talento-2013-salto-grande`, el autor y el codirector pueden sumar referencias [AUTOR].
-- **Búsqueda sistemática** sobre pérdidas asimétricas o expectiles en pronóstico hidrológico, para sostener, o no, el carácter novedoso de G-RAL.
+- **Operación de embalses en cascada** en la cuenca. El autor y el codirector pueden sumar referencias [AUTOR].
+- Confirmar contra la fuente las dos entradas de literatura gris brasileña (`mattiuzi-2021`, `mattiuzi-2023`).
 
 ## 6. Dependencias con otros frentes y hallazgos
 

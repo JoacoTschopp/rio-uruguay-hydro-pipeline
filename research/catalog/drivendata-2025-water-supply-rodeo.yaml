@@ -1,0 +1,25 @@
+slug: drivendata-2025-water-supply-rodeo
+title: >-
+  Meet the winners of the Forecast and Final Prize Stages of the Water Supply Forecast Rodeo
+authors:
+  - "Moshontz, Hannah"
+  - "Qi, Jay"
+year: 2025
+venue: "DrivenData Labs, Water Supply Forecast Rodeo (U.S. Bureau of Reclamation / NASA Tournament Lab)"
+volume: null
+number: null
+pages: null
+doi: null
+url: "https://drivendata.co/blog/water-supply-forecast-and-final-winners"
+bibtype: misc
+tipo: web
+tags: [hidrologia, competencia, gbdt, lightgbm, cuantil, operativo, literatura-gris]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # URL confirmada el 2026-09-18
+rol: >-
+  Evidencia de que el resultado de la M5 se traslada a hidrologia con evaluacion externa y ciego
+  temporal: en una competencia del Bureau of Reclamation sobre volumen estacional en 26 sitios,
+  cuatro de los cinco equipos premiados usaron potenciacion de gradiente, y el segundo uso
+  perdida cuantilica. Es el precedente concreto si esta tesis produce pronosticos por cuantiles.
+  Fuente no academica.

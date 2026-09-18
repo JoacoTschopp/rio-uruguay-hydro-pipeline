@@ -1,0 +1,22 @@
+slug: elmachtoub-grigas-2022-smart-predict-optimize
+title: >-
+  Smart "Predict, then Optimize"
+authors:
+  - "Elmachtoub, Adam N."
+  - "Grigas, Paul"
+year: 2022
+venue: "Management Science"
+volume: "68"
+number: "1"
+pages: "9--26"
+doi: "10.1287/mnsc.2020.3922"
+bibtype: article
+tipo: paper
+tags: [decision-focused-learning, valor-economico, teoria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Marco canonico del aprendizaje orientado a la decision: entrenar minimizando el costo de la
+  decision aguas abajo en lugar del error de prediccion. Es la respuesta de la literatura a la
+  pregunta que motiva la tesis, y el contrafactico que hay que discutir.

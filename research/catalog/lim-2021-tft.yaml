@@ -1,0 +1,25 @@
+slug: lim-2021-tft
+title: >-
+  Temporal Fusion Transformers for interpretable multi-horizon time series forecasting
+authors:
+  - "Lim, Bryan"
+  - "Arık, Sercan Ö."
+  - "Loeff, Nicolas"
+  - "Pfister, Tomas"
+year: 2021
+venue: "International Journal of Forecasting"
+volume: "37"
+number: "4"
+pages: "1748--1764"
+doi: "10.1016/j.ijforecast.2021.03.012"
+bibtype: article
+tipo: paper
+tags: [transformer, tft, multi-horizonte, covariables-futuras, interpretabilidad]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La unica arquitectura de esta lista disenada nativamente para el caso de esta tesis: multi-
+  horizonte con covariables conocidas a futuro, que es exactamente el pronostico de lluvia. Sus
+  redes de seleccion de variables dan importancia por horizonte, util para argumentar que
+  forzantes pesan a 1 dia y cuales a 10.

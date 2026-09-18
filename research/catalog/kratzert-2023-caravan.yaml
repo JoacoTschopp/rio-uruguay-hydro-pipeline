@@ -1,0 +1,33 @@
+slug: kratzert-2023-caravan
+title: >-
+  Caravan - A global community dataset for large-sample hydrology
+authors:
+  - "Kratzert, Frederik"
+  - "Nearing, Grey"
+  - "Addor, Nans"
+  - "Erickson, Tyler"
+  - "Gauch, Martin"
+  - "Gilon, Oren"
+  - "Gudmundsson, Lukas"
+  - "Hassidim, Avinatan"
+  - "Klotz, Daniel"
+  - "Nevo, Sella"
+  - "Shalev, Guy"
+  - "Matias, Yossi"
+year: 2023
+venue: "Scientific Data"
+volume: "10"
+number: "1"
+pages: "61"
+doi: "10.1038/s41597-023-01975-w"
+bibtype: article
+tipo: dataset
+tags: [caravan, dataset, large-sample, estandarizacion, benchmark]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Estandariza siete conjuntos tipo CAMELS con el mismo procedimiento y publica el software para
+  extenderlo. Da el protocolo exacto para construir una extension con las cuencas argentinas y
+  uruguayas del Uruguay, que hoy no estan cubiertas, y define el formato que hace comparables
+  los resultados con la literatura internacional.

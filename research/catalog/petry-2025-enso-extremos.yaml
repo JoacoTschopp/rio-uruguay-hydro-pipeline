@@ -1,0 +1,25 @@
+slug: petry-2025-enso-extremos
+title: >-
+  Observed streamflow data shows El Nino-Southern Oscillation increases likelihood of extreme
+  events in South America
+authors:
+  - "Petry, Ingrid"
+  - "Fan, Fernando M."
+  - "Wood, Andrew W."
+year: 2025
+venue: "Communications Earth & Environment"
+volume: "6"
+number: "1"
+pages: "699"
+doi: "10.1038/s43247-025-02714-2"
+bibtype: article
+tipo: paper
+tags: [enso, extremos, sudamerica, caudales-observados]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Cuantifica sobre caudales observados cuanto aumenta El Nino la probabilidad de eventos
+  extremos en Sudamerica. Justifica incluir indices de El Nino como covariables o como variable
+  de estratificacion, y obliga a pensar si la particion de entrenamiento y prueba debe balancear
+  fases en lugar de cortar por fecha. El Uruguay es de los rios mas sensibles a esa senal.

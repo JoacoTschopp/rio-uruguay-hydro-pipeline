@@ -1,0 +1,21 @@
+slug: taggart-2022-generalized-huber-loss
+title: >-
+  Point forecasting and forecast evaluation with generalized Huber loss
+authors:
+  - "Taggart, Robert J."
+year: 2022
+venue: "Electronic Journal of Statistics"
+volume: "16"
+number: "1"
+pages: "201--231"
+doi: "10.1214/21-EJS1957"
+bibtype: article
+tipo: paper
+tags: [huber, elicitabilidad, perdida-asimetrica, teoria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Demuestra que las perdidas de Huber asimetricas son elicitables: el funcional de Huber es un
+  intermediario entre el cuantil y el expectil del mismo nivel. Permite robustecer la
+  expectilica frente a valores atipicos de caudal sin perder consistencia.

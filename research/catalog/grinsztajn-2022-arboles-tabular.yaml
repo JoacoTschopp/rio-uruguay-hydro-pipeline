@@ -1,0 +1,24 @@
+slug: grinsztajn-2022-arboles-tabular
+title: >-
+  Why do tree-based models still outperform deep learning on typical tabular data?
+authors:
+  - "Grinsztajn, Léo"
+  - "Oyallon, Edouard"
+  - "Varoquaux, Gaël"
+year: 2022
+venue: "Advances in Neural Information Processing Systems 35, Datasets and Benchmarks Track"
+volume: null
+number: null
+pages: "507--520"
+doi: "10.52202/068431-0037"
+bibtype: inproceedings
+tipo: paper
+tags: [gbdt, tabular, benchmark, deep-learning]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Benchmark sobre 45 conjuntos tabulares que muestra que los arboles siguen siendo estado del
+  arte frente a redes profundas, y explica el mecanismo: aprenden mejor funciones objetivo no
+  suaves y toleran variables no informativas. Justifica elegir arboles cuando el conjunto es
+  tabular, de tamano medio y con predictores redundantes, que es el caso.

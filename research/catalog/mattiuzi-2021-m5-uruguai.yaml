@@ -1,0 +1,27 @@
+slug: mattiuzi-2021-m5-uruguai
+title: >-
+  Aplicação do modelo de machine learning M5 Model Tree para previsão de níveis diários na bacia
+  do rio Uruguai
+authors:
+  - "Mattiuzi, Camila Dalla Porta"
+  - "Matos, Artur José Soares"
+  - "Buffon, Franco"
+year: 2021
+venue: "XXIV Simpósio Brasileiro de Recursos Hídricos, ABRHidro"
+volume: null
+number: null
+pages: null
+doi: null
+url: "https://anais.abrhidro.org.br/job.php?Job=13450"
+bibtype: inproceedings
+tipo: paper
+tags: [rio-uruguay, machine-learning, niveles-diarios, literatura-gris]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: false       # literatura gris sin DOI: confirmar autores y ano a mano
+rol: >-
+  El antecedente mas cercano de aprendizaje automatico sobre el propio rio Uruguay: predice
+  niveles medios diarios en Passo Sao Borja a 1, 2 y 3 dias, usando niveles de Irai (la estacion
+  objetivo de esta tesis) y precipitacion satelital. Viene de los autores del sistema de alerta
+  del SGB/CPRM. Su horizonte maximo de 3 dias marca el margen que abre esta tesis. SIN
+  VERIFICAR: literatura gris de congreso, sin DOI.

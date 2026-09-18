@@ -1,0 +1,31 @@
+slug: clark-2021-abuse-performance-metrics
+title: >-
+  The Abuse of Popular Performance Metrics in Hydrologic Modeling
+authors:
+  - "Clark, Martyn P."
+  - "Vogel, Richard M."
+  - "Lamontagne, Jonathan R."
+  - "Mizukami, Naoki"
+  - "Knoben, Wouter J. M."
+  - "Tang, Guoqiang"
+  - "Gharari, Shervan"
+  - "Freer, Jim E."
+  - "Whitfield, Paul H."
+  - "Shook, Kevin R."
+  - "Papalexiou, Simon Michael"
+year: 2021
+venue: "Water Resources Research"
+volume: "57"
+number: "9"
+pages: "e2020WR029001"
+doi: "10.1029/2020WR029001"
+bibtype: article
+tipo: paper
+tags: [nse, kge, metricas-hidrologicas, riesgos, incertidumbre-muestral]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Muestra que NSE y KGE tienen una incertidumbre muestral enorme porque la distribucion de
+  errores cuadraticos tiene colas pesadas: unos pocos dias de crecida dominan la metrica. Es el
+  argumento para no rankear modelos por un unico valor puntual y reportar intervalos.

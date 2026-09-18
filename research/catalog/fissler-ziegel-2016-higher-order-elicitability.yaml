@@ -1,0 +1,23 @@
+slug: fissler-ziegel-2016-higher-order-elicitability
+title: >-
+  Higher order elicitability and Osband's principle
+authors:
+  - "Fissler, Tobias"
+  - "Ziegel, Johanna F."
+year: 2016
+venue: "The Annals of Statistics"
+volume: "44"
+number: "4"
+pages: "1680--1707"
+doi: "10.1214/16-AOS1439"
+bibtype: article
+tipo: paper
+tags: [elicitabilidad, scoring-consistente, teoria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Extiende la elicitabilidad a funcionales multidimensionales y muestra que un funcional no
+  elicitable puede serlo como componente de uno de orden superior. Es el encuadre teorico que
+  necesita una perdida expectilica cuyo tau depende del regimen, que de hecho es un funcional
+  vectorial. Tiene erratum publicado.

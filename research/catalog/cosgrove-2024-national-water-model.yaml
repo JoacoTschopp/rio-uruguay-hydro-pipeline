@@ -1,0 +1,29 @@
+slug: cosgrove-2024-national-water-model
+title: >-
+  NOAA's National Water Model: Advancing operational hydrology through continental-scale
+  modeling
+authors:
+  - "Cosgrove, Brian"
+  - "Gochis, David"
+  - "Flowers, Trey"
+  - "Dugger, Aubrey"
+  - "Ogden, Fred"
+  - "Graziano, Tom"
+  - "Clark, Ed"
+year: 2024
+venue: "JAWRA Journal of the American Water Resources Association"
+volume: "60"
+number: "2"
+pages: "247--272"
+doi: "10.1111/1752-1688.13184"
+bibtype: article
+tipo: paper
+tags: [national-water-model, operacional, wrf-hydro, embalses]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Descripcion oficial del modelo operativo de NOAA sobre WRF-Hydro, con configuraciones de
+  corto, medio (10 dias) y largo plazo. Interesa sobre todo porque documenta como un sistema en
+  produccion trata los embalses y la regulacion antropica, que es el problema aguas arriba de
+  Salto Grande.

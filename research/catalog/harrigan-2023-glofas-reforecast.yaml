@@ -1,0 +1,26 @@
+slug: harrigan-2023-glofas-reforecast
+title: >-
+  Daily ensemble river discharge reforecasts and real-time forecasts from the operational Global
+  Flood Awareness System
+authors:
+  - "Harrigan, Shaun"
+  - "Zsoter, Ervin"
+  - "Cloke, Hannah"
+  - "Salamon, Peter"
+  - "Prudhomme, Christel"
+year: 2023
+venue: "Hydrology and Earth System Sciences"
+volume: "27"
+number: "1"
+pages: "1--19"
+doi: "10.5194/hess-27-1-2023"
+bibtype: article
+tipo: paper
+tags: [glofas, skill, verificacion, benchmark, persistencia, climatologia]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Aporta el skill del sistema operativo global y, sobre todo, el protocolo de verificacion
+  contra persistencia y climatologia. Conviene reportar el skill de esta tesis con la misma
+  estructura de lineas de base para que sea comparable con la literatura operativa.

@@ -1,0 +1,26 @@
+slug: fan-2015-tigge-embalses
+title: >-
+  Verification of inflow into hydropower reservoirs using ensemble forecasts of the TIGGE
+  database for large scale basins in Brazil
+authors:
+  - "Fan, Fernando Mainardi"
+  - "Schwanenberg, Dirk"
+  - "Collischonn, Walter"
+  - "Weerts, Albrecht"
+year: 2015
+venue: "Journal of Hydrology: Regional Studies"
+volume: "4"
+number: null
+pages: "196--227"
+doi: "10.1016/j.ejrh.2015.05.012"
+bibtype: article
+tipo: paper
+tags: [tigge, ensemble, gefs, verificacion, embalses, forzantes]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Como verificar pronosticos de afluencia a embalses en cuencas brasilenas grandes usando
+  forzantes de ensemble de TIGGE, que incluye GEFS y ECMWF. Es el puente metodologico directo
+  con el pipeline de esta tesis: aporta el vocabulario de verificacion que conviene reusar para
+  que los resultados sean comparables con la literatura regional.

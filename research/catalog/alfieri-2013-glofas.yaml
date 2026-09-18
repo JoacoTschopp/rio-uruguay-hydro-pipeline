@@ -1,0 +1,27 @@
+slug: alfieri-2013-glofas
+title: >-
+  GloFAS - global ensemble streamflow forecasting and flood early warning
+authors:
+  - "Alfieri, L."
+  - "Burek, P."
+  - "Dutra, E."
+  - "Krzeminski, B."
+  - "Muraro, D."
+  - "Thielen, J."
+  - "Pappenberger, F."
+year: 2013
+venue: "Hydrology and Earth System Sciences"
+volume: "17"
+number: "3"
+pages: "1161--1175"
+doi: "10.5194/hess-17-1161-2013"
+bibtype: article
+tipo: paper
+tags: [glofas, operacional, ensemble, conceptual-distribuido]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Paper fundacional de GloFAS: acopla los ensembles del ECMWF con el modelo distribuido LISFLOOD
+  para alerta de crecidas global hasta 15 dias. Es el sistema contra el que se compara todo, y
+  cubre la cuenca del Uruguay: es un benchmark externo obtenible.

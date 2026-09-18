@@ -1,0 +1,23 @@
+slug: sun-2026-tsfm-zeroshot-caudal
+title: >-
+  Zero-shot forecasting of streamflow using time series foundation models: are we there yet?
+authors:
+  - "Sun, Alexander Y."
+  - "Sun, Albert A."
+year: 2026
+venue: "Machine Learning: Earth"
+volume: "2"
+number: "1"
+pages: "010501"
+doi: "10.1088/3049-4753/ae4982"
+bibtype: article
+tipo: paper
+tags: [modelo-fundacional, zero-shot, caudal, lstm, resultado-negativo]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Evaluacion directa de modelos fundacionales sin entrenamiento contra LSTM en caudal: en
+  univariado el mejor queda apenas por debajo del LSTM, y en multivariado quedan muy atras.
+  Conclusion aplicable: no reemplazan a un modelo entrenado con forzantes meteorologicas, pero
+  sirven como linea de base barata y honesta.

@@ -1,0 +1,29 @@
+slug: nevo-2022-pronostico-operativo-ml
+title: >-
+  Flood forecasting with machine learning models in an operational framework
+authors:
+  - "Nevo, Sella"
+  - "Morin, Efrat"
+  - "Gerzi Rosenthal, Adi"
+  - "Metzger, Asher"
+  - "Barshai, Chen"
+  - "Weitzner, Dana"
+  - "Kratzert, Frederik"
+  - "Nearing, Grey"
+year: 2022
+venue: "Hydrology and Earth System Sciences"
+volume: "26"
+number: "15"
+pages: "4013--4032"
+doi: "10.5194/hess-26-4013-2022"
+bibtype: article
+tipo: paper
+tags: [operacional, lstm, alerta-temprana, arquitectura-de-sistema]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Como se pone realmente en produccion un modelo de aprendizaje automatico hidrologico: la
+  cadena completa del sistema de Google en India y Bangladesh, con ingesta, umbrales de alerta,
+  latencia y degradacion por datos faltantes. Es el molde de lo que hay que resolver mas alla
+  del modelo si el pronostico va a operarse.

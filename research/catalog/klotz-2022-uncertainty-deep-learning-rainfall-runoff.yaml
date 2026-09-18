@@ -1,0 +1,29 @@
+slug: klotz-2022-uncertainty-deep-learning-rainfall-runoff
+title: >-
+  Uncertainty estimation with deep learning for rainfall-runoff modeling
+authors:
+  - "Klotz, Daniel"
+  - "Kratzert, Frederik"
+  - "Gauch, Martin"
+  - "Keefe Sampson, Alden"
+  - "Brandstetter, Johannes"
+  - "Klambauer, Günter"
+  - "Hochreiter, Sepp"
+  - "Nearing, Grey"
+year: 2022
+venue: "Hydrology and Earth System Sciences"
+volume: "26"
+number: "6"
+pages: "1673--1693"
+doi: "10.5194/hess-26-1673-2022"
+bibtype: article
+tipo: paper
+tags: [probabilistico, cmal, mixture-density, deep-learning, hidrologia]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Compara cabezales distribucionales en hidrologia entrenados por verosimilitud. El CMAL, mezcla
+  contable de laplacianas asimetricas, es la alternativa probabilistica directa a la perdida
+  expectilica: tambien introduce asimetria, pero aprendida y a nivel de densidad. Es el
+  benchmark obligado.

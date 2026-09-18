@@ -1,0 +1,24 @@
+slug: tyralis-2026-variable-transformations-loss
+title: >-
+  Variable transformations in consistent loss functions
+authors:
+  - "Tyralis, Hristos"
+  - "Papacharalampous, Georgia"
+year: 2026
+venue: "Knowledge-Based Systems"
+volume: "336"
+number: null
+pages: "115202"
+doi: "10.1016/j.knosys.2025.115202"
+url: "https://arxiv.org/abs/2502.16542"
+bibtype: article
+tipo: paper
+tags: [elicitabilidad, transformaciones, log, expectil, teoria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Formaliza que pasa con la consistencia cuando se transforma la variable dentro de la perdida,
+  y define los funcionales de expectativa y expectil g-transformados. Es decir: una expectilica
+  sobre log(Q) no estima el expectil de Q sino otro funcional, y este trabajo da la
+  caracterizacion exacta. Habilita formalmente lo que hace la tesis.

@@ -1,0 +1,33 @@
+slug: taccari-2026-aifl
+title: >-
+  AIFL: A global daily streamflow forecasting model using a deterministic LSTM pre-trained on
+  ERA5-Land and fine-tuned on IFS
+authors:
+  - "Taccari, Maria Luisa"
+  - "Tazi, Kenza"
+  - "Morrison, Oisín M."
+  - "Grafberger, Andreas"
+  - "Colonese, Juan"
+  - "Carton de Wiart, Corentin"
+  - "Prudhomme, Christel"
+  - "Mazzetti, Cinzia"
+  - "Chantry, Matthew"
+  - "Pappenberger, Florian"
+year: 2026
+venue: "Journal of Hydrology"
+volume: "678"
+number: null
+pages: "136064"
+doi: "10.1016/j.jhydrol.2026.136064"
+bibtype: article
+tipo: paper
+tags: [ecmwf, lstm, transferencia, reanalisis-a-pronostico, caravan, operacional]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Ataca el problema exacto de esta tesis: entrenar con forzantes de reanalisis y operar con
+  forzantes pronosticadas degrada el desempeno, y este trabajo del ECMWF publica la receta para
+  cerrar esa brecha, con preentrenamiento sobre Caravan y ajuste fino sobre pronosticos
+  operativos. Ojo: Crossref registro el titulo con una errata del deposito, "using deterministic
+  an LSTM"; aca va la forma correcta.

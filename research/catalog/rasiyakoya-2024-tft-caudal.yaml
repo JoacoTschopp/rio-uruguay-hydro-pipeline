@@ -1,0 +1,23 @@
+slug: rasiyakoya-2024-tft-caudal
+title: >-
+  Temporal Fusion Transformers for streamflow Prediction: Value of combining attention with
+  recurrence
+authors:
+  - "Rasiya Koya, Sinan"
+  - "Roy, Tirthankar"
+year: 2024
+venue: "Journal of Hydrology"
+volume: "637"
+number: null
+pages: "131301"
+doi: "10.1016/j.jhydrol.2024.131301"
+bibtype: article
+tipo: paper
+tags: [tft, transformer, lstm, caudal, resultado-positivo]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Contrapeso a los resultados negativos: aplica TFT a prediccion de caudal y reporta que supera
+  tanto al LSTM como al transformador puro. Refuerza la lectura de que en hidrologia lo que
+  funciona no es la atencion sola sino la atencion combinada con recurrencia.

@@ -1,0 +1,21 @@
+slug: richardson-2000-relative-economic-value
+title: >-
+  Skill and relative economic value of the ECMWF ensemble prediction system
+authors:
+  - "Richardson, D. S."
+year: 2000
+venue: "Quarterly Journal of the Royal Meteorological Society"
+volume: "126"
+number: "563"
+pages: "649--667"
+doi: "10.1002/qj.49712656313"
+bibtype: article
+tipo: paper
+tags: [valor-economico, cost-loss, relative-economic-value]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Referencia canonica del valor economico relativo y de las curvas de valor en funcion del
+  cociente costo/perdida del usuario. Es el puente formal entre la razon de costos del operador
+  de la represa y el nivel de asimetria optimo: la justificacion externa del tau.

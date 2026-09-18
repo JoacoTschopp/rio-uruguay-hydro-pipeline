@@ -1,0 +1,24 @@
+slug: mattiuzi-2023-sah-uruguai
+title: >-
+  Relatório de operação do Sistema de Alerta Hidrológico da Bacia do Rio Uruguai 2023
+authors:
+  - "Mattiuzi, Camila Dalla Porta"
+  - "Matos, Artur José Soares"
+year: 2023
+venue: "Serviço Geológico do Brasil (CPRM), Departamento de Hidrologia"
+volume: null
+number: null
+pages: null
+doi: null
+url: "https://rigeo.sgb.gov.br/server/api/core/bitstreams/54adf121-0c5a-4453-ab98-db1f062c590e/content"
+bibtype: techreport
+tipo: informe
+tags: [operacional, rio-uruguay, alerta, literatura-gris]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: false       # literatura gris sin DOI: confirmar autores y ano a mano
+rol: >-
+  Documenta el sistema operativo real contra el que se compara esta tesis: el sistema de alerta
+  hidrologico de la cuenca del rio Uruguay, en operacion desde 2018, con boletines de prevision
+  de niveles tres veces al dia. Confirma que el producto operativo vigente es de nivel y de muy
+  corto plazo, no de caudal a 10 dias. SIN VERIFICAR.

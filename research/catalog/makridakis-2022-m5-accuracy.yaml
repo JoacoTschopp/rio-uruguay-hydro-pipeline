@@ -1,0 +1,24 @@
+slug: makridakis-2022-m5-accuracy
+title: >-
+  M5 accuracy competition: Results, findings, and conclusions
+authors:
+  - "Makridakis, Spyros"
+  - "Spiliotis, Evangelos"
+  - "Assimakopoulos, Vassilios"
+year: 2022
+venue: "International Journal of Forecasting"
+volume: "38"
+number: "4"
+pages: "1346--1364"
+doi: "10.1016/j.ijforecast.2021.11.013"
+bibtype: article
+tipo: paper
+tags: [competencia, gbdt, lightgbm, series-temporales]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Primera competencia M donde todos los metodos de punta fueron aprendizaje automatico y
+  superaron a los benchmarks estadisticos, con LightGBM dominante. Muestra que la ganancia vino
+  del diseno de variables y de la validacion temporal, no del algoritmo: la misma prioridad que
+  conviene adoptar con lluvia observada y pronosticada.
