@@ -106,14 +106,46 @@ def flatten_numeric(obj: Any, prefix: str = "", out: dict[str, float] | None = N
     return out
 
 
-def log_train_cell(tracking: MlflowDatabricksTracking, row: dict, data: dict, rel_json: str) -> None:
-    celda_id = row["celda"]
+def resolve_result_block(row: dict, data: dict) -> tuple[str, dict, str]:
+    """Devuelve (model_key, model_block, fuente) validado contra `objetivo` del ledger.
+
+    Bug real encontrado en B0.05 (reportado por un peer, verificado independientemente
+    contra las 21 celdas train): el JSON de esa celda tiene `models: {"mse": ...}` -- un
+    MLP-mse que quedo como subproducto del comando, NO el resultado de la celda. El
+    resultado real vive en `baselines["estacional doy ±7d"]`. Confiar ciegamente en
+    `next(iter(data["models"]))` logueo el subproducto (gral 0,619) en vez del valor
+    correcto (gral 0,678, el que ya esta en el ledger). Esta funcion lo evita: si el
+    primer `models.*` no coincide con `objetivo`, busca en `baselines` la entrada que sí
+    coincide antes de logear nada. Si ninguna coincide, falla explicito -- nunca loguea
+    un numero sin verificar contra la fuente de verdad de esta sesion (el ledger)."""
     model_key = next(iter(data["models"].keys()))
     model_block = data["models"][model_key]
+    objetivo = row.get("objetivo")
+    mean_gral = model_block.get("val", {}).get("mean", {}).get("gral")
+
+    if objetivo is None or (mean_gral is not None and abs(mean_gral - objetivo) < 1e-6):
+        return model_key, model_block, "models"
+
+    for name, baseline_block in (data.get("baselines") or {}).items():
+        b_gral = baseline_block.get("val", {}).get("mean", {}).get("gral")
+        if b_gral is not None and abs(b_gral - objetivo) < 1e-6:
+            return name, baseline_block, f"baselines:{name}"
+
+    raise ValueError(
+        f"{row['celda']}: models['{model_key}'].val.mean.gral={mean_gral} no coincide con "
+        f"objetivo del ledger={objetivo}, y ninguna entrada de 'baselines' coincide tampoco "
+        f"-- no se loguea nada sin verificar."
+    )
+
+
+def log_train_cell(tracking: MlflowDatabricksTracking, row: dict, data: dict, rel_json: str) -> None:
+    celda_id = row["celda"]
+    model_key, model_block, fuente = resolve_result_block(row, data)
     run_config = data.get("run_config", {})
     snapshot = data.get("snapshot", {})
 
-    run_name = f"{celda_id}__{model_key}__{CAMPANA}"
+    run_slug = "".join(c if c.isalnum() else "_" for c in model_key)
+    run_name = f"{celda_id}__{run_slug}__{CAMPANA}"
     with tracking.start_run(EXPERIMENT_PATH, run_name, nested=True):
         tags = {
             "origen": ORIGEN_TAG,
@@ -123,6 +155,7 @@ def log_train_cell(tracking: MlflowDatabricksTracking, row: dict, data: dict, re
             "nombre": row.get("nombre", ""),
             "veredicto": row.get("veredicto", ""),
             "campana": CAMPANA,
+            "fuente_json": fuente,
             "model": model_block.get("model", model_key),
             "loss": model_block.get("loss", ""),
             "target_transform": model_block.get("target_transform", ""),
