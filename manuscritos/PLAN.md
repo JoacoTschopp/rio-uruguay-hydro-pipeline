@@ -80,22 +80,35 @@ Sirve para planificar. **No se cita** hasta que cierre la campaña.
 - un documento de prueba resolvió 5 citas APA, con acentos en autores y títulos, sin citas indefinidas;
 - la portada con etapa, director y codirector entra en una hoja.
 
-### F1: Insumos y encuadre. **Bloqueada: la destraba el autor**
+### F1: Insumos y encuadre. **Parcialmente destrabada el 2026-09-18**
 
-- Reglamento o guía de presentación del plan de tesis y de la tesis (ver §7).
-- Datos de portada, fechas y equipo de dirección.
-- Pregunta de investigación, hipótesis, objetivos y alcance. Yo propongo borradores a partir de §2.2 y el autor decide.
+Resuelto por los documentos que dejó el autor en `info-institucional/`:
 
-**Cierre:** estructura del plan ajustada al reglamento, y pregunta, hipótesis y objetivos aprobados.
+- **Estructura y forma:** los instructivos y, sobre todo, el plan de tesis aprobado que está en `info-institucional/plan-tesis/Ejemplos/`. De ahí sale la estructura de F2.
+- **Director:** Gustavo Denicolay Pacheco, el mismo que dirigió el plan de ejemplo.
+- **Destinatario de la nota de elevación:** el director académico de la maestría.
+
+Sigue pendiente del autor:
+
+- Grado académico, filiación y correo del director, y los datos completos del codirector.
+- Fechas (elevación del plan, objetivo de la tesis, ritmo de revisión).
+- Pregunta de investigación e hipótesis: yo propongo borradores a partir de §2.2 y el autor decide.
+
+**Cierre:** pregunta, hipótesis y objetivos aprobados por el autor.
 
 ### F2: Plan de tesis
 
-1. **Introducción:** problema y motivación operativa (la cascada de represas, Salto Grande), pregunta, hipótesis y objetivos.
-2. **Antecedentes:** estado del arte. Incluye la expansión de la bibliografía (§5).
-3. **Área de estudio y datos:** mapa desde `SIG/`, fuentes y período.
-4. **Metodología:** protocolo resumido, métricas, baselines y esquema de validación.
-5. **Plan de trabajo:** cronograma con las fechas del autor, factibilidad y resultados esperados.
-6. **Resumen y palabras clave.**
+Estructura calcada del plan aprobado de `info-institucional/plan-tesis/Ejemplos/`, que son 4 capítulos en ~10 páginas. **El plan es corto: no es una versión reducida de la tesis.**
+
+0. **Dirección de la tesis:** bloque administrativo con grado académico, filiación y correo del director y del codirector. No está en el ejemplo, pero lo pide el punto 2.b del instructivo.
+1. **Introducción:** 1.1 descripción del problema y motivación, 1.2 trabajos previos (el estado del arte, §5), 1.3 objetivos.
+2. **Materiales y Métodos:** 2.1 base técnica (pérdidas asimétricas), 2.2 métodos, que es donde el ejemplo enuncia su hipótesis, y 2.3 datos.
+3. **Experimentos preliminares y resultados:** la campaña `d303-a6262712`, con una tabla chica y los experimentos siguientes. El ejemplo hace exactamente eso.
+4. **Tiempo estimado de trabajo:** una tabla de etapa / tarea / duración. Sin fechas de calendario.
+
+El ejemplo **no** lleva resumen ni palabras clave, así que el plan tampoco.
+
+Aparte del documento, la presentación pide dos notas (modelos en `info-institucional/plan-tesis/`, ejemplos firmados en `Ejemplos/`): la del estudiante elevando el plan, y la de aval del director y del codirector. Se suben en PDF al formulario de la secretaría, junto con los CV.
 
 **Cierre:** compila sin avisos, todas las citas verificadas, revisión del autor y versión para el director.
 
@@ -192,16 +205,18 @@ Los tres salen del inventario automático de ramas. No los verifiqué contra el 
 
 ### Para arrancar (F1)
 
-1. **Reglamento o guía de la carrera** para el plan de tesis y la tesis:
-   - secciones obligatorias y extensión máxima;
-   - formato (tipografía, márgenes, interlineado, datos de portada);
-   - si hace falta *abstract* en inglés;
-   - estilo de citas (¿APA confirmado?);
-   - modo de entrega.
-2. **Datos de portada:**
-   - título provisorio;
+1. ~~**Reglamento o guía de la carrera**~~ — **resuelto el 2026-09-18** con lo que el autor dejó en `info-institucional/`. Lo que se aprendió de ahí:
+   - **Secciones y extensión:** no hay reglamento que las fije. La referencia es el plan aprobado de `Ejemplos/`: 4 capítulos, ~10 páginas de cuerpo.
+   - **Formato:** tampoco está reglamentado. Se conserva el del TFI validado del autor. Hay modelo de carátula (`2-Caratula-PLAN de tesis.docx`), que la portada ahora replica.
+   - **Abstract en inglés:** no se pide en el plan.
+   - **Estilo de citas:** no está reglamentado. El plan de ejemplo usa citas numéricas; el TFI validado del autor usa APA. **Se mantiene APA**, que es lo que el autor ya presentó y le aceptaron. Conviene confirmarlo con el director igual.
+   - **Modo de entrega:** formulario online de la secretaría de la MDM, todo en PDF: nota del estudiante, plan, nota de aval del director y del codirector, y los CV de ambos. El instructivo avisa que un error de forma retrasa el trámite en el Consejo Directivo.
+   - **Título:** "escrito sin mayúsculas" salvo nombres propios, y el instructivo remarca que aunque sea provisorio arrastra a las instancias siguientes.
+2. **Datos de portada** (queda pendiente lo que no salió de los documentos):
+   - título provisorio: hoy dice "Pronóstico de caudal del río Uruguay con funciones de pérdida asimétricas", **a confirmar**;
    - nombre exacto (el TFI dice "Sebastian", sin tilde);
-   - director y codirector con título y afiliación;
+   - ~~director~~: **Gustavo Denicolay Pacheco**. Falta su grado académico, filiación institucional y correo, que el instructivo pide dentro del plan;
+   - codirector: nombre, grado académico, filiación y correo;
    - lugar de trabajo, si corresponde.
 3. **Fechas:** entrega del plan de tesis, fecha objetivo de la tesis y ritmo de revisión con el director.
 4. **Encuadre:**
@@ -211,7 +226,7 @@ Los tres salen del inventario automático de ramas. No los verifiqué contra el 
 
 ### Para avanzar
 
-5. **PDFs de los papers** en `research/documents/` (fuera de git), para escribir notas con lectura real. También la bibliografía que sugieran el director y el codirector, y alguna tesis aprobada de la carrera como ejemplo.
+5. **PDFs de los papers** en `research/documents/` (fuera de git), para escribir notas con lectura real. También la bibliografía que sugieran el director y el codirector. El ejemplo de **plan** aprobado ya llegó; falta, si se consigue, una **tesis** aprobada de la carrera, que es la referencia para F3–F6.
 6. **Permiso para traer material de fuera del repo:**
    - el TP1 de Tesis II y los TPs de Tesis I (respaldo de Overleaf);
    - mapas exportados del proyecto QGIS.
