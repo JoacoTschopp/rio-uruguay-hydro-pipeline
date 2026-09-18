@@ -1,0 +1,26 @@
+slug: wu-2021-asymmetric-svr-load-forecasting
+title: >-
+  Support vector regression with asymmetric loss for optimal electric load forecasting
+authors:
+  - "Wu, Jinran"
+  - "Wang, You-Gan"
+  - "Tian, Yu-Chu"
+  - "Burrage, Kevin"
+  - "Cao, Taoyun"
+year: 2021
+venue: "Energy"
+volume: "223"
+number: null
+pages: "119969"
+doi: "10.1016/j.energy.2021.119969"
+bibtype: article
+tipo: paper
+tags: [perdida-asimetrica, energia, valor-economico]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Caso de exito en energia de una perdida asimetrica calibrada con el cociente de costos real de
+  sobre y subprediccion, con reduccion sustancial del costo diario de operacion. Es el mejor
+  argumento de que el parametro de asimetria debe derivarse del costo operativo y no elegirse
+  por validacion cruzada sobre un error estadistico.

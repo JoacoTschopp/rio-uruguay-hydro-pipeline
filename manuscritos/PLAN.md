@@ -80,22 +80,35 @@ Sirve para planificar. **No se cita** hasta que cierre la campaña.
 - un documento de prueba resolvió 5 citas APA, con acentos en autores y títulos, sin citas indefinidas;
 - la portada con etapa, director y codirector entra en una hoja.
 
-### F1: Insumos y encuadre. **Bloqueada: la destraba el autor**
+### F1: Insumos y encuadre. **Parcialmente destrabada el 2026-09-18**
 
-- Reglamento o guía de presentación del plan de tesis y de la tesis (ver §7).
-- Datos de portada, fechas y equipo de dirección.
-- Pregunta de investigación, hipótesis, objetivos y alcance. Yo propongo borradores a partir de §2.2 y el autor decide.
+Resuelto por los documentos que dejó el autor en `info-institucional/`:
 
-**Cierre:** estructura del plan ajustada al reglamento, y pregunta, hipótesis y objetivos aprobados.
+- **Estructura y forma:** los instructivos y, sobre todo, el plan de tesis aprobado que está en `info-institucional/plan-tesis/Ejemplos/`. De ahí sale la estructura de F2.
+- **Director:** Gustavo Denicolay Pacheco, el mismo que dirigió el plan de ejemplo.
+- **Destinatario de la nota de elevación:** el director académico de la maestría.
+
+Sigue pendiente del autor:
+
+- Grado académico, filiación y correo del director, y los datos completos del codirector.
+- Fechas (elevación del plan, objetivo de la tesis, ritmo de revisión).
+- Pregunta de investigación e hipótesis: yo propongo borradores a partir de §2.2 y el autor decide.
+
+**Cierre:** pregunta, hipótesis y objetivos aprobados por el autor.
 
 ### F2: Plan de tesis
 
-1. **Introducción:** problema y motivación operativa (la cascada de represas, Salto Grande), pregunta, hipótesis y objetivos.
-2. **Antecedentes:** estado del arte. Incluye la expansión de la bibliografía (§5).
-3. **Área de estudio y datos:** mapa desde `SIG/`, fuentes y período.
-4. **Metodología:** protocolo resumido, métricas, baselines y esquema de validación.
-5. **Plan de trabajo:** cronograma con las fechas del autor, factibilidad y resultados esperados.
-6. **Resumen y palabras clave.**
+Estructura calcada del plan aprobado de `info-institucional/plan-tesis/Ejemplos/`, que son 4 capítulos en ~10 páginas. **El plan es corto: no es una versión reducida de la tesis.**
+
+0. **Dirección de la tesis:** bloque administrativo con grado académico, filiación y correo del director y del codirector. No está en el ejemplo, pero lo pide el punto 2.b del instructivo.
+1. **Introducción:** 1.1 descripción del problema y motivación, 1.2 trabajos previos (el estado del arte, §5), 1.3 objetivos.
+2. **Materiales y Métodos:** 2.1 base técnica (pérdidas asimétricas), 2.2 métodos, que es donde el ejemplo enuncia su hipótesis, y 2.3 datos.
+3. **Experimentos preliminares y resultados:** la campaña `d303-a6262712`, con una tabla chica y los experimentos siguientes. El ejemplo hace exactamente eso.
+4. **Tiempo estimado de trabajo:** una tabla de etapa / tarea / duración. Sin fechas de calendario.
+
+El ejemplo **no** lleva resumen ni palabras clave, así que el plan tampoco.
+
+Aparte del documento, la presentación pide dos notas (modelos en `info-institucional/plan-tesis/`, ejemplos firmados en `Ejemplos/`): la del estudiante elevando el plan, y la de aval del director y del codirector. Se suben en PDF al formulario de la secretaría, junto con los CV.
 
 **Cierre:** compila sin avisos, todas las citas verificadas, revisión del autor y versión para el director.
 
@@ -129,17 +142,28 @@ Sirve para planificar. **No se cita** hasta que cierre la campaña.
 
 **Cierre:** versión para el director y, después, para la entrega.
 
-## 5. Bibliografía que falta (candidatos, **a buscar y verificar**)
+## 5. Bibliografía
 
-Salen de lo que la metodología ya usa y todavía no está en `research/catalog/`. No se cargan sin verificarlos contra la fuente.
+El catálogo pasó de 15 a 71 entradas el 2026-09-18, con dos relevamientos pedidos por el autor: **modelos documentados y probados en la industria** y **funciones de ganancia y pérdida documentadas**. De las 71, hay **69 con el DOI resuelto y los metadatos confirmados campo por campo contra Crossref**; las 2 restantes son literatura gris sin DOI y están marcadas `verificado: false`, que es lo que dispara el aviso de `exportar_bib.py`.
 
-- **LSTM en hidrología:** Hochreiter y Schmidhuber (1997); Kratzert et al. (2018). Están en la biblioteca de la UI, no en la raíz.
+### 5.1 Lo que el relevamiento dejó en claro
+
+- **No hay trabajo publicado de pronóstico de caudal del Río Uruguay con aprendizaje automático a 1–10 días.** Lo más cercano es `mattiuzi-2021-m5-uruguai`, que predice **nivel** a 3 días. El hueco existe y está delimitado.
+- El piso a superar es medible: `fan-2017-uruguai-operacional` reporta 2–3 días útiles de anticipación con MGB-IPH en el alto Uruguay.
+- **Ya hay un sistema de aprendizaje automático operando sobre la cuenca:** el de `nearing-2024-global-extreme-floods`, que además **no usa una pérdida simétrica** sino la verosimilitud de una laplaciana asimétrica. Es el antecedente más incómodo y más importante: la idea de asimetría ya está en producción.
+- El antecedente más cercano al aporte es `dahal-2026-ensemble-diverse-loss-functions`, que ya entrena con pérdidas expectílicas, aunque con τ fijo y sin modular por régimen.
+- Hay un resultado teórico que **acota lo que se puede prometer**: `brehmer-strokorb-2019-tail-properties` prueba que las propiedades de cola no son elicitables.
+- Y una advertencia metodológica directa contra el diseño: `kratzert-2024-nunca-una-sola-cuenca`.
+
+### 5.2 Lo que todavía falta (**a buscar y verificar**)
+
+- **LSTM, origen:** Hochreiter y Schmidhuber (1997).
 - **Comparación de pronósticos:** Diebold y Mariano (1995); Harvey, Leybourne y Newbold (1997), por la corrección HLN que usa B11.03.
 - **Validación en series temporales:** Bergmeir y Benítez (2012), o equivalente.
 - **Pronóstico numérico:** TIGGE, Bougeault et al. (2010); GEFS Reforecast v12, Hamill et al. (2022).
 - **Productos observacionales de CPTEC:** MERGE, Rozante et al. (2010), y SAMeT.
-- **Hidrología de la cuenca del Río Uruguay** y operación de embalses en cascada. Además de `talento-2013-salto-grande`, el autor y el codirector pueden sumar referencias [AUTOR].
-- **Búsqueda sistemática** sobre pérdidas asimétricas o expectiles en pronóstico hidrológico, para sostener, o no, el carácter novedoso de G-RAL.
+- **Operación de embalses en cascada** en la cuenca. El autor y el codirector pueden sumar referencias [AUTOR].
+- Confirmar contra la fuente las dos entradas de literatura gris brasileña (`mattiuzi-2021`, `mattiuzi-2023`).
 
 ## 6. Dependencias con otros frentes y hallazgos
 
@@ -192,16 +216,18 @@ Los tres salen del inventario automático de ramas. No los verifiqué contra el 
 
 ### Para arrancar (F1)
 
-1. **Reglamento o guía de la carrera** para el plan de tesis y la tesis:
-   - secciones obligatorias y extensión máxima;
-   - formato (tipografía, márgenes, interlineado, datos de portada);
-   - si hace falta *abstract* en inglés;
-   - estilo de citas (¿APA confirmado?);
-   - modo de entrega.
-2. **Datos de portada:**
-   - título provisorio;
+1. ~~**Reglamento o guía de la carrera**~~ — **resuelto el 2026-09-18** con lo que el autor dejó en `info-institucional/`. Lo que se aprendió de ahí:
+   - **Secciones y extensión:** no hay reglamento que las fije. La referencia es el plan aprobado de `Ejemplos/`: 4 capítulos, ~10 páginas de cuerpo.
+   - **Formato:** tampoco está reglamentado. Se conserva el del TFI validado del autor. Hay modelo de carátula (`2-Caratula-PLAN de tesis.docx`), que la portada ahora replica.
+   - **Abstract en inglés:** no se pide en el plan.
+   - **Estilo de citas:** no está reglamentado. El plan de ejemplo usa citas numéricas; el TFI validado del autor usa APA. **Se mantiene APA**, que es lo que el autor ya presentó y le aceptaron. Conviene confirmarlo con el director igual.
+   - **Modo de entrega:** formulario online de la secretaría de la MDM, todo en PDF: nota del estudiante, plan, nota de aval del director y del codirector, y los CV de ambos. El instructivo avisa que un error de forma retrasa el trámite en el Consejo Directivo.
+   - **Título:** "escrito sin mayúsculas" salvo nombres propios, y el instructivo remarca que aunque sea provisorio arrastra a las instancias siguientes.
+2. **Datos de portada** (queda pendiente lo que no salió de los documentos):
+   - título provisorio: hoy dice "Pronóstico de caudal del río Uruguay con funciones de pérdida asimétricas", **a confirmar**;
    - nombre exacto (el TFI dice "Sebastian", sin tilde);
-   - director y codirector con título y afiliación;
+   - ~~director~~: **Gustavo Denicolay Pacheco**. Falta su grado académico, filiación institucional y correo, que el instructivo pide dentro del plan;
+   - codirector: nombre, grado académico, filiación y correo;
    - lugar de trabajo, si corresponde.
 3. **Fechas:** entrega del plan de tesis, fecha objetivo de la tesis y ritmo de revisión con el director.
 4. **Encuadre:**
@@ -211,7 +237,7 @@ Los tres salen del inventario automático de ramas. No los verifiqué contra el 
 
 ### Para avanzar
 
-5. **PDFs de los papers** en `research/documents/` (fuera de git), para escribir notas con lectura real. También la bibliografía que sugieran el director y el codirector, y alguna tesis aprobada de la carrera como ejemplo.
+5. **PDFs de los papers** en `research/documents/` (fuera de git), para escribir notas con lectura real. También la bibliografía que sugieran el director y el codirector. El ejemplo de **plan** aprobado ya llegó; falta, si se consigue, una **tesis** aprobada de la carrera, que es la referencia para F3–F6.
 6. **Permiso para traer material de fuera del repo:**
    - el TP1 de Tesis II y los TPs de Tesis I (respaldo de Overleaf);
    - mapas exportados del proyecto QGIS.

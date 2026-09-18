@@ -1,0 +1,24 @@
+slug: ryd-2025-fine-tuning-local
+title: >-
+  Fine Flood Forecasts: Incorporating local data into global models through fine-tuning
+authors:
+  - "Ryd, Emil"
+  - "Nearing, Grey"
+year: 2025
+venue: "arXiv"
+volume: null
+number: null
+pages: null
+doi: null
+url: "https://arxiv.org/abs/2504.12559"
+bibtype: misc
+tipo: preprint
+tags: [fine-tuning, transferencia, global-a-local, sin-revision-por-pares]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # URL confirmada el 2026-09-18
+rol: >-
+  Responde de frente a la objecion de kratzert-2024-nunca-una-sola-cuenca: preentrenar sobre un
+  conjunto global y despues ajustar por cuenca mejora el desempeno, y mas todavia en las cuencas
+  que rinden mal en el entrenamiento global. Es la hoja de ruta para combinar preentrenamiento
+  con ajuste local al Uruguay. ATENCION: preprint sin revision por pares.

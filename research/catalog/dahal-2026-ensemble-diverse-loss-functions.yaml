@@ -1,0 +1,25 @@
+slug: dahal-2026-ensemble-diverse-loss-functions
+title: >-
+  Ensemble streamflow forecasting with diverse loss functions
+authors:
+  - "Dahal, Kshitij"
+  - "Gupta, Atharva"
+  - "Bokati, Laxman"
+  - "Kumar, Saurav"
+year: 2026
+venue: "Applied Soft Computing"
+volume: "198"
+number: null
+pages: "115276"
+doi: "10.1016/j.asoc.2026.115276"
+bibtype: article
+tipo: paper
+tags: [expectil, cuantil, nse, kge, huber, lstm, hidrologia, benchmark]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El antecedente mas cercano al aporte de la tesis: entrena redes LSTM sobre 482 cuencas CAMELS
+  con ocho funciones de perdida, incluidas cuantilica y expectilica a 0,15 y 0,85, y las combina
+  en ensamble. Ya usa expectiles, aunque con tau fijo y sin modular por regimen. Hay que
+  posicionarse explicitamente frente a este trabajo.

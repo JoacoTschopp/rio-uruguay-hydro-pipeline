@@ -1,0 +1,25 @@
+slug: fan-2017-uruguai-operacional
+title: >-
+  Evaluation of upper Uruguay river basin (Brazil) operational flood forecasts
+authors:
+  - "Fan, Fernando Mainardi"
+  - "Pontes, Paulo Rógenes Monteiro"
+  - "Buarque, Diogo Costa"
+  - "Collischonn, Walter"
+year: 2017
+venue: "RBRH - Revista Brasileira de Recursos Hídricos"
+volume: "22"
+number: null
+pages: null
+doi: "10.1590/2318-0331.0217160027"
+bibtype: article
+tipo: paper
+tags: [rio-uruguay, operacional, mgb, horizonte-10-dias, benchmark]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La referencia mas directa al problema de esta tesis: evalua un sistema operativo de pronostico
+  de caudal en el alto rio Uruguay, corrido a diario con 10 dias de anticipacion, entre 2013 y
+  2016. Reporta que la ocurrencia de crecidas se anticipa con 2 a 3 dias utiles. Fija el piso de
+  skill a superar y valida el horizonte de 1 a 10 dias como pregunta legitima en esta cuenca.

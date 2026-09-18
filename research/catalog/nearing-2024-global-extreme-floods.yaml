@@ -1,0 +1,39 @@
+slug: nearing-2024-global-extreme-floods
+title: >-
+  Global prediction of extreme floods in ungauged watersheds
+authors:
+  - "Nearing, Grey"
+  - "Cohen, Deborah"
+  - "Dube, Vusumuzi"
+  - "Gauch, Martin"
+  - "Gilon, Oren"
+  - "Harrigan, Shaun"
+  - "Hassidim, Avinatan"
+  - "Klotz, Daniel"
+  - "Kratzert, Frederik"
+  - "Metzger, Asher"
+  - "Nevo, Sella"
+  - "Pappenberger, Florian"
+  - "Prudhomme, Christel"
+  - "Shalev, Guy"
+  - "Shenzis, Shlomo"
+  - "Tekalign, Tadele Yossef"
+  - "Weitzner, Dana"
+  - "Matias, Yossi"
+year: 2024
+venue: "Nature"
+volume: "627"
+number: "8004"
+pages: "559--563"
+doi: "10.1038/s41586-024-07145-1"
+bibtype: article
+tipo: paper
+tags: [probabilistico, laplaciana-asimetrica, operativo, extremos, deep-learning]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El sistema operativo de alerta de crecidas de Google se entrena con la verosimilitud de una
+  laplaciana asimetrica heterocedastica: una perdida asimetrica aprendida, no fija. Es la prueba
+  de que el estado del arte operativo ya dejo el error simetrico para crecidas, y el antecedente
+  mas fuerte con el que la tesis tiene que medirse.

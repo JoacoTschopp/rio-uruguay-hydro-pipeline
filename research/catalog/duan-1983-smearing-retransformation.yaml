@@ -1,0 +1,21 @@
+slug: duan-1983-smearing-retransformation
+title: >-
+  Smearing Estimate: A Nonparametric Retransformation Method
+authors:
+  - "Duan, Naihua"
+year: 1983
+venue: "Journal of the American Statistical Association"
+volume: "78"
+number: "383"
+pages: "605--610"
+doi: "10.1080/01621459.1983.10478017"
+bibtype: article
+tipo: paper
+tags: [log, transformaciones, sesgo, retransformacion]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El sesgo de retransformacion: ajustar en escala logaritmica y exponenciar devuelve algo
+  cercano a la mediana condicional, no a la media. Es exactamente el problema de entrenar sobre
+  log(Q) y reportar Q en m3/s para operar la represa.

@@ -1,0 +1,30 @@
+slug: siqueira-2018-mgb-sudamerica
+title: >-
+  Toward continental hydrologic-hydrodynamic modeling in South America
+authors:
+  - "Siqueira, Vinícius A."
+  - "Paiva, Rodrigo C. D."
+  - "Fleischmann, Ayan S."
+  - "Fan, Fernando M."
+  - "Ruhoff, Anderson L."
+  - "Pontes, Paulo R. M."
+  - "Paris, Adrien"
+  - "Calmant, Stéphane"
+  - "Collischonn, Walter"
+year: 2018
+venue: "Hydrology and Earth System Sciences"
+volume: "22"
+number: "9"
+pages: "4815--4842"
+doi: "10.5194/hess-22-4815-2018"
+bibtype: article
+tipo: paper
+tags: [mgb, sudamerica, continental, cuenca-del-plata, hidrodinamico]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El modelo hidrologico-hidrodinamico continental de Sudamerica, que cubre explicitamente la
+  cuenca del Plata y el rio Uruguay. Es la contraparte regional de GloFAS, del grupo del
+  IPH/UFRGS que ademas opera los pronosticos del alto Uruguay. Define el estado del arte fisico
+  sobre el area de estudio.

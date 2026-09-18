@@ -1,0 +1,108 @@
+% Plan de tesis -- Capitulo 2.
+%
+% Correlato en el plan de ejemplo: capitulo 2 (Materiales y Metodos), con una seccion de base
+% tecnica sobre la que se apoya la propuesta, una de Metodos (que es donde el ejemplo enuncia su
+% hipotesis) y una de Datos. Extension del ejemplo: ~4 paginas.
+\chapter{Materiales y Métodos}
+
+\section{Funciones de pérdida asimétricas}
+
+% Base tecnica sobre la que se apoya la propuesta. Las dos familias y sus referencias canonicas ya
+% estan en el catalogo (koenker-bassett-1978, newey-powell-1987, ehm-2016-quantiles-expectiles).
+Sea $u = y - \hat{y}$ el error de pronóstico y $\tau \in (0,1)$ un parámetro de asimetría.
+La regresión cuantílica \cite{koenker-bassett-1978} minimiza la pérdida \textit{pinball}
+\begin{equation}
+  \rho^{\mathrm{q}}_{\tau}(u) = u \left( \tau - \mathbf{1}\{u < 0\} \right),
+\end{equation}
+cuyo minimizador poblacional es el cuantil de nivel $\tau$ de la distribución de $y$.
+La regresión expectílica \cite{newey-powell-1987} reemplaza el valor absoluto implícito por un
+término cuadrático,
+\begin{equation}
+  \rho^{\mathrm{e}}_{\tau}(u) = \left| \tau - \mathbf{1}\{u < 0\} \right| u^{2},
+\end{equation}
+y su minimizador es el expectil de nivel $\tau$.
+Para $\tau = 1/2$ ambas se reducen a los casos simétricos conocidos: el error absoluto y el error
+cuadrático.
+Con $\tau > 1/2$ la pérdida penaliza más la subestimación que la sobreestimación.
+
+La diferencia práctica entre las dos familias es la ponderación de los errores grandes.
+El expectil conserva el término cuadrático, de modo que el gradiente crece con la magnitud del
+error; eso lo hace derivable en todo el dominio y directamente utilizable como objetivo de
+entrenamiento por descenso de gradiente, a diferencia de la pérdida \textit{pinball}, que no es
+derivable en el origen.
+
+% PENDIENTE: cerrar esta seccion con la discusion de elicitabilidad --- que funcional estima cada
+% perdida y por que eso condiciona la comparacion entre modelos --- cuando este consolidado el
+% relevamiento (eje b).
+
+\section{Métodos}
+
+% En el plan de ejemplo esta es la seccion donde se enuncia la hipotesis del trabajo. Se replica.
+
+% PROVISORIO: la hipotesis la cierra el autor con el director.
+La hipótesis del trabajo es que el nivel de asimetría conveniente no es constante: en estiaje el
+costo de sobreestimar y el de subestimar son comparables, mientras que en crecida la asimetría es
+marcada.
+Se propone entonces modular el parámetro de asimetría con el régimen hidrológico, es decir,
+reemplazar el $\tau$ fijo por
+\begin{equation}
+  \tau_t = g(\mathbf{x}_t),
+\end{equation}
+donde $\mathbf{x}_t$ resume el estado de la cuenca en el instante $t$ y $g$ es un modulador
+acotado en $(0,1)$.
+
+% PENDIENTE: la forma funcional concreta de g, el conjunto de modelos a comparar y el protocolo de
+% validacion se completan con lo que devuelva el relevamiento. Lo ya implementado en el repositorio
+% (validacion walk-forward, linea de base de persistencia, contraste de Diebold-Mariano) se
+% describe en el capitulo 3.
+
+\section{Datos}
+
+% Inventario verificado contra la documentacion del repositorio (docs/roadmap.md,
+% docs/data_sources.md, docs/gold_consolidation_contract.md, docs/gold_quality_report.md).
+% Las cifras corresponden a la medicion del 2026-08-26 y hay que refrescarlas antes de elevar.
+El conjunto de datos ya está construido y es el insumo de esta tesis.
+Cubre la cuenca alta del río Uruguay, aguas arriba de la frontera entre Brasil y Argentina, y se
+consolida con una arquitectura por capas sobre \textit{Databricks}.
+
+La variable objetivo es el caudal diario, en m\textsuperscript{3}/s, en la estación 74100000 (Irai)
+de la Agência Nacional de Águas de Brasil, sobre la frontera.
+El caudal no se mide directamente: se deriva del nivel observado mediante la curva de aforo de la
+estación, una ley de potencia $Q = A\,(H - H_0)^{N}$ cuyos coeficientes cambian por tramo y por
+período de vigencia.
+El nivel se conserva como objetivo secundario, de modo que la serie medida nunca se pierde detrás
+de la conversión.
+Los horizontes de pronóstico son t+1 a t+7, más t+14.
+
+\begin{table}[H]
+  \centering
+  \caption{Fuentes de datos del conjunto consolidado.}
+  \label{tab:fuentes}
+  \small
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Fuente} & \textbf{Variable} & \textbf{Tipo} & \textbf{Cobertura} \\
+    \midrule
+    ANA (Brasil)        & Nivel y caudal      & Observado   & desde 1950 \\
+    ANA (Brasil)        & Precipitación       & Observado   & desde 1923 \\
+    ANA (Brasil)        & Curvas de aforo     & Observado   & desde 1948 \\
+    CPTEC/INPE MERGE    & Precipitación       & Observado, grilla 0,1\textdegree{} & desde 1998 \\
+    CPTEC/INPE SAMeT    & Temperatura         & Observado, grilla 0,05\textdegree{} & desde 2000 \\
+    INMET (Brasil)      & Temperatura         & Observado   & desde 2000 \\
+    GEFS Reforecast v12 & Precipitación       & Pronosticado & 2000--2019 \\
+    ECMWF TIGGE         & Precipitación       & Pronosticado & desde 2006 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+La distinción entre las dos últimas filas y el resto es la que gobierna el diseño del conjunto: las
+variables pronosticadas son las únicas que estarán disponibles en el momento en que el modelo deba
+operar, y por eso el histórico de pronósticos --- y no el de observaciones --- es el que fija el
+piso temporal del conjunto en el año 2000.
+El resultado es una tabla de 9.732 días entre el 1 de enero de 2000 y el 23 de agosto de 2026, con
+83 columnas, sin huecos de calendario.
+El agregado de precipitación y caudal de la cuenca se construye sobre 36 estaciones.
+
+% FALTA: refrescar las cifras contra Databricks antes de elevar el plan, y decidir con el director
+% si conviene declarar las limitaciones de calidad ya documentadas (curvas de aforo extrapoladas en
+% algunas estaciones del agregado, desfasaje de la ventana diaria de MERGE contra la de ANA).

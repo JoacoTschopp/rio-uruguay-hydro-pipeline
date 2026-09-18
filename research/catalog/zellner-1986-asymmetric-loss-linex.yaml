@@ -1,0 +1,22 @@
+slug: zellner-1986-asymmetric-loss-linex
+title: >-
+  Bayesian Estimation and Prediction Using Asymmetric Loss Functions
+authors:
+  - "Zellner, Arnold"
+year: 1986
+venue: "Journal of the American Statistical Association"
+volume: "81"
+number: "394"
+pages: "446--451"
+doi: "10.1080/01621459.1986.10478289"
+bibtype: article
+tipo: paper
+tags: [linex, perdida-asimetrica, teoria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Referencia canonica de la perdida LINEX, la alternativa suave a la expectilica cuando se
+  quiere penalizar la subestimacion de forma exponencial. Muestra que bajo LINEX la media
+  muestral es inadmisible: el optimo es un predictor sesgado. Competidora natural de la
+  propuesta.

@@ -1,0 +1,22 @@
+slug: verkade-werner-2011-flood-warning-benefits
+title: >-
+  Estimating the benefits of single value and probability forecasting for flood warning
+authors:
+  - "Verkade, J. S."
+  - "Werner, M. G. F."
+year: 2011
+venue: "Hydrology and Earth System Sciences"
+volume: "15"
+number: "12"
+pages: "3751--3765"
+doi: "10.5194/hess-15-3751-2011"
+bibtype: article
+tipo: paper
+tags: [valor-economico, alerta-crecidas, cost-loss, hidrologia]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Aplica valor economico relativo y dano anual esperado a un sistema real de alerta y cuantifica
+  cuanto valor destruyen las falsas alarmas y los eventos perdidos. Es el analogo hidrologico de
+  Richardson y el modelo a seguir para reportar valor.

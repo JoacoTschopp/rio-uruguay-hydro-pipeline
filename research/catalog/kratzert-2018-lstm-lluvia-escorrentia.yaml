@@ -1,0 +1,26 @@
+slug: kratzert-2018-lstm-lluvia-escorrentia
+title: >-
+  Rainfall-runoff modelling using Long Short-Term Memory (LSTM) networks
+authors:
+  - "Kratzert, Frederik"
+  - "Klotz, Daniel"
+  - "Brenner, Claire"
+  - "Schulz, Karsten"
+  - "Herrnegger, Mathew"
+year: 2018
+venue: "Hydrology and Earth System Sciences"
+volume: "22"
+number: "11"
+pages: "6005--6022"
+doi: "10.5194/hess-22-6005-2018"
+bibtype: article
+tipo: paper
+tags: [lstm, lluvia-escorrentia, camels, seminal]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Paper fundacional del LSTM en lluvia-escorrentia: una red entrenada sobre muchas cuencas
+  CAMELS iguala o supera al modelo conceptual SAC-SMA calibrado cuenca por cuenca. Es el origen
+  de la linea que hoy esta en produccion, y la cita para justificar el LSTM como linea de base
+  de referencia.

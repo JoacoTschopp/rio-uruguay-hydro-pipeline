@@ -1,0 +1,23 @@
+slug: kling-2012-modified-kge
+title: >-
+  Runoff conditions in the upper Danube basin under an ensemble of climate change scenarios
+authors:
+  - "Kling, Harald"
+  - "Fuchs, Martin"
+  - "Paulin, Maria"
+year: 2012
+venue: "Journal of Hydrology"
+volume: "424-425"
+number: null
+pages: "264--277"
+doi: "10.1016/j.jhydrol.2012.01.011"
+bibtype: article
+tipo: paper
+tags: [kge, metricas-hidrologicas]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Fuente original del KGE' modificado, que reemplaza el cociente de desvios estandar por el de
+  coeficientes de variacion para desacoplar variabilidad de sesgo. Es la referencia que
+  corresponde citar al escribir KGE', y que suele atribuirse por error a Gupta 2009.

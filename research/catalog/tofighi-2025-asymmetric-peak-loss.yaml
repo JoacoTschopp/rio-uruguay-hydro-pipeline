@@ -1,0 +1,25 @@
+slug: tofighi-2025-asymmetric-peak-loss
+title: >-
+  Advancing Machine Learning-Based Streamflow Prediction Through Event Greedy Selection,
+  Asymmetric Loss Function, and Rainfall Forecasting Uncertainty
+authors:
+  - "Tofighi, Soheyla"
+  - "Gurbuz, Faruk"
+  - "Mantilla, Ricardo"
+  - "Xiao, Shaoping"
+year: 2025
+venue: "Applied Sciences"
+volume: "15"
+number: "21"
+pages: "11656"
+doi: "10.3390/app152111656"
+bibtype: article
+tipo: paper
+tags: [perdida-asimetrica, picos, lstm, hidrologia, resultados-empiricos]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Introduce una perdida asimetrica de picos en redes LSTM para caudal y reporta mejoras grandes
+  en el NSE de flujos altos. Es evidencia empirica directa a favor de la hipotesis, aunque en
+  horizonte horario y en una sola cuenca: la magnitud hay que leerla con cautela.

@@ -1,0 +1,25 @@
+slug: turner-2017-forecast-skill-value-reservoir
+title: >-
+  Complex relationship between seasonal streamflow forecast skill and value in reservoir
+  operations
+authors:
+  - "Turner, Sean W. D."
+  - "Bennett, James C."
+  - "Robertson, David E."
+  - "Galelli, Stefano"
+year: 2017
+venue: "Hydrology and Earth System Sciences"
+volume: "21"
+number: "9"
+pages: "4841--4859"
+doi: "10.5194/hess-21-4841-2017"
+bibtype: article
+tipo: paper
+tags: [valor-economico, embalses, skill-vs-value, riesgos]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La relacion entre skill del pronostico y valor en la operacion del embalse no es monotona ni
+  universal: depende del objetivo operativo. Es la advertencia central contra el supuesto
+  implicito de que menos error asimetrico implica mejor operacion.

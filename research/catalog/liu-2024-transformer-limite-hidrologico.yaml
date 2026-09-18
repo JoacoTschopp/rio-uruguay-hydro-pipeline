@@ -1,0 +1,25 @@
+slug: liu-2024-transformer-limite-hidrologico
+title: >-
+  Probing the limit of hydrologic predictability with the Transformer network
+authors:
+  - "Liu, Jiangtao"
+  - "Bian, Yuchen"
+  - "Lawson, Kathryn"
+  - "Shen, Chaopeng"
+year: 2024
+venue: "Journal of Hydrology"
+volume: "637"
+number: null
+pages: "131389"
+doi: "10.1016/j.jhydrol.2024.131389"
+bibtype: article
+tipo: paper
+tags: [transformer, lstm, camels, resultado-negativo, techo-de-predictibilidad]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El resultado negativo central en hidrologia: sobre las 671 cuencas CAMELS el transformador
+  comun no es competitivo contra el LSTM y falla sobre todo en caudales altos, por falta de un
+  mecanismo de memoria. Los autores plantean que el LSTM ya opera cerca del techo de
+  predictibilidad del dato.

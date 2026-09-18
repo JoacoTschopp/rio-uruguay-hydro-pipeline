@@ -1,0 +1,27 @@
+slug: januschowski-2022-forecasting-trees
+title: >-
+  Forecasting with trees
+authors:
+  - "Januschowski, Tim"
+  - "Wang, Yuyang"
+  - "Torkkola, Kari"
+  - "Erkkilä, Timo"
+  - "Hasson, Hilaf"
+  - "Gasthaus, Jan"
+year: 2022
+venue: "International Journal of Forecasting"
+volume: "38"
+number: "4"
+pages: "1473--1481"
+doi: "10.1016/j.ijforecast.2021.10.004"
+bibtype: article
+tipo: paper
+tags: [gbdt, deep-learning, revision, extrapolacion, riesgos]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Por que los arboles ganaron la M5 y que se transfiere a las redes. Permite elegir arboles sin
+  caer en el falso dilema arboles contra redes. Lo mas importante para esta tesis es la
+  limitacion estructural que senala: los arboles no extrapolan fuera del rango observado, que es
+  justamente el regimen de crecidas extremas.

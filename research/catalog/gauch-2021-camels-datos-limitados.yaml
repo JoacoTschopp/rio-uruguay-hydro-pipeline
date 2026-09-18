@@ -1,0 +1,24 @@
+slug: gauch-2021-camels-datos-limitados
+title: >-
+  The proper care and feeding of CAMELS: How limited training data affects streamflow prediction
+authors:
+  - "Gauch, Martin"
+  - "Mai, Juliane"
+  - "Lin, Jimmy"
+year: 2021
+venue: "Environmental Modelling & Software"
+volume: "135"
+number: null
+pages: "104926"
+doi: "10.1016/j.envsoft.2020.104926"
+bibtype: article
+tipo: paper
+tags: [gbdt, lstm, datos-limitados, resultado-negativo, camels]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Resultado en contra de los arboles, y por eso indispensable: variando el largo del periodo de
+  entrenamiento y el numero de cuencas, arboles y LSTM empatan con pocos datos pero el LSTM gana
+  cuando hay mas. Acota la conclusion de esta tesis a su regimen: una cuenca y unas decadas de
+  registro diario.

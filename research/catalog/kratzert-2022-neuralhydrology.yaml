@@ -1,0 +1,24 @@
+slug: kratzert-2022-neuralhydrology
+title: >-
+  NeuralHydrology - A Python library for Deep Learning research in hydrology
+authors:
+  - "Kratzert, Frederik"
+  - "Gauch, Martin"
+  - "Nearing, Grey"
+  - "Klotz, Daniel"
+year: 2022
+venue: "Journal of Open Source Software"
+volume: "7"
+number: "71"
+pages: "4050"
+doi: "10.21105/joss.04050"
+bibtype: article
+tipo: software
+tags: [software, lstm, reproducibilidad, herramienta]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La libreria de referencia para aprendizaje profundo en hidrologia, del mismo equipo que el
+  sistema operativo. Trae implementaciones probadas de LSTM y EA-LSTM y lectores de CAMELS y
+  Caravan: es el camino corto y auditable para reproducir la linea de base sin reimplementarla.

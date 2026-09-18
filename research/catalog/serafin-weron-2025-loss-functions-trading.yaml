@@ -1,0 +1,23 @@
+slug: serafin-weron-2025-loss-functions-trading
+title: >-
+  Loss functions in regression models: Impact on profits and risk in day-ahead electricity
+  trading
+authors:
+  - "Serafin, Tomasz"
+  - "Weron, Rafał"
+year: 2025
+venue: "Energy Economics"
+volume: "148"
+number: null
+pages: "108596"
+doi: "10.1016/j.eneco.2025.108596"
+bibtype: article
+tipo: paper
+tags: [perdida-asimetrica, valor-economico, energia, evaluacion]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Compara varias perdidas evaluando en terminos economicos sobre cuatro anos del mercado
+  electrico aleman. Muestra que la perdida que gana en dinero no es la que gana en RMSE:
+  exactamente el punto metodologico que la tesis necesita demostrar para el caso hidroelectrico.

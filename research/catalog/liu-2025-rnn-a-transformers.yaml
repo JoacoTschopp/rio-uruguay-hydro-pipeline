@@ -1,0 +1,31 @@
+slug: liu-2025-rnn-a-transformers
+title: >-
+  From RNNs to Transformers: benchmarking deep learning architectures for hydrologic prediction
+authors:
+  - "Liu, Jiangtao"
+  - "Shen, Chaopeng"
+  - "O'Donncha, Fearghal"
+  - "Song, Yalan"
+  - "Zhi, Wei"
+  - "Beck, Hylke E."
+  - "Bindas, Tadd"
+  - "Kraabel, Nicholas"
+  - "Lawson, Kathryn"
+year: 2025
+venue: "Hydrology and Earth System Sciences"
+volume: "29"
+number: "23"
+pages: "6811--6828"
+doi: "10.5194/hess-29-6811-2025"
+bibtype: article
+tipo: paper
+tags: [benchmark, transformer, lstm, atencion, multi-horizonte]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La referencia mas util para el diseno experimental: el LSTM gana en regresion y horizontes
+  cortos, pero los modelos de atencion lo superan a medida que la tarea se complejiza, en
+  particular en pronostico autorregresivo de 7 a 60 dias y en extremos. Encuadra la ventana de 1
+  a 10 dias de esta tesis como zona de transicion, donde el resultado no esta decidido de
+  antemano.

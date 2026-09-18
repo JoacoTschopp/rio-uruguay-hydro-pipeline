@@ -1,0 +1,21 @@
+slug: taggart-2022-extreme-events-scoring
+title: >-
+  Evaluation of point forecasts for extreme events using consistent scoring functions
+authors:
+  - "Taggart, Robert J."
+year: 2022
+venue: "Quarterly Journal of the Royal Meteorological Society"
+volume: "148"
+number: "742"
+pages: "306--320"
+doi: "10.1002/qj.4206"
+bibtype: article
+tipo: paper
+tags: [extremos, elicitabilidad, scoring-consistente, forecasters-dilemma]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Descompone las funciones de score consistentes en componentes que enfatizan regiones del rango
+  de la variable, y cada componente sigue siendo consistente. Es la forma correcta de contestar
+  como anda el modelo en crecidas sin caer en el dilema del pronosticador.

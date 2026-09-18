@@ -1,0 +1,23 @@
+slug: allen-2023-transformed-kernel-scores
+title: >-
+  Evaluating Forecasts for High-Impact Events Using Transformed Kernel Scores
+authors:
+  - "Allen, Sam"
+  - "Ginsbourger, David"
+  - "Ziegel, Johanna"
+year: 2023
+venue: "SIAM/ASA Journal on Uncertainty Quantification"
+volume: "11"
+number: "3"
+pages: "906--940"
+doi: "10.1137/22M1532184"
+bibtype: article
+tipo: paper
+tags: [crps, threshold-weighted, extremos, scoring-rules]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Generaliza el CRPS ponderado por umbral al marco de kernel scores, con una receta para
+  construir scores propios que enfatizan crecidas sin romper la propiedad. Es la extension
+  moderna de gneiting-ranjan-2011-weighted-scoring.

@@ -1,0 +1,26 @@
+slug: feng-2022-modelos-diferenciables
+title: >-
+  Differentiable, learnable, regionalized process-based models with multiphysical outputs can
+  approach state-of-the-art hydrologic prediction accuracy
+authors:
+  - "Feng, Dapeng"
+  - "Liu, Jiangtao"
+  - "Lawson, Kathryn"
+  - "Shen, Chaopeng"
+year: 2022
+venue: "Water Resources Research"
+volume: "58"
+number: "10"
+pages: "e2022WR032404"
+doi: "10.1029/2022WR032404"
+bibtype: article
+tipo: paper
+tags: [hibrido, diferenciable, conceptual-mas-ml, interpretabilidad]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La referencia de hidrologia diferenciable: un modelo conceptual reescrito de forma derivable,
+  con redes que regionalizan sus parametros, se acerca a la precision del LSTM puro pero
+  conserva variables de estado interpretables y respeta el balance de masa. Es la alternativa si
+  se exige interpretabilidad fisica o si hay que extrapolar.

@@ -1,0 +1,26 @@
+slug: hunt-2022-lstm-refuerzo-pronosticos
+title: >-
+  Using a long short-term memory (LSTM) neural network to boost river streamflow forecasts over
+  the western United States
+authors:
+  - "Hunt, Kieran M. R."
+  - "Matthews, Gwyneth R."
+  - "Pappenberger, Florian"
+  - "Prudhomme, Christel"
+year: 2022
+venue: "Hydrology and Earth System Sciences"
+volume: "26"
+number: "21"
+pages: "5449--5472"
+doi: "10.5194/hess-26-5449-2022"
+bibtype: article
+tipo: paper
+tags: [post-procesamiento, lstm, glofas, hibrido, multi-horizonte]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El patron hibrido mas barato y efectivo: usar una red para post-procesar la salida de un
+  sistema operativo existente en vez de reemplazarlo, con un modelo por horizonte que corrige el
+  residuo. Es una tercera via aplicable directamente: corregir la salida de GloFAS sobre el
+  Uruguay en lugar de modelar de cero.

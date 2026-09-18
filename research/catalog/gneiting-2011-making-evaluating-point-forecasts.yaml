@@ -1,0 +1,22 @@
+slug: gneiting-2011-making-evaluating-point-forecasts
+title: >-
+  Making and Evaluating Point Forecasts
+authors:
+  - "Gneiting, Tilmann"
+year: 2011
+venue: "Journal of the American Statistical Association"
+volume: "106"
+number: "494"
+pages: "746--762"
+doi: "10.1198/jasa.2011.r10138"
+bibtype: article
+tipo: paper
+tags: [elicitabilidad, scoring-consistente, perdida-asimetrica, teoria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  La referencia canonica para fundamentar que una perdida debe declararse junto con el funcional
+  que estima: sin una directiva prefijada, comparar modelos no tiene sentido. Caracteriza las
+  perdidas consistentes para la media (Bregman) y para cuantiles, que es el marco donde cae la
+  regresion expectilica propuesta.

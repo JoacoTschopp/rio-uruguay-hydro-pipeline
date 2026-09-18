@@ -1,0 +1,29 @@
+slug: chagas-2020-camels-br
+title: >-
+  CAMELS-BR: hydrometeorological time series and landscape attributes for 897 catchments in
+  Brazil
+authors:
+  - "Chagas, Vinícius B. P."
+  - "Chaffe, Pedro L. B."
+  - "Addor, Nans"
+  - "Fan, Fernando M."
+  - "Fleischmann, Ayan S."
+  - "Paiva, Rodrigo C. D."
+  - "Siqueira, Vinícius A."
+year: 2020
+venue: "Earth System Science Data"
+volume: "12"
+number: "3"
+pages: "2075--2096"
+doi: "10.5194/essd-12-2075-2020"
+bibtype: article
+tipo: dataset
+tags: [camels, dataset, brasil, large-sample, atributos-de-cuenca]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Conjunto de referencia para hidrologia con aprendizaje automatico en Brasil: caudal diario de
+  3679 estaciones y 65 atributos para 897 cuencas. Cubre las cabeceras brasilenas del Uruguay en
+  Santa Catarina y Rio Grande do Sul, asi que es la fuente natural para preentrenar o
+  regionalizar antes del ajuste local.

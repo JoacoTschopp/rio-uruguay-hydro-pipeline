@@ -1,0 +1,22 @@
+slug: christoffersen-diebold-1997-optimal-prediction-asymmetric
+title: >-
+  Optimal Prediction Under Asymmetric Loss
+authors:
+  - "Christoffersen, Peter F."
+  - "Diebold, Francis X."
+year: 1997
+venue: "Econometric Theory"
+volume: "13"
+number: "6"
+pages: "808--817"
+doi: "10.1017/S0266466600006277"
+bibtype: article
+tipo: paper
+tags: [perdida-asimetrica, sesgo, teoria, riesgos]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  El predictor optimo bajo perdida asimetrica es sesgado, y el sesgo optimo varia en el tiempo
+  con los momentos condicionales de orden superior. Es la cita para anticipar la critica de que
+  el modelo sobreestima sistematicamente, y sostener que ese sesgo es deliberado.

@@ -1,0 +1,22 @@
+slug: brehmer-strokorb-2019-tail-properties
+title: >-
+  Why scoring functions cannot assess tail properties
+authors:
+  - "Brehmer, Jonas R."
+  - "Strokorb, Kirstin"
+year: 2019
+venue: "Electronic Journal of Statistics"
+volume: "13"
+number: "2"
+pages: "4015--4034"
+doi: "10.1214/19-EJS1622"
+bibtype: article
+tipo: paper
+tags: [elicitabilidad, extremos, riesgos, teoria, resultado-negativo]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-18
+verificado: true        # DOI resuelto y metadatos confirmados contra Crossref el 2026-09-18
+rol: >-
+  Resultado negativo fuerte: las propiedades de cola no son elicitables, y ni siquiera una regla
+  de scoring propia sobre la distribucion entera las separa. Acota honestamente lo que una
+  perdida asimetrica puede prometer: mejor desempeno en la region alta, no aprender la cola.
