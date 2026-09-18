@@ -207,10 +207,33 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "60"
 
+        # Decision 020: la conversion nivel->caudal es diaria, encadenada antes de Gold. Solo
+        # ingesta las curvas ya bajadas a Bronze (barato, idempotente) -- la descarga de curvas
+        # nuevas sigue siendo el job trimestral aparte `rating_curve_discharge_initial_load`,
+        # sin schedule, no se toca aca.
+        - task_key: ETL_Bronze_Rating_Curve
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_Rating_Curve
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_River_Discharge_Daily
+          depends_on:
+            - task_key: ETL_Bronze_Rating_Curve
+            - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_River_Discharge_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
         - task_key: ETL_Gold_Training_Dataset_v0
           depends_on:
             - task_key: ETL_Silver_Rainfall_Daily
             - task_key: ETL_Silver_CPTEC_Grid_Daily
+            - task_key: ETL_Silver_River_Discharge_Daily
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
             source: WORKSPACE

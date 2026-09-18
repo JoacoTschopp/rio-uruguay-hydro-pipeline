@@ -704,7 +704,9 @@ La decisión original dejó cuatro reglas con el criterio sin fijar. Se cierran 
 
 ### Estado
 
-`Aceptada` (2026-08-21), implementación pendiente en la Fase 5 de `roadmap.md`
+`Aceptada` (2026-08-21), **implementada (2026-09-18)** para la parte de conversión nivel→caudal
+(primer punto de la Decisión). El resto (orden pronóstico/Gold, `forecast_age_days`) sigue
+pendiente de la Fase 4/5.
 
 ### Contexto
 
@@ -731,6 +733,34 @@ Sobre el orden: un eslabón que corre después de Gold introduce un desfase de 2
 * `Rating_Curve_Discharge_Initial_Load` se parte en dos: un task diario de conversión dentro del incremental, y un job trimestral de refresco de curvas.
 * Queda como punto abierto la **latencia real de disponibilidad del pronóstico**: TIGGE (`cf`/`pf`, vía `cdsapi`) documenta un embargo para acceso público que puede llegar a ~48 h. Si se confirma, el pronóstico que entra a Gold no es el del día sino el del ciclo disponible más reciente, lo que cambia el significado operativo del modelo. Se mide en la Fase 4 y se registra por fila en una columna `forecast_age_days`; no se asume ni a favor ni en contra hasta medirlo.
 * El criterio de cierre de la Fase 5 es empírico: tres días consecutivos en que a las 06:00 el snapshot local tenga la fila de ayer completa, con caudal y pronóstico del ciclo correcto.
+
+### Implementación (2026-09-18)
+
+El primer punto de esta Decisión (conversión nivel→caudal diaria) quedó sin encadenar casi un
+mes después de aceptada: `Silver_Gold_Daily_Incremental` nunca tuvo los tasks, y `caudal_m3s`
+del target (`74100000`) quedó congelado en `2026-08-25` — la última corrida manual de
+`Rating_Curve_Discharge_Initial_Load` — mientras el nivel seguía entrando todos los días. Sin
+cambio de diseño: los notebooks (`ETL_Bronze_Rating_Curve`, `ETL_Silver_River_Discharge_Daily`)
+ya soportaban `load_mode=incremental`, solo faltaba el wiring en `databricks.yml`.
+
+* Se agregan `ETL_Bronze_Rating_Curve` (depende de `Check_Bronze_Freshness`) y
+  `ETL_Silver_River_Discharge_Daily` (`load_mode=incremental, incremental_lookback_days=14`,
+  depende de `ETL_Bronze_Rating_Curve` y `ETL_Silver_Level_Daily`) a
+  `Silver_Gold_Daily_Incremental`; `ETL_Gold_Training_Dataset_v0` suma
+  `ETL_Silver_River_Discharge_Daily` a su `depends_on`. `Rating_Curve_Discharge_Initial_Load`
+  sigue igual, sin `schedule`, para el refresco trimestral de curvas — no se toca.
+* Los 3 notebooks (`ETL_Bronze_Rating_Curve.ipynb`, `ETL_Silver_River_Discharge_Daily.ipynb`,
+  `Validate_River_Discharge.ipynb`) nunca habían llegado a git — corrían solo desde el Workspace
+  desplegado, mismo hueco que `ETL_Bronze_GEFS.ipynb` (ver aparte en el PR de relleno GEFS→`cf`
+  de esta misma fecha). Se agregan al repo por primera vez, exportados 1:1 del Workspace.
+* **Verificado contra Databricks real**: `ETL_Bronze_Rating_Curve` (2,1 min) →
+  `ETL_Silver_River_Discharge_Daily` (1,6 min) → `ETL_Gold_Training_Dataset_v0` (1,0 min), los
+  tres en modo incremental. `caudal_m3s` del target pasó de `max(fecha)=2026-08-25` a
+  `2026-09-17` en `weather.silver.river_discharge_daily` y en
+  `weather.gold.training_dataset_v0.caudal_actual_m3s`. Las 25 filas de agosto 2026 del target
+  en Gold quedaron idénticas valor a valor antes/después de la corrida. De las 62 estaciones con
+  curva, 43 quedaron con dato al 2026-09-15 o más reciente tras esta corrida — las 19 restantes
+  dependen de que su propio nivel esté al día (aparte, no bloqueante para el target).
 
 ---
 
