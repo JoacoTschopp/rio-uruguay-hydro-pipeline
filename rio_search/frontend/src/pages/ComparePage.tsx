@@ -11,7 +11,7 @@ import { compareRuns, fetchSearches, type RunOut } from '../lib/api'
 const DEFAULT_COMPARE_FAMILIES = ['fase_estrategias', 'bilstm']
 const DEFAULT_COMPARE_COUNT = 6
 const LEADERBOARD_POLL_MS = 20_000
-import { extractMetricByHorizon, parseHorizonMetrics } from '../lib/metrics'
+import { extractMetricByHorizon, parseHorizonMetrics, pickSplit } from '../lib/metrics'
 import { colorForIndex } from '../lib/chartData'
 import { formatNumber, formatSeconds, statusTone } from '../lib/format'
 import { Badge } from '../components/ui/Badge'
@@ -313,17 +313,6 @@ export function ComparePage() {
 
 function shortLabel(runName: string): string {
   return runName.length > 34 ? `${runName.slice(0, 34)}…` : runName
-}
-
-/** Valor de `<split>/<metric>/mean` para un run, prefiriendo test y cayendo a val -- la fase
- * de estrategias corre en VAL por protocolo, asi que la mayoria de sus trials no tienen test.
- * Devuelve tambien de que split salio, para mostrarlo y no mezclar silenciosamente ambos. */
-function pickSplit(r: RunOut, metric: string): { value: number; split: 'test' | 'val' } | null {
-  const test = r.metrics[`test/${metric}/mean`]
-  if (test !== undefined) return { value: test, split: 'test' }
-  const val = r.metrics[`val/${metric}/mean`]
-  if (val !== undefined) return { value: val, split: 'val' }
-  return null
 }
 
 /** id del run con el mejor valor de `metric` entre los pasados ('min' para perdidas como

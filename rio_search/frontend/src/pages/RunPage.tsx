@@ -9,6 +9,7 @@ import {
   listTimeMetrics,
   listTrainingScalars,
   parseHorizonMetrics,
+  pickSplit,
 } from '../lib/metrics'
 import { colorForIndex } from '../lib/chartData'
 import { formatDateTimeMs, formatDurationMs, formatNumber, formatTimingValue, statusTone, truncateHash } from '../lib/format'
@@ -329,23 +330,41 @@ export function RunPage() {
                 <tr>
                   <th>run</th>
                   <th>estado</th>
-                  <th className={tableStyles.num}>test/kge/mean</th>
+                  <th className={tableStyles.num}>gral/mean</th>
+                  <th className={tableStyles.num}>nse/mean</th>
+                  <th className={tableStyles.num}>kge/mean</th>
                   <th>inicio</th>
                 </tr>
               </thead>
               <tbody>
-                {children.map((c) => (
-                  <tr key={c.run_id}>
-                    <td>
-                      <Link to={`/runs/${c.run_id}`}>{c.run_name}</Link>
-                    </td>
-                    <td>
-                      <Badge tone={statusTone(c.status)}>{c.status}</Badge>
-                    </td>
-                    <td className={tableStyles.num}>{formatNumber(c.metrics['test/kge/mean'], 3)}</td>
-                    <td>{formatDurationMs(c.start_time_ms, c.end_time_ms)}</td>
-                  </tr>
-                ))}
+                {children.map((c) => {
+                  const gral = pickSplit(c, 'gral')
+                  const nse = pickSplit(c, 'nse')
+                  const kge = pickSplit(c, 'kge')
+                  return (
+                    <tr key={c.run_id}>
+                      <td>
+                        <Link to={`/runs/${c.run_id}`}>{c.run_name}</Link>
+                      </td>
+                      <td>
+                        <Badge tone={statusTone(c.status)}>{c.status}</Badge>
+                      </td>
+                      <td className={tableStyles.num}>
+                        {formatNumber(gral?.value, 4)}
+                        {gral && <span className={styles.splitTag}>{gral.split}</span>}
+                      </td>
+                      <td className={tableStyles.num}>
+                        {formatNumber(nse?.value, 3)}
+                        {nse && <span className={styles.splitTag}>{nse.split}</span>}
+                      </td>
+                      <td className={tableStyles.num}>
+                        {formatNumber(kge?.value, 3)}
+                        {kge && <span className={styles.splitTag}>{kge.split}</span>}
+                      </td>
+                      <td>{formatDurationMs(c.start_time_ms, c.end_time_ms)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

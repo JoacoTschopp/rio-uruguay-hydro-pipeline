@@ -144,3 +144,11 @@
   border-top: 1px solid var(--border);
   padding-top: var(--space-3);
 }
+
+.splitTag {
+  margin-left: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  vertical-align: middle;
+}

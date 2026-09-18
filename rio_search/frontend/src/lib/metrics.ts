@@ -94,6 +94,22 @@ export function isParentRun(run: { parent_run_id: string | null }): boolean {
   return run.parent_run_id === null
 }
 
+/** Valor de `<split>/<metric>/mean` para un run, prefiriendo test y cayendo a val -- la fase de
+ * estrategias corre casi entera en VAL por protocolo (TEST se reserva para el cierre), asi que
+ * la mayoria de sus trials no tienen test logueado. Devuelve tambien de que split salio el
+ * numero, para mostrarlo sin mezclar ambos en silencio. Usado por SearchesPage, RunPage y
+ * ComparePage -- una sola definicion, no tres copias. */
+export function pickSplit(
+  run: { metrics: Record<string, number> },
+  metric: string,
+): { value: number; split: 'test' | 'val' } | null {
+  const test = run.metrics[`test/${metric}/mean`]
+  if (test !== undefined) return { value: test, split: 'test' }
+  const val = run.metrics[`val/${metric}/mean`]
+  if (val !== undefined) return { value: val, split: 'val' }
+  return null
+}
+
 /** Valores de una metrica por horizonte (sin "mean"), listos para armar una `HorizonSeries` de
  * `lib/chartData.ts`. */
 export function extractMetricByHorizon(table: HorizonMetricsTable, metricName: string): Partial<Record<string, number>> {

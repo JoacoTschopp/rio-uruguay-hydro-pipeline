@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchSearches, type RunOut, type SearchOut } from '../lib/api'
+import { pickSplit } from '../lib/metrics'
 import { formatDateTimeMs, formatDurationMs, formatNumber, formatSeconds, statusTone } from '../lib/format'
 import { Badge } from '../components/ui/Badge'
 import { Panel } from '../components/ui/Panel'
@@ -176,30 +177,52 @@ export function SearchesPage() {
                     <th></th>
                     <th>trial</th>
                     <th>estado</th>
-                    <th className={tableStyles.num}>test/kge/mean</th>
-                    <th className={tableStyles.num}>test/rmse/mean</th>
+                    <th className={tableStyles.num}>gral/mean</th>
+                    <th className={tableStyles.num}>nse/mean</th>
+                    <th className={tableStyles.num}>kge/mean</th>
+                    <th className={tableStyles.num}>rmse/mean</th>
                     <th className={tableStyles.num}>tiempo</th>
                     <th>inicio</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {s.trials.map((t) => (
-                    <tr key={t.run_id}>
-                      <td>
-                        <input type="checkbox" checked={selected.has(t.run_id)} onChange={() => toggleSelected(t.run_id)} />
-                      </td>
-                      <td>
-                        <Link to={`/runs/${t.run_id}`}>{t.run_name}</Link>
-                      </td>
-                      <td>
-                        <Badge tone={statusTone(t.status)}>{t.status}</Badge>
-                      </td>
-                      <td className={tableStyles.num}>{formatNumber(t.metrics['test/kge/mean'], 3)}</td>
-                      <td className={tableStyles.num}>{formatNumber(t.metrics['test/rmse/mean'], 1)}</td>
-                      <td className={tableStyles.num}>{formatSeconds(totalTimeSeconds(t))}</td>
-                      <td>{formatDurationMs(t.start_time_ms, t.end_time_ms)}</td>
-                    </tr>
-                  ))}
+                  {s.trials.map((t) => {
+                    const gral = pickSplit(t, 'gral')
+                    const nse = pickSplit(t, 'nse')
+                    const kge = pickSplit(t, 'kge')
+                    const rmse = pickSplit(t, 'rmse')
+                    return (
+                      <tr key={t.run_id}>
+                        <td>
+                          <input type="checkbox" checked={selected.has(t.run_id)} onChange={() => toggleSelected(t.run_id)} />
+                        </td>
+                        <td>
+                          <Link to={`/runs/${t.run_id}`}>{t.run_name}</Link>
+                        </td>
+                        <td>
+                          <Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                        </td>
+                        <td className={tableStyles.num}>
+                          {formatNumber(gral?.value, 4)}
+                          {gral && <span className={styles.splitTag}>{gral.split}</span>}
+                        </td>
+                        <td className={tableStyles.num}>
+                          {formatNumber(nse?.value, 3)}
+                          {nse && <span className={styles.splitTag}>{nse.split}</span>}
+                        </td>
+                        <td className={tableStyles.num}>
+                          {formatNumber(kge?.value, 3)}
+                          {kge && <span className={styles.splitTag}>{kge.split}</span>}
+                        </td>
+                        <td className={tableStyles.num}>
+                          {formatNumber(rmse?.value, 1)}
+                          {rmse && <span className={styles.splitTag}>{rmse.split}</span>}
+                        </td>
+                        <td className={tableStyles.num}>{formatSeconds(totalTimeSeconds(t))}</td>
+                        <td>{formatDurationMs(t.start_time_ms, t.end_time_ms)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
