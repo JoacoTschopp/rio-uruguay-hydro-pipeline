@@ -1,0 +1,19 @@
+# Salida de latexmk: se regenera con herramientas/compilar.ps1
+**/build/
+
+# Auxiliares si alguien compila sin -outdir (editor, Overleaf, compilacion a mano)
+*.aux
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+
+# El .bbl del TFI de referencia SI se versiona: es lo que permite recompilarlo sin su .bib
+!referencia/tfi-especializacion-2025/*.bbl

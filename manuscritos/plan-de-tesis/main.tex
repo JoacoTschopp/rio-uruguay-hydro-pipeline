@@ -1,0 +1,43 @@
+% manuscritos/plan-de-tesis/main.tex -- Plan de tesis de Maestria.
+%
+% Compilar desde PowerShell (no Git Bash: MSYS reescribe BIBINPUTS y bibtex no encuentra el .bib):
+%   .\manuscritos\herramientas\compilar.ps1 -Documento plan-de-tesis
+% Salida: manuscritos/plan-de-tesis/build/main.pdf (fuera de git).
+%
+% Estructura PROVISORIA: se ajusta al reglamento de presentacion del plan de tesis de la carrera
+% (pendiente, ver manuscritos/PLAN.md).
+\documentclass{../comun/tesisuba}
+
+\etapa{Plan de Tesis}
+% PROVISORIO: titulo, director, codirector y lugar de trabajo los define el autor.
+\titulo{Proyección del caudal del Río Uruguay\\ mediante aprendizaje automático}
+\autor{Esp. Joaquín Sebastian Tschopp}
+\director{}
+\codirector{}
+\lugardetrabajo{}
+\anio{2026}
+
+\begin{document}
+
+\portada
+
+\tableofcontents
+
+\newpage
+
+\section*{Resumen}
+% Pendiente.
+
+\textbf{Palabras clave:}
+
+\newpage
+
+\input{capitulos/01_introduccion}
+\input{capitulos/02_antecedentes}
+\input{capitulos/03_area_y_datos}
+\input{capitulos/04_metodologia}
+\input{capitulos/05_plan_de_trabajo}
+
+\bibliografia
+
+\end{document}

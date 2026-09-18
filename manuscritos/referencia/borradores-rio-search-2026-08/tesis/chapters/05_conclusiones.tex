@@ -1,0 +1,24 @@
+% Capitulo 5: Conclusiones (Fase 8, docs/rio_search_plan.md S3.11)
+\chapter{Conclusiones}
+\label{chap:conclusiones}
+
+\section{Estado al cierre de este cap\'itulo}
+
+Este documento se compila a partir de un banco de pruebas (\emph{Rio\_Search}) ya operativo:
+backend con dominio expl\'icito, interfaz web para seguir y comparar corridas, inferencia diaria
+del modelo campe\'on y biblioteca de investigaci\'on con exportaci\'on autom\'atica a BibTeX. El
+resultado preliminar m\'as relevante -- el BiLSTM supera a la persistencia (\emph{skill}$>0$) en
+7 de los 8 horizontes evaluados, con \texttt{t+1} como excepci\'on documentada -- responde
+parcialmente a la pregunta de investigaci\'on del Cap\'itulo~\ref{chap:marco-teorico}: es posible
+proyectar el caudal de la cuenca alta con un modelo m\'as \'util que la persistencia a partir de
+\texttt{t+2}, no a\'un en \texttt{t+1}.
+
+\section{L\'ineas de trabajo futuras}
+
+Quedan como trabajo pendiente para completar esta tesis: la incorporaci\'on del grupo de
+\emph{features} de pron\'ostico (ECMWF/GEFS) una vez que llegue a la capa Gold, para responder si
+el pron\'ostico meteorol\'ogico mejora la proyecci\'on de caudal m\'as all\'a de lo que ya aporta
+el estado hidrol\'ogico observado; la comparaci\'on contra un segundo modelo no basado en redes
+profundas (p. ej. \emph{gradient boosting} sobre variables rezagadas); y la promoci\'on a la capa
+Gold de las transformaciones experimentales que demuestren aportar valor, siguiendo el mismo
+camino de notebook + Decisi\'on documentada que us\'o el resto del pipeline.

@@ -1,0 +1,372 @@
+\begin{thebibliography}{}
+
+\bibitem [\protect \citeauthoryear {%
+Backer%
+\ \BBA {} Landsberg%
+}{%
+Backer%
+\ \BBA {} Landsberg%
+}{%
+{\protect \APACyear {2024}}%
+}]{%
+Backer2024}
+\APACinsertmetastar {%
+Backer2024}%
+\begin{APACrefauthors}%
+Backer, L\BPBI C.%
+\BCBT {}\ \BBA {} Landsberg, J\BPBI H.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2024}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Epidemiologic and clinical features of cyanobacteria harmful algal bloom–associated illnesses, 2007–2022} {Epidemiologic and clinical features of cyanobacteria harmful algal bloom–associated illnesses, 2007–2022}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Environmental Health}{23}{1}{15}.
+\newblock
+\begin{APACrefURL} \url{https://doi.org/10.1186/s12940-024-01121-y} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.1186/s12940-024-01121-y} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Brownlee%
+}{%
+Brownlee%
+}{%
+{\protect \APACyear {2018}}%
+}]{%
+brownlee2018walkforward}
+\APACinsertmetastar {%
+brownlee2018walkforward}%
+\begin{APACrefauthors}%
+Brownlee, J.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2018}{}{}.
+\newblock
+\APACrefbtitle {How to Backtest Machine Learning Models for Time Series Forecasting.} {How to backtest machine learning models for time series forecasting.}
+\newblock
+\begin{APACrefURL} \url{https://machinelearningmastery.com/backtest-machine-learning-models-time-series-forecasting/} \end{APACrefURL}
+\newblock
+\APACrefnote{Consultado el 5 de junio de 2025}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+{DataCamp}%
+}{%
+{DataCamp}%
+}{%
+{\protect \APACyear {2022}}%
+}]{%
+datacamp2022forecasting}
+\APACinsertmetastar {%
+datacamp2022forecasting}%
+\begin{APACrefauthors}%
+{DataCamp}.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2022}{}{}.
+\newblock
+\APACrefbtitle {Time Series Forecasting Tutorial.} {Time series forecasting tutorial.}
+\newblock
+\begin{APACrefURL} \url{https://www.datacamp.com/tutorial/tutorial-time-series-forecasting} \end{APACrefURL}
+\newblock
+\APACrefnote{Recuperado el 5 de junio de 2025}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Hunter%
+, Rudd%
+\BCBL {}\ \BBA {} Tyler%
+}{%
+Hunter%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2022}}%
+}]{%
+Hunter2022}
+\APACinsertmetastar {%
+Hunter2022}%
+\begin{APACrefauthors}%
+Hunter, P\BPBI D.%
+, Rudd, K\BPBI M.%
+\BCBL {}\ \BBA {} Tyler, A\BPBI N.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2022}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Global approaches to recreational-water bloom alert frameworks: a critical review} {Global approaches to recreational-water bloom alert frameworks: a critical review}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Harmful Algae}{118}{}{102238}.
+\newblock
+\begin{APACrefURL} \url{https://doi.org/10.1016/j.hal.2022.102238} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.1016/j.hal.2022.102238} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Igwaran%
+\ \protect \BOthers {.}}{%
+Igwaran%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2024}}%
+}]{%
+Igwaran2024}
+\APACinsertmetastar {%
+Igwaran2024}%
+\begin{APACrefauthors}%
+Igwaran, A.%
+, Kayode, A\BPBI J.%
+, Moloantoa, K\BPBI M.%
+, Magadla, N\BPBI P.%
+, Adelagun, A\BPBI A.%
+, Ojekunle, S\BPBI A.%
+\BDBL {}Abiola, O\BPBI S.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2024}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Cyanobacteria Harmful Algae Blooms: Causes, Impacts, and Risk Management} {Cyanobacteria harmful algae blooms: Causes, impacts, and risk management}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Water, Air, \& Soil Pollution}{235}{}{71}.
+\newblock
+\begin{APACrefURL} \url{https://doi.org/10.1007/s11270-023-06782-y} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.1007/s11270-023-06782-y} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Oh%
+, Han%
+\BCBL {}\ \BBA {} Jeong%
+}{%
+Oh%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2020}}%
+}]{%
+Oh2020}
+\APACinsertmetastar {%
+Oh2020}%
+\begin{APACrefauthors}%
+Oh, C.%
+, Han, S.%
+\BCBL {}\ \BBA {} Jeong, J.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2020}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Time-series data augmentation based on interpolation} {Time-series data augmentation based on interpolation}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Procedia Computer Science}{175}{}{64--71}.
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Powers%
+}{%
+Powers%
+}{%
+{\protect \APACyear {2011}}%
+}]{%
+Powers2011}
+\APACinsertmetastar {%
+Powers2011}%
+\begin{APACrefauthors}%
+Powers, D\BPBI M\BPBI W.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2011}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Evaluation: From Precision, Recall and F-Measure to ROC, Informedness, Markedness \& Correlation} {Evaluation: From precision, recall and f-measure to roc, informedness, markedness \& correlation}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Journal of Machine Learning Technologies}{2}{1}{37--63}.
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Rigosi%
+, Carey%
+, Ibelings%
+\BCBL {}\ \BBA {} Brookes%
+}{%
+Rigosi%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2014}}%
+}]{%
+Rigosi2014}
+\APACinsertmetastar {%
+Rigosi2014}%
+\begin{APACrefauthors}%
+Rigosi, A.%
+, Carey, C\BPBI C.%
+, Ibelings, B\BPBI W.%
+\BCBL {}\ \BBA {} Brookes, J\BPBI D.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2014}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {The interaction between climate warming and eutrophication to promote cyanobacteria is dependent on trophic state and varies among taxa} {The interaction between climate warming and eutrophication to promote cyanobacteria is dependent on trophic state and varies among taxa}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Limnology and Oceanography}{59}{1}{99--114}.
+\newblock
+\begin{APACrefURL} \url{https://aslopubs.onlinelibrary.wiley.com/doi/10.4319/lo.2014.59.1.0099} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.4319/lo.2014.59.1.0099} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Rodríguez-López%
+, Torres%
+, Mardones%
+\BCBL {}\ \BBA {} Cordero%
+}{%
+Rodríguez-López%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2023}}%
+}]{%
+RodriguezLopez2023}
+\APACinsertmetastar {%
+RodriguezLopez2023}%
+\begin{APACrefauthors}%
+Rodríguez-López, J\BPBI M.%
+, Torres, R.%
+, Mardones, J.%
+\BCBL {}\ \BBA {} Cordero, R\BPBI R.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2023}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Machine learning algorithms for the estimation of water quality parameters in Lake Llanquihue in southern Chile} {Machine learning algorithms for the estimation of water quality parameters in lake llanquihue in southern chile}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Water}{15}{11}{1994}.
+\newblock
+\begin{APACrefURL} \url{https://www.mdpi.com/2073-4441/15/11/1994} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.3390/w15111994} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Schaeffer%
+\ \protect \BOthers {.}}{%
+Schaeffer%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2024}}%
+}]{%
+Schaeffer2024}
+\APACinsertmetastar {%
+Schaeffer2024}%
+\begin{APACrefauthors}%
+Schaeffer, B\BPBI A.%
+, Reynolds, N.%
+, Ferriby, H.%
+, Salls, W.%
+, Smith, D.%
+, Johnston, J\BPBI M.%
+\BCBL {}\ \BBA {} Myer, M.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2024}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Forecasting freshwater cyanobacterial harmful algal blooms for Sentinel-3 satellite resolved U.S. lakes and reservoirs} {Forecasting freshwater cyanobacterial harmful algal blooms for sentinel-3 satellite resolved u.s. lakes and reservoirs}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Journal of Environmental Management}{349}{}{119518}.
+\newblock
+\begin{APACrefURL} \url{https://doi.org/10.1016/j.jenvman.2023.119518} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.1016/j.jenvman.2023.119518} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Stumpf%
+, Davis%
+, Wynne%
+\BCBL {}\ \BBA {} Graham%
+}{%
+Stumpf%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2016}}%
+}]{%
+Stumpf2016}
+\APACinsertmetastar {%
+Stumpf2016}%
+\begin{APACrefauthors}%
+Stumpf, R\BPBI P.%
+, Davis, T\BPBI W.%
+, Wynne, T\BPBI T.%
+\BCBL {}\ \BBA {} Graham, J\BPBI L.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2016}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {Challenges for mapping cyanotoxin patterns from remote sensing of cyanobacteria} {Challenges for mapping cyanotoxin patterns from remote sensing of cyanobacteria}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Harmful Algae}{54}{}{160--173}.
+\newblock
+\begin{APACrefURL} \url{https://doi.org/10.1016/j.hal.2016.01.005} \end{APACrefURL}
+\newblock
+\begin{APACrefDOI} \doi{10.1016/j.hal.2016.01.005} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+Virtanen%
+\ \protect \BOthers {.}}{%
+Virtanen%
+\ \protect \BOthers {.}}{%
+{\protect \APACyear {2020}}%
+}]{%
+virtanen2020scipy}
+\APACinsertmetastar {%
+virtanen2020scipy}%
+\begin{APACrefauthors}%
+Virtanen, P.%
+, Gommers, R.%
+, Oliphant, T\BPBI E.%
+, Haberland, M.%
+, Reddy, T.%
+, Cournapeau, D.%
+\BDBL {}van~der Walt, S\BPBI J.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYearMonthDay{2020}{}{}.
+\newblock
+{\BBOQ}\APACrefatitle {SciPy 1.0: Fundamental algorithms for scientific computing in Python} {Scipy 1.0: Fundamental algorithms for scientific computing in python}.{\BBCQ}
+\newblock
+\APACjournalVolNumPages{Nature Methods}{17}{3}{261--272}.
+\newblock
+\begin{APACrefDOI} \doi{10.1038/s41592-019-0686-2} \end{APACrefDOI}
+\PrintBackRefs{\CurrentBib}
+
+\bibitem [\protect \citeauthoryear {%
+{World Health Organization}%
+}{%
+{World Health Organization}%
+}{%
+{\protect \APACyear {2021}}%
+}]{%
+WHO2021}
+\APACinsertmetastar {%
+WHO2021}%
+\begin{APACrefauthors}%
+{World Health Organization}.%
+\end{APACrefauthors}%
+\unskip\
+\newblock
+\APACrefYear{2021}.
+\newblock
+\APACrefbtitle {Toxic Cyanobacteria in Water: A Guide to Their Public Health Consequences, Monitoring and Management} {Toxic cyanobacteria in water: A guide to their public health consequences, monitoring and management}\ (\PrintOrdinal{2}\ \BEd).
+\newblock
+\APACaddressPublisher{Geneva}{World Health Organization}.
+\newblock
+\begin{APACrefURL} \url{https://iris.who.int/bitstream/handle/10665/342625/9789240031302-eng.pdf} \end{APACrefURL}
+\PrintBackRefs{\CurrentBib}
+
+\end{thebibliography}

@@ -29,3 +29,7 @@ research/documents/
 # La plantilla LaTeX la aporta el usuario (Fase 8 del plan de Rio_Search)
 research/templates/
 thesis/**/build/
+
+# Exportaciones de datos bajadas a mano para analisis (p. ej. el ZIP del CSV de una estacion
+# ANA). Son datos: se vuelven a bajar del portal, no se versionan.
+docs/*.zip
