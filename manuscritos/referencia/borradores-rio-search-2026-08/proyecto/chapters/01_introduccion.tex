@@ -1,0 +1,41 @@
+% Capitulo 1: Introduccion (Proyecto de Tesis -- Fase 8, docs/rio_search_plan.md S3.11)
+\chapter{Introducci\'on}
+
+\section{Problema y motivaci\'on}
+
+Este proyecto de tesis propone determinar qu\'e metodolog\'ia -- modelo, ventana de entrenamiento,
+conjunto de \emph{features} y estrategia de horizontes -- proyecta mejor el caudal del r\'io
+Uruguay en su cuenca alta, con el punto de predicci\'on fijado en la estaci\'on
+\texttt{ana\_74100000} (Decisi\'on 018, \texttt{docs/decisions.md}). El problema es relevante para
+la gesti\'on del recurso h\'idrico -- alerta de crecidas, planificaci\'on de infraestructura y
+actividades productivas aguas abajo -- y se aborda como un problema de series temporales
+multi-horizonte (1 a 7 y 14 d\'ias) sobre datos hidrol\'ogicos y meteorol\'ogicos observados.
+
+\section{Objetivos}
+
+\subsection{Objetivo general}
+
+Construir un banco de pruebas reproducible (\emph{Rio\_Search}) que entrene, compare y opere
+metodolog\'ias de proyecci\'on de caudal sobre \texttt{weather.gold.training\_dataset\_v0}, con
+trazabilidad completa (dataset, configuraci\'on, c\'odigo, m\'etricas y tiempos) en MLflow.
+
+\subsection{Objetivos espec\'ificos}
+
+\begin{itemize}[noitemsep]
+  \item Establecer un piso de comparaci\'on con modelos \emph{naive} (persistencia, climatolog\'ia,
+    estacionalidad naive).
+  \item Entrenar y evaluar un modelo BiLSTM bajo dos estrategias de horizonte
+    (\texttt{multi\_output} y \texttt{per\_horizon}) y comparar su costo computacional.
+  \item Dise\~nar el protocolo de evaluaci\'on hidrol\'ogica (NSE, KGE, \emph{skill} vs.
+    persistencia) y de selecci\'on de modelo campe\'on sobre validaci\'on, no sobre prueba.
+  \item Dejar el dise\~no abierto a incorporar el pron\'ostico meteorol\'ogico (ECMWF/GEFS) y
+    modelos adicionales sin tocar el n\'ucleo del dominio.
+\end{itemize}
+
+\section{Alcance}
+
+El alcance de este proyecto de tesis cubre exclusivamente la cuenca alta (Decisi\'on 018); el
+segundo punto de predicci\'on hist\'oricamente considerado (aguas abajo, asociado a Salto Grande)
+queda expl\'icitamente fuera. El proyecto no reemplaza el pipeline de ingesta y consolidaci\'on de
+datos (\texttt{docs/roadmap.md}), que sigue su propio curso independiente; \emph{Rio\_Search}
+consume lo que ese pipeline produce.

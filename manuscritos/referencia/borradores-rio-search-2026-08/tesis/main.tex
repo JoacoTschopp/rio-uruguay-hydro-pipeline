@@ -1,0 +1,51 @@
+% thesis/tesis/main.tex -- Documento "Tesis" de Rio_Search (Fase 8, docs/rio_search_plan.md S3.11).
+%
+% Compilar (PowerShell nativo -- Decision 049, docs/decisions.md: Git Bash/MSYS reescribe
+% BIBINPUTS y bibtex.exe no resuelve las citas):
+%   cd rio_search/thesis/tesis
+%   latexmk -pdf -outdir=build main.tex
+%
+% Salida en build/ (gitignored, rio_search/.gitignore -- "thesis/**/build/").
+\documentclass{../common/riosearch}
+
+\riosearchstage{Tesis de Maestr\'ia}
+\riosearchtitle{Proyecci\'on del caudal del R\'io Uruguay en la cuenca alta\\[0.3cm]
+  \large mediante aprendizaje autom\'atico}
+\riosearchauthor{Joaqu\'in Sebasti\'an Tschopp}
+\riosearchyear{2026}
+
+\begin{document}
+
+\makeriosearchcover
+
+\tableofcontents
+\newpage
+
+\section*{Resumen}
+
+Este trabajo aborda la proyecci\'on del caudal del r\'io Uruguay en su cuenca alta (estaci\'on
+\texttt{ana\_74100000}) a horizontes de 1 a 7 y 14 d\'ias, mediante \emph{Rio\_Search}: un banco de
+pruebas reproducible que entrena, compara y opera modelos sobre
+\texttt{weather.gold.training\_dataset\_v0} con trazabilidad completa en MLflow (Databricks). Se
+comparan modelos \emph{naive} (persistencia, climatolog\'ia, estacionalidad naive) contra un modelo
+BiLSTM (PyTorch), bajo dos estrategias de horizonte (\texttt{multi\_output} y
+\texttt{per\_horizon}). El resultado preliminar: el BiLSTM supera a la persistencia en 7 de los 8
+horizontes evaluados en TEST (\emph{skill}$>0$), con \texttt{t+1} como excepci\'on documentada y
+consistente con la literatura hidrol\'ogica. Cada n\'umero de este documento se puede rastrear a un
+\texttt{run\_id} de MLflow y a un \texttt{git\_sha} exacto del c\'odigo que lo produjo.
+
+\textbf{Palabras clave:} hidrolog\'ia computacional, LSTM, r\'io Uruguay, series temporales,
+aprendizaje autom\'atico, MLflow.
+
+\newpage
+
+\input{chapters/01_introduccion}
+\input{chapters/02_marco_teorico}
+\input{chapters/03_metodologia}
+\input{chapters/04_resultados}
+\input{chapters/05_conclusiones}
+
+\cleardoublepage
+\riosearchbibliography
+
+\end{document}

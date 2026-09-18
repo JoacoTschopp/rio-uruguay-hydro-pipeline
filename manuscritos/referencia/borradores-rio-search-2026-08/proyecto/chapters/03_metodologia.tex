@@ -1,0 +1,48 @@
+% Capitulo 3: Metodologia propuesta (Proyecto de Tesis -- Fase 8, docs/rio_search_plan.md S3.11:
+% "el capitulo de metodologia se escribe desde decisions.md, citando las Decisiones relevantes")
+\chapter{Metodolog\'ia propuesta}
+\label{chap:metodologia}
+
+\section{Dataset y alcance}
+
+El dataset de entrenamiento (\texttt{weather.gold.training\_dataset\_v0}) cubre \'unicamente la
+sub-cuenca \texttt{alta\_frontera}, con el target fijado en \texttt{ana\_74100000} (Decisi\'on
+018). Las reglas de consolidaci\'on hacia Gold -- tratamiento de estaciones sin curva de aforo
+vigente, extrapolaci\'on de crecidas fuera del rango calibrado y la ampliaci\'on a 8 horizontes de
+predicci\'on (\texttt{t+1} a \texttt{t+7} y \texttt{t+14}) -- se documentan en la Decisi\'on 019.
+Las grillas MERGE/SAMeT de CPTEC/INPE (Decisi\'on 033), con cobertura del 100\,\% en todo el
+per\'iodo, son el grupo de \emph{features} de mayor calidad disponible hoy; el pron\'ostico
+ECMWF/GEFS (Decisi\'on 021) todav\'ia no llega a Gold y queda como experimento futuro
+(\S\ref{sec:plan-trabajo}).
+
+\section{Dise\~no de Rio\_Search}
+
+\emph{Rio\_Search} se dise\~na con arquitectura Onion + DDD: dominio sin dependencias del
+proyecto, capas de aplicaci\'on/infraestructura/interfaces hacia afuera, y modelos enchufables por
+un registro de adaptadores (\texttt{ModelRegistry}). Cada b\'usqueda descarga y fija una \'unica
+versi\'on del dataset (verificando la versi\'on Delta de Gold y el \texttt{sha256} del parquet)
+para todos sus \emph{trials}, y registra en MLflow -- jerarqu\'ia b\'usqueda~$\to$~\emph{trial} --
+sus m\'etricas por horizonte y \emph{split}, sus tiempos por etapa y la procedencia exacta del
+c\'odigo que la produjo (\texttt{git\_sha}, rama, \emph{diff} no confirmado).
+
+\section{Modelos, evaluaci\'on y selecci\'on de campe\'on}
+
+Se comparan modelos \emph{naive} (persistencia, climatolog\'ia, estacionalidad naive) contra un
+BiLSTM (PyTorch, con detecci\'on autom\'atica de \emph{device}), bajo dos estrategias de horizonte
+(\texttt{multi\_output} y \texttt{per\_horizon}). Las m\'etricas -- RMSE, MAE, MAPE, NSE, KGE,
+PBIAS, R$^2$, error en picos y \emph{skill} vs. persistencia -- se calculan por horizonte y por
+\emph{split} sobre los targets observados; el modelo campe\'on se selecciona por
+\texttt{val/kge/mean}, nunca por TEST (que se reporta una \'unica vez).
+
+Dos limitaciones reales de \texttt{mlflow-skinny} (el cliente de \emph{tracking} sin
+\texttt{pandas}) aparecieron al registrar el modelo BiLSTM en Unity Catalog -- el \emph{flavor}
+\texttt{mlflow.pytorch.log\_model} y la validaci\'on de \texttt{signature} importan \texttt{pandas}
+incondicionalmente -- y se resolvieron sin violar la regla de no usar \texttt{pandas} en el
+backend (Decisiones 039 y 042).
+
+\section{Puente con la tesis}
+
+Las figuras y tablas de la tesis se generan con \texttt{rio-search thesis export --run
+\textless run\_id\textgreater{}}, que lee las m\'etricas ya logueadas en MLflow y escribe
+\texttt{thesis/figures/*.pdf} y \texttt{thesis/tables/*.tex} con el \texttt{run\_id} de origen en
+un comentario, para que todo n\'umero de la tesis sea trazable a una corrida real.

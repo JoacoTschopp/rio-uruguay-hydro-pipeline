@@ -1,0 +1,48 @@
+% Capitulo 1: Introduccion (Fase 8, docs/rio_search_plan.md S3.11)
+\chapter{Introducci\'on}
+
+\section{Contexto y motivaci\'on}
+
+El r\'io Uruguay conforma, junto con sus afluentes, una de las principales cuencas hidrogr\'aficas
+del Cono Sur. La gesti\'on del recurso -- alerta de crecidas, operaci\'on de infraestructura aguas
+abajo, planificaci\'on agr\'icola -- depende de poder anticipar el caudal con suficiente
+antelaci\'on. Este trabajo aborda esa necesidad para la \textbf{cuenca alta} del r\'io Uruguay,
+con el punto de predicci\'on fijado en la estaci\'on \texttt{ana\_74100000} (frontera
+Brasil--Argentina), \'unico punto cr\'itico dentro del alcance de la tesis (Decisi\'on 018,
+\texttt{docs/decisions.md}).
+
+El pipeline de datos que sostiene este trabajo -- ingesta diaria de estaciones ANA (nivel,
+lluvia), curvas de aforo multi-estaci\'on, pron\'ostico num\'erico ECMWF/GEFS y observaci\'on en
+grilla CPTEC/INPE (MERGE/SAMeT) -- se describe y se justifica en \texttt{docs/roadmap.md} y
+\texttt{docs/decisions.md}, y culmina en la tabla \texttt{weather.gold.training\_dataset\_v0}
+(Databricks): una fila por d\'ia desde el 1$^\circ$ de enero de 2000, sin huecos de calendario,
+con caudal y nivel observados m\'as sus valores a futuro (\texttt{t+1} a \texttt{t+7} y
+\texttt{t+14}) ya calculados y verificados sin fuga temporal.
+
+\section{Objetivo y pregunta de investigaci\'on}
+
+\subsection{Objetivo}
+
+Determinar qu\'e metodolog\'ia -- entendida como la combinaci\'on de modelo, ventana de
+entrenamiento, conjunto de \emph{features} y estrategia de horizontes -- proyecta mejor el caudal
+de \texttt{ana\_74100000} a horizontes de 1 a 7 y 14 d\'ias, y construir el banco de pruebas
+reproducible (\emph{Rio\_Search}) que permite comparar esas metodolog\'ias de forma trazable.
+
+\subsection{Pregunta de investigaci\'on}
+
+\textquestiondown Es posible proyectar el caudal de la cuenca alta del r\'io Uruguay con un
+horizonte de hasta 14 d\'ias, con un desempe\~no superior al de un pron\'ostico ingenuo
+(persistencia), usando modelos de aprendizaje autom\'atico entrenados sobre observaciones
+hidrol\'ogicas y meteorol\'ogicas hist\'oricas?
+
+\section{Estructura del documento}
+
+El Cap\'itulo~\ref{chap:marco-teorico} presenta los antecedentes: redes LSTM aplicadas a series
+temporales y a modelado lluvia-escorrent\'ia, y las m\'etricas est\'andar de la hidrolog\'ia
+computacional. El Cap\'itulo~\ref{chap:metodologia} describe el dise\~no de \emph{Rio\_Search}: el
+dataset, la definici\'on de \emph{splits} temporales, los modelos evaluados y el protocolo de
+trazabilidad en MLflow, citando las decisiones t\'ecnicas concretas que lo respaldan. El
+Cap\'itulo~\ref{chap:resultados} presenta los resultados obtenidos hasta el momento, con al menos
+una figura y una tabla generadas autom\'aticamente desde una corrida real de MLflow
+(\texttt{rio-search thesis export}). El Cap\'itulo~\ref{chap:conclusiones} resume los hallazgos y
+las l\'ineas de trabajo futuro.

@@ -1,0 +1,46 @@
+% manuscritos/tesis/main.tex -- Tesis de Maestria.
+%
+% Compilar desde PowerShell (no Git Bash: MSYS reescribe BIBINPUTS y bibtex no encuentra el .bib):
+%   .\manuscritos\herramientas\compilar.ps1 -Documento tesis
+% Salida: manuscritos/tesis/build/main.pdf (fuera de git).
+%
+% Estructura de capitulos tomada del TFI validado (Introduccion, Marco teorico, Metodologia,
+% Resultados y discusion, Conclusion, Anexos), con Area de estudio y datos como capitulo propio.
+% PROVISORIA hasta confirmar el reglamento de la carrera (ver manuscritos/PLAN.md).
+\documentclass{../comun/tesisuba}
+
+% PROVISORIO: titulo, director y codirector los define el autor.
+\titulo{Proyección del caudal del Río Uruguay\\ mediante aprendizaje automático}
+\autor{Esp. Joaquín Sebastian Tschopp}
+\director{}
+\codirector{}
+\anio{2026}
+
+\begin{document}
+
+\portada
+
+\tableofcontents
+
+\newpage
+
+\section*{Resumen}
+% Pendiente: se escribe al final.
+
+\textbf{Palabras clave:}
+
+\newpage
+
+\input{capitulos/01_introduccion}
+\input{capitulos/02_marco_teorico}
+\input{capitulos/03_area_y_datos}
+\input{capitulos/04_metodologia}
+\input{capitulos/05_resultados}
+\input{capitulos/06_conclusiones}
+
+\bibliografia
+
+\appendix
+\input{capitulos/anexo_a}
+
+\end{document}
