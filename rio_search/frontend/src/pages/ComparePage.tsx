@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { compareRuns, fetchSearches, type RunOut } from '../lib/api'
 
-/** Familia por defecto cuando se entra a Comparar sin `ids` en la URL, y cuantos trials
- * precargar (los primeros N tal como los devuelve la busqueda, sin reordenar). */
-const DEFAULT_COMPARE_FAMILY = 'fase_estrategias'
+/** Sin `ids` en la URL, Comparar muestra sola el leaderboard: los DEFAULT_COMPARE_COUNT
+ * mejores trials (FINISHED, por G-RAL ascendente) entre estas familias. No se escribe en la
+ * URL -- se recalcula en cada refetch (cada LEADERBOARD_POLL_MS) para que una corrida nueva
+ * que gane aparezca sola, sin que nadie tenga que tocar nada. Tocar la seleccion manual
+ * (agregar/sacar un run_id) desactiva el leaderboard y pasa a control explicito.*/
+const DEFAULT_COMPARE_FAMILIES = ['fase_estrategias', 'bilstm']
 const DEFAULT_COMPARE_COUNT = 6
+const LEADERBOARD_POLL_MS = 20_000
 import { extractMetricByHorizon, parseHorizonMetrics } from '../lib/metrics'
 import { colorForIndex } from '../lib/chartData'
 import { formatNumber, formatSeconds, statusTone } from '../lib/format'
@@ -27,29 +31,35 @@ export function ComparePage() {
   const [metricName, setMetricName] = useState('kge')
   const [timeMetric, setTimeMetric] = useState(TIME_METRIC_CANDIDATES[0])
 
-  // Sin ids en la URL: precargar los primeros DEFAULT_COMPARE_COUNT trials de la busqueda mas
-  // reciente de DEFAULT_COMPARE_FAMILY, en vez de pedirle al usuario que arme la seleccion a
-  // mano. Solo se dispara cuando faltan ids -- si ya hay una seleccion (propia o de Busquedas),
-  // esta consulta ni corre.
-  const { data: defaultSearches } = useQuery({
-    queryKey: ['searches', DEFAULT_COMPARE_FAMILY],
-    queryFn: () => fetchSearches([DEFAULT_COMPARE_FAMILY]),
-    enabled: ids.length === 0,
+  const isAutoLeaderboard = ids.length === 0
+
+  // Sin ids en la URL: leaderboard en vivo, no una seleccion fija. Se re-pide sola cada
+  // LEADERBOARD_POLL_MS mientras no haya seleccion manual.
+  const { data: leaderboardSearches } = useQuery({
+    queryKey: ['searches', ...DEFAULT_COMPARE_FAMILIES],
+    queryFn: () => fetchSearches(DEFAULT_COMPARE_FAMILIES),
+    enabled: isAutoLeaderboard,
+    refetchInterval: isAutoLeaderboard ? LEADERBOARD_POLL_MS : false,
   })
 
-  useEffect(() => {
-    if (ids.length > 0) return
-    const latest = defaultSearches?.searches[0]
-    if (!latest) return
-    const defaultIds = latest.trials.slice(0, DEFAULT_COMPARE_COUNT).map((t) => t.run_id)
-    if (defaultIds.length > 0) setSearchParams({ ids: defaultIds.join(',') })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultSearches, ids.length])
+  const leaderboardIds = useMemo(() => {
+    if (!leaderboardSearches) return []
+    const ranked = leaderboardSearches.searches
+      .flatMap((s) => s.trials)
+      .filter((t) => t.status === 'FINISHED')
+      .map((t) => ({ id: t.run_id, gral: pickSplit(t, 'gral') }))
+      .filter((x): x is { id: string; gral: { value: number; split: 'test' | 'val' } } => x.gral !== null)
+      .sort((a, b) => a.gral.value - b.gral.value)
+    return ranked.slice(0, DEFAULT_COMPARE_COUNT).map((x) => x.id)
+  }, [leaderboardSearches])
+
+  const effectiveIds = isAutoLeaderboard ? leaderboardIds : ids
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['compare', ids.join(',')],
-    queryFn: () => compareRuns(ids),
-    enabled: ids.length > 0,
+    queryKey: ['compare', effectiveIds.join(',')],
+    queryFn: () => compareRuns(effectiveIds),
+    enabled: effectiveIds.length > 0,
+    refetchInterval: isAutoLeaderboard ? LEADERBOARD_POLL_MS : false,
   })
 
   const runs = useMemo(() => data?.runs ?? [], [data])
@@ -117,12 +127,20 @@ export function ComparePage() {
   return (
     <div className={styles.page}>
       <h1>Comparar</h1>
-      <p>
-        N runs seleccionados (desde Búsquedas, o pegando <code>run_id</code>s acá). Fuente:{' '}
-        <code>GET /api/runs/compare?ids=…</code>.
-      </p>
+      {isAutoLeaderboard ? (
+        <p>
+          Leaderboard automático: los {DEFAULT_COMPARE_COUNT} mejores por G-RAL entre{' '}
+          {DEFAULT_COMPARE_FAMILIES.join(' + ')}, se actualiza solo cada {LEADERBOARD_POLL_MS / 1000}s. Agregá un{' '}
+          <code>run_id</code> a mano para fijar una selección propia.
+        </p>
+      ) : (
+        <p>
+          N runs seleccionados (desde Búsquedas, o pegando <code>run_id</code>s acá). Fuente:{' '}
+          <code>GET /api/runs/compare?ids=…</code>.
+        </p>
+      )}
 
-      <Panel title="Runs seleccionados">
+      <Panel title={isAutoLeaderboard ? 'Selección manual (vacía — mostrando leaderboard)' : 'Runs seleccionados'}>
         <div className={styles.idChips}>
           {ids.map((id) => (
             <span key={id} className={styles.chip}>
@@ -149,12 +167,16 @@ export function ComparePage() {
         {error && <p style={{ color: 'var(--status-critical)' }}>{(error as Error).message}</p>}
       </Panel>
 
-      {runs.length === 0 && ids.length === 0 && (
+      {runs.length === 0 && effectiveIds.length === 0 && (
         <Panel title="Sin runs">
-          <p>
-            Agregá al menos un <code>run_id</code>, o volvé a{' '}
-            <Link to="/">Búsquedas</Link> y seleccioná trials con el checkbox.
-          </p>
+          {isAutoLeaderboard ? (
+            <p>Todavía no hay ningún trial FINISHED con G-RAL logueado en {DEFAULT_COMPARE_FAMILIES.join(' o ')}.</p>
+          ) : (
+            <p>
+              Agregá al menos un <code>run_id</code>, o volvé a <Link to="/">Búsquedas</Link> y seleccioná trials con
+              el checkbox.
+            </p>
+          )}
         </Panel>
       )}
 
