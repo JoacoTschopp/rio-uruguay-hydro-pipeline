@@ -75,13 +75,23 @@ def git_sha_for(relpath: str) -> str:
 
 
 def load_ledger_rows() -> list[dict[str, Any]]:
-    rows = []
+    """Una fila por celda: la última con `estado=ok`, no todo el historial.
+
+    El ledger es append-only -- una celda re-corrida (B4.09 recorrió con 1 semilla y
+    después con 5, ambas apuntando al mismo JSON de salida porque `--out` es fijo) deja
+    varias filas, algunas `error` de intentos previos. Sin deduplicar, `resolve_result_block`
+    compara el `objetivo` de una fila VIEJA contra el JSON que ya tiene el contenido de la
+    corrida MÁS NUEVA (el archivo se sobreescribe in situ) -- no coinciden, y la celda se
+    reporta como fallida aunque el resultado real esté perfectamente bien.
+    """
+    ultima_por_celda: dict[str, dict] = {}
     with open(LEDGER, encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
-            if r.get("campana") == CAMPANA and (r.get("salida") or "").endswith(".json"):
-                rows.append(r)
-    return rows
+            if (r.get("campana") == CAMPANA and r.get("estado") == "ok"
+                    and (r.get("salida") or "").endswith(".json")):
+                ultima_por_celda[r["celda"]] = r  # el archivo va en orden cronológico
+    return list(ultima_por_celda.values())
 
 
 def already_migrated(client: MlflowClient, experiment_id: str, celda_id: str) -> bool:
