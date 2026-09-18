@@ -1,7 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { compareRuns, type RunOut } from '../lib/api'
+import { compareRuns, fetchSearches, type RunOut } from '../lib/api'
+
+/** Familia por defecto cuando se entra a Comparar sin `ids` en la URL, y cuantos trials
+ * precargar (los primeros N tal como los devuelve la busqueda, sin reordenar). */
+const DEFAULT_COMPARE_FAMILY = 'fase_estrategias'
+const DEFAULT_COMPARE_COUNT = 6
 import { extractMetricByHorizon, parseHorizonMetrics } from '../lib/metrics'
 import { colorForIndex } from '../lib/chartData'
 import { formatNumber, formatSeconds, statusTone } from '../lib/format'
@@ -21,6 +26,25 @@ export function ComparePage() {
   const [split, setSplit] = useState<'test' | 'val'>('test')
   const [metricName, setMetricName] = useState('kge')
   const [timeMetric, setTimeMetric] = useState(TIME_METRIC_CANDIDATES[0])
+
+  // Sin ids en la URL: precargar los primeros DEFAULT_COMPARE_COUNT trials de la busqueda mas
+  // reciente de DEFAULT_COMPARE_FAMILY, en vez de pedirle al usuario que arme la seleccion a
+  // mano. Solo se dispara cuando faltan ids -- si ya hay una seleccion (propia o de Busquedas),
+  // esta consulta ni corre.
+  const { data: defaultSearches } = useQuery({
+    queryKey: ['searches', DEFAULT_COMPARE_FAMILY],
+    queryFn: () => fetchSearches([DEFAULT_COMPARE_FAMILY]),
+    enabled: ids.length === 0,
+  })
+
+  useEffect(() => {
+    if (ids.length > 0) return
+    const latest = defaultSearches?.searches[0]
+    if (!latest) return
+    const defaultIds = latest.trials.slice(0, DEFAULT_COMPARE_COUNT).map((t) => t.run_id)
+    if (defaultIds.length > 0) setSearchParams({ ids: defaultIds.join(',') })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultSearches, ids.length])
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['compare', ids.join(',')],
