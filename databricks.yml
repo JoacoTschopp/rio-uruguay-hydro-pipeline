@@ -633,6 +633,25 @@ resources:
               load_mode: incremental
               max_days_per_run: "5000"
 
+    gefs_cf_fill:
+      name: GEFS_CF_Fill
+      max_concurrent_runs: 1
+      # Sin schedule (Decision 053): es un calculo unico e idempotente sobre valores de Bronze
+      # (GEFS c00 + TIGGE cf), no un task del job diario. GEFS Reforecast v12 esta congelado
+      # (2000-01-01 -> 2019-12-31, sin dias nuevos) y el sesgo contra cf no cambia dia a dia; se
+      # dispara a mano ("Run now") cuando haga falta recalcularlo (por ejemplo si el backfill
+      # historico de cf sigue llenando huecos en 2006-2019 y conviene refrescar el sesgo).
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: silver
+        source: gefs-reforecast
+        load_type: fill
+      tasks:
+        - task_key: ETL_Silver_GEFS_CF_Fill
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_GEFS_CF_Fill
+            source: WORKSPACE
+
     rating_curve_discharge_initial_load:
       name: Rating_Curve_Discharge_Initial_Load
       max_concurrent_runs: 1
