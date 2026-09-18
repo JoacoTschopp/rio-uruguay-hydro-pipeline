@@ -23,6 +23,18 @@ req.json
 notebooks_local/ana_rating_curve/output/raw_json/
 notebooks_local/ana_rating_curve/rating_curve_state.json
 
+# Descargas/artefactos locales de los otros backfills (JSON crudos de ANA historico e
+# INMET, parquet de CPTEC, exports de GEFS/Gold): decenas de miles de archivos de datos,
+# no codigo (verificado: sin .py/.ps1 adentro). Sin esto git status/add tienen que
+# enumerar todo el volumen en cada corrida. Carpeta entera, no por extension, porque el
+# contenido vive anidado a distinta profundidad segun la fuente.
+notebooks_local/ana_historic_backfill/
+notebooks_local/cptec_obs/
+notebooks_local/gefs_reforecast/
+notebooks_local/gold_export/
+notebooks_local/inmet_backfill/
+notebooks_local/**/*.lock
+
 # Biblioteca de investigacion: el catalogo y las notas SI se versionan; los PDF no,
 # por licencia. Con el DOI del catalogo cualquiera recupera el documento.
 research/documents/
