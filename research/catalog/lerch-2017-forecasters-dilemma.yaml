@@ -1,0 +1,23 @@
+slug: lerch-2017-forecasters-dilemma
+title: >-
+  Forecaster's Dilemma: Extreme Events and Forecast Evaluation
+authors:
+  - "Lerch, Sebastian"
+  - "Thorarinsdottir, Thordis L."
+  - "Ravazzolo, Francesco"
+  - "Gneiting, Tilmann"
+year: 2017
+venue: "Statistical Science"
+volume: "32"
+number: "1"
+pages: "106--127"
+doi: "10.1214/16-STS588"
+url: "https://arxiv.org/abs/1512.09244"
+bibtype: article
+tipo: paper
+tags: [scoring-propio, extremos, invariante-causalidad, fundamento]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  EL FUNDAMENTO DEL INVARIANTE 1. Demuestra que condicionar la verificación sobre el resultado observado rompe la propiedad de score propio y premia al modelo sesgado al extremo. Es exactamente lo que gate.assert_causal() impide.

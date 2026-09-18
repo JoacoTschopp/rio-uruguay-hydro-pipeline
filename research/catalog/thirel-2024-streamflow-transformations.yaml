@@ -1,0 +1,21 @@
+slug: thirel-2024-streamflow-transformations
+title: >-
+  On the use of streamflow transformations for hydrological model calibration
+authors:
+  - "Thirel, Guillaume"
+  - "Santos, Léonard"
+  - "Delaigue, Olivier"
+  - "Perrin, Charles"
+year: 2024
+venue: "Hydrology and Earth System Sciences"
+volume: "28"
+pages: "4837--4860"
+doi: "10.5194/hess-28-4837-2024"
+bibtype: article
+tipo: paper
+tags: [log, transformacion, calibracion, competidor-de-B3.03]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  Compara transformaciones del caudal para calibrar. Concluye que log, Box-Cox y potencia 0,2 son las mejores de propósito general — respalda la elección del log y nombra a sus competidoras, que es exactamente la celda B3.03 del catálogo.

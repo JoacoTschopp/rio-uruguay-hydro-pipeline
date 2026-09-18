@@ -1,0 +1,46 @@
+{
+  "descripcion": "B2.19 exploratoria: comparacion limpia sobre el subconjunto de fechas con cobertura ECMWF completa (train+val+test), para separar la senal del efecto de la cobertura/imputacion.",
+  "splits_subset": {
+    "train": {
+      "n": 5870,
+      "desde": "2006-11-29",
+      "hasta": "2024-07-27"
+    },
+    "val": {
+      "n": 365,
+      "desde": "2024-08-11",
+      "hasta": "2025-08-10"
+    },
+    "test": {
+      "n": 285,
+      "desde": "2025-08-25",
+      "hasta": "2026-08-24"
+    }
+  },
+  "ancla_subset_cubierto": {
+    "gral_mean": 0.4988950047848609,
+    "gral_sd": 0.006566774420019505,
+    "per_seed": [
+      0.501546142087979,
+      0.49695287573381386,
+      0.5078243685904195,
+      0.48986232466265295,
+      0.4982893128494391
+    ]
+  },
+  "con_ecmwf_subset_cubierto": {
+    "gral_mean": 0.4211751054322737,
+    "gral_sd": 0.011891229394103208,
+    "per_seed": [
+      0.4179663046544172,
+      0.4106170605965535,
+      0.441198557596984,
+      0.4214618741520974,
+      0.41463173016131644
+    ]
+  },
+  "oficial_full_dataset": {
+    "ancla": 0.4948,
+    "con_ecmwf": 0.42037
+  }
+}

@@ -1,0 +1,20 @@
+slug: newey-powell-1987
+title: >-
+  Asymmetric Least Squares Estimation and Testing
+authors:
+  - "Newey, Whitney K."
+  - "Powell, James L."
+year: 1987
+venue: "Econometrica"
+volume: "55"
+number: "4"
+pages: "819--847"
+doi: "10.2307/1911031"
+bibtype: article
+tipo: paper
+tags: [expectil, fundamento, asimetria, econometria]
+file: null              # PDF en research/documents/ (fuera de git)
+added_at: 2026-09-09
+verificado: true        # metadatos confirmados contra la fuente el 2026-09-09
+rol: >-
+  Origen de la familia. Define el expectil como minimizador de una pérdida de mínimos cuadrados asimétricos: es exactamente la psi_tau de G-RAL.
