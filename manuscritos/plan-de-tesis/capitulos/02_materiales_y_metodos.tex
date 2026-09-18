@@ -31,30 +31,75 @@ error; eso lo hace derivable en todo el dominio y directamente utilizable como o
 entrenamiento por descenso de gradiente, a diferencia de la pérdida \textit{pinball}, que no es
 derivable en el origen.
 
-% PENDIENTE: cerrar esta seccion con la discusion de elicitabilidad --- que funcional estima cada
-% perdida y por que eso condiciona la comparacion entre modelos --- cuando este consolidado el
-% relevamiento (eje b).
+Esta distinción no es un detalle técnico: es la que gobierna la comparación.
+El minimizador poblacional de cada pérdida es un funcional distinto de la distribución del caudal
+--- la media, un cuantil, un expectil --- y una función de pérdida sólo sirve para ordenar modelos
+si es consistente para el funcional que se declaró de antemano
+\cite{gneiting-2011-making-evaluating-point-forecasts}.
+De ahí se sigue que **comparar con una única métrica a modelos entrenados con pérdidas distintas
+es un error de método**, no una simplificación aceptable: se los estaría evaluando con una
+directiva que sólo uno de ellos se propuso cumplir.
+El protocolo de comparación tiene que resolver esto explícitamente.
 
 \section{Métodos}
 
 % En el plan de ejemplo esta es la seccion donde se enuncia la hipotesis del trabajo. Se replica.
+% Encuadre fijado por el autor el 2026-09-18: el nucleo es la comparacion sobre ESTA cuenca.
 
-% PROVISORIO: la hipotesis la cierra el autor con el director.
-La hipótesis del trabajo es que el nivel de asimetría conveniente no es constante: en estiaje el
-costo de sobreestimar y el de subestimar son comparables, mientras que en crecida la asimetría es
-marcada.
-Se propone entonces modular el parámetro de asimetría con el régimen hidrológico, es decir,
-reemplazar el $\tau$ fijo por
+El trabajo se organiza como una comparación sistemática sobre una única cuenca.
+No se busca un método que generalice: se busca cuál de los disponibles rinde mejor acá, y para
+sostener esa afirmación hay que implementarlos y medirlos, no citarlos.
+
+% PROVISORIO: el conjunto definitivo de candidatos lo cierra el autor con el director. Lo que sigue
+% sale del relevamiento del capitulo 1 y busca cubrir familias, no acumular modelos.
+Los candidatos a implementar se eligen para cubrir las familias vigentes, no para acumular
+variantes de una sola:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Líneas de base.} Persistencia y climatología, que son las que usa la literatura
+        operativa para reportar desempeño \cite{harrigan-2023-glofas-reforecast}, y un modelo
+        lineal, que en series temporales resultó competitivo frente a arquitecturas mucho más
+        complejas \cite{zeng-2023-dlinear}.
+  \item \textbf{Modelos tabulares de árboles}, que son estado del arte en datos de esta forma
+        \cite{grinsztajn-2022-arboles-tabular} y ganaron competencias hidrológicas con evaluación
+        externa \cite{drivendata-2025-water-supply-rodeo}.
+  \item \textbf{Redes recurrentes}, en su versión entrenada sólo con esta cuenca y en su versión
+        preentrenada sobre un conjunto regional y ajustada localmente
+        \cite{kratzert-2018-lstm-lluvia-escorrentia, ryd-2025-fine-tuning-local}. La comparación
+        entre esas dos versiones responde, con datos de esta cuenca, la objeción de
+        \citeA{kratzert-2024-nunca-una-sola-cuenca}.
+  \item \textbf{Atención combinada con recurrencia}, por ser la arquitectura pensada para
+        multi-horizonte con covariables conocidas a futuro \cite{lim-2021-tft,
+        rasiyakoya-2024-tft-caudal}.
+  \item \textbf{Post-procesamiento de un sistema operativo existente}, que es la vía más barata y
+        está documentada \cite{hunt-2022-lstm-refuerzo-pronosticos}.
+\end{enumerate}
+
+El protocolo es el mismo para todos: validación temporal hacia adelante, evaluación con
+precipitación \emph{pronosticada} y no observada --- porque es lo único disponible en operación
+\cite{taccari-2026-aifl} ---, y contraste estadístico de las diferencias, para no confundir una
+mejora con el azar del período de evaluación.
+La evaluación reporta, además del error agregado, su descomposición por regiones del rango
+\cite{taggart-2022-extreme-events-scoring}, y un intervalo sobre la métrica, dado que unos pocos
+días de crecida dominan su valor \cite{clark-2021-abuse-performance-metrics}.
+
+Sobre el método que resulte mejor se pone a prueba una hipótesis adicional: que el nivel de
+asimetría conveniente no es constante.
+En estiaje el costo de sobreestimar y el de subestimar son comparables, mientras que en crecida la
+asimetría es marcada.
+Se propone entonces reemplazar el $\tau$ fijo por
 \begin{equation}
   \tau_t = g(\mathbf{x}_t),
 \end{equation}
 donde $\mathbf{x}_t$ resume el estado de la cuenca en el instante $t$ y $g$ es un modulador
 acotado en $(0,1)$.
+El nivel de asimetría no se ajusta por validación cruzada sino que se deriva de la relación entre
+el costo de actuar y la pérdida de no hacerlo \cite{richardson-2000-relative-economic-value}: es
+un dato del problema de decisión, no un hiperparámetro.
 
-% PENDIENTE: la forma funcional concreta de g, el conjunto de modelos a comparar y el protocolo de
-% validacion se completan con lo que devuelva el relevamiento. Lo ya implementado en el repositorio
-% (validacion walk-forward, linea de base de persistencia, contraste de Diebold-Mariano) se
-% describe en el capitulo 3.
+% PENDIENTE: la forma funcional concreta de g. Lo ya implementado en el repositorio (validacion
+% walk-forward, linea de base de persistencia, contraste de Diebold-Mariano) se describe en el
+% capitulo 3.
 
 \section{Datos}
 

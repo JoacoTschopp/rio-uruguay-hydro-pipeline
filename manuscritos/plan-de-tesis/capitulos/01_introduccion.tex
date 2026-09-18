@@ -22,8 +22,20 @@ Sin embargo, los modelos de pronóstico de caudal se entrenan casi siempre minim
 simétrico --- error cuadrático medio, o su versión normalizada como el coeficiente de
 Nash--Sutcliffe --- que trata ambos errores como equivalentes.
 
-Esta tesis parte de esa brecha: la función que se optimiza durante el entrenamiento no representa
-el costo real de la decisión que el pronóstico alimenta.
+La literatura ofrece hoy un menú amplio de métodos para este problema, y en los últimos años ese
+menú se renovó por completo.
+Pero casi toda esa evidencia se construyó sobre muestras grandes de cuencas, y se reporta como un
+valor agregado --- la mediana de un índice sobre cientos de cuencas --- que responde a la pregunta
+de qué método anda mejor \emph{en promedio}.
+Esa no es la pregunta de quien tiene que operar un aprovechamiento sobre un río determinado.
+Un método puede ser el mejor en la mediana de una muestra continental y no ser el mejor acá, donde
+el régimen, la densidad de la red de medición, la calidad de las curvas de aforo y el horizonte
+útil son los que son.
+
+De esa distancia parte esta tesis.
+No busca un método que generalice a muchas cuencas: busca **establecer cuál es el método óptimo
+para la cuenca alta del río Uruguay**, y la única forma de sostener esa afirmación es implementar
+las propuestas vigentes y medirlas sobre esta cuenca, bajo un mismo protocolo.
 
 % FALTA: cerrar la motivacion con el encuadre institucional (el autor trabaja en un aprovechamiento
 % de la cuenca) una vez que el autor defina cuanto de eso quiere que aparezca en el documento.
@@ -88,13 +100,23 @@ La contracara también está documentada: con más datos la LSTM los supera
 \cite{januschowski-2022-forecasting-trees}, que es precisamente el régimen de las crecidas
 extremas.
 
-Dos advertencias metodológicas quedan pendientes de respuesta.
-La primera es que entrenar una LSTM sobre una sola cuenca está explícitamente desaconsejado
-\cite{kratzert-2024-nunca-una-sola-cuenca}; la salida publicada es preentrenar sobre un conjunto
-grande y ajustar localmente \cite{ryd-2025-fine-tuning-local}, para lo cual existen los datos
-\cite{chagas-2020-camels-br, kratzert-2023-caravan}.
-La segunda es que entrenar con lluvia observada y operar con lluvia pronosticada abre una brecha
-de desempeño real, para la que también hay una receta publicada \cite{taccari-2026-aifl}.
+Hay una objeción conocida al entrenamiento sobre una sola cuenca
+\cite{kratzert-2024-nunca-una-sola-cuenca}, y conviene tratarla con precisión porque es la que más
+se le va a hacer a este trabajo.
+Lo que esa literatura muestra es que un modelo entrenado sobre muchas cuencas suele superar, en
+cada una de ellas, al que se entrenó sólo con esa cuenca; la salida propuesta es preentrenar sobre
+un conjunto grande y ajustar localmente \cite{ryd-2025-fine-tuning-local}, para lo cual existen los
+datos de la región \cite{chagas-2020-camels-br, kratzert-2023-caravan}.
+Eso no contradice el objetivo de este trabajo: lo convierte en un candidato más.
+Si el preentrenamiento regional con ajuste local es hoy la mejor propuesta disponible, entonces
+tiene que estar entre los métodos que se implementan y se miden sobre esta cuenca, y ganará o
+perderá ahí.
+La objeción se responde midiéndola, no argumentándola.
+
+La segunda advertencia es que entrenar con lluvia observada y operar con lluvia pronosticada abre
+una brecha de desempeño real, para la que también hay una receta publicada \cite{taccari-2026-aifl}.
+Esta sí condiciona el protocolo de toda la comparación: un método que se evalúa con lluvia
+observada no está midiendo lo que va a rendir en operación.
 
 Sobre el área de estudio, el antecedente más cercano evalúa un sistema operativo de pronóstico de
 caudal en el alto río Uruguay, corrido a diario con diez días de anticipación, y reporta que la
@@ -200,22 +222,33 @@ que el modelo aprenda la cola.
 
 \subsection{Objetivo general}
 
-Evaluar si reemplazar la función de pérdida simétrica habitual por una función asimétrica y
-sensible al régimen hidrológico mejora el pronóstico operativo de caudal diario del río Uruguay en
-horizontes de 1 a 7 días, respecto de las alternativas documentadas en la literatura y de una
-línea de base de persistencia.
+Determinar el método de proyección de caudal diario que mejor se ajusta a la cuenca alta del río
+Uruguay en territorio brasileño, en horizontes de 1 a 7 días y en condiciones de operación,
+implementando sobre esta cuenca las propuestas vigentes en la literatura y comparándolas bajo un
+mismo protocolo.
 
 \subsection{Objetivos específicos}
 
 \begin{enumerate}[nosep]
-  \item Relevar el estado del arte en modelos de pronóstico de caudal efectivamente probados en
+  \item Relevar el estado del arte en métodos de pronóstico de caudal efectivamente probados en
         operación, y en funciones de ganancia y pérdida documentadas para este problema.
   \item Construir un conjunto de datos diario reproducible para la cuenca, integrando registros de
         caudal y nivel, precipitación observada y precipitación pronosticada.
-  \item Implementar y comparar, bajo un mismo protocolo de validación, las funciones objetivo
-        relevadas frente a la función asimétrica propuesta.
-  \item Establecer si las diferencias observadas entre modelos son estadísticamente distinguibles,
+  \item Implementar sobre esta cuenca un conjunto representativo de las propuestas relevadas, que
+        cubra las familias vigentes y no sólo la más reciente.
+  \item Comparar su desempeño bajo un protocolo único de validación temporal, evaluando con
+        forzantes pronosticadas y no observadas, y contra líneas de base de persistencia y
+        climatología.
+  \item Establecer si las diferencias observadas entre métodos son estadísticamente distinguibles,
         y no atribuibles al azar del período de evaluación.
-  \item Cuantificar la mejora en términos de la decisión operativa, y no sólo en términos de error
-        estadístico.
+  \item Evaluar si una función de pérdida asimétrica y sensible al régimen, ajustada al costo
+        operativo de la cuenca, mejora el método que haya resultado mejor.
+  \item Cuantificar el resultado en términos de la decisión operativa, y no sólo en términos de
+        error estadístico.
 \end{enumerate}
+
+% NOTA DE ENCUADRE (2026-09-18). El autor precisó el alcance: no busca un metodo que generalice a
+% muchas cuencas, sino el optimo para esta. Eso reordena el trabajo: el nucleo es la comparacion
+% sobre la cuenca, y la perdida asimetrica pasa de ser el aporte central a ser una hipotesis que se
+% pone a prueba sobre el ganador (objetivo especifico 6). Si se confirma, el aporte es doble; si
+% no, el trabajo igual responde su pregunta. Conviene que el director valide este encuadre.

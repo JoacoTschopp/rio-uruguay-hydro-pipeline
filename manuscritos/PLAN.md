@@ -88,13 +88,26 @@ Resuelto por los documentos que dejó el autor en `info-institucional/`:
 - **Director:** Gustavo Denicolay Pacheco, el mismo que dirigió el plan de ejemplo.
 - **Destinatario de la nota de elevación:** el director académico de la maestría.
 
+**Encuadre, fijado por el autor el 2026-09-18.** Es la decisión que más ordena el trabajo, y conviene no perderla:
+
+> *"Yo no busco un modelo/metodología que responda a múltiples cuencas, yo busco implementar el modelo óptimo para esta cuenca. Y para demostrar que es igual o mejor, o de hecho que un método/modelo es el óptimo y el que más se ajusta a la cuenca en estudio, es necesario implementar propuestas actuales y ver cómo performan en esta cuenca."*
+
+Consecuencias, que ya están aplicadas en el plan:
+
+- El núcleo del trabajo es una **comparación sistemática sobre una sola cuenca**, no la propuesta de un método nuevo. Lo que se defiende es *cuál* rinde mejor acá y con qué evidencia.
+- La objeción de `kratzert-2024-nunca-una-sola-cuenca` **se responde midiéndola, no argumentándola**: el modelo preentrenado sobre un conjunto regional y ajustado localmente entra como un candidato más.
+- La **pérdida asimétrica deja de ser el aporte central** y pasa a ser una hipótesis que se pone a prueba sobre el método ganador (objetivo específico 6). Si se confirma, el aporte es doble; si no, el trabajo igual responde su pregunta. **Esto hay que validarlo con el director.**
+- Lo que hace defendible la comparación es evaluar con forzantes **pronosticadas**, no observadas, porque es lo único que hay en operación.
+
+Título provisorio, en la dirección que dio el autor: *"Método de proyección del caudal de la cuenca alta del río Uruguay en territorio de Brasil"*. El autor avisó que no lo tiene cerrado.
+
 Sigue pendiente del autor:
 
 - Grado académico, filiación y correo del director, y los datos completos del codirector.
 - Fechas (elevación del plan, objetivo de la tesis, ritmo de revisión).
-- Pregunta de investigación e hipótesis: yo propongo borradores a partir de §2.2 y el autor decide.
+- Cierre del título y validación del encuadre con el director.
 
-**Cierre:** pregunta, hipótesis y objetivos aprobados por el autor.
+**Cierre:** encuadre, objetivos y título aprobados por el autor y por la dirección.
 
 ### F2: Plan de tesis
 
@@ -153,7 +166,7 @@ El catálogo pasó de 15 a 71 entradas el 2026-09-18, con dos relevamientos pedi
 - **Ya hay un sistema de aprendizaje automático operando sobre la cuenca:** el de `nearing-2024-global-extreme-floods`, que además **no usa una pérdida simétrica** sino la verosimilitud de una laplaciana asimétrica. Es el antecedente más incómodo y más importante: la idea de asimetría ya está en producción.
 - El antecedente más cercano al aporte es `dahal-2026-ensemble-diverse-loss-functions`, que ya entrena con pérdidas expectílicas, aunque con τ fijo y sin modular por régimen.
 - Hay un resultado teórico que **acota lo que se puede prometer**: `brehmer-strokorb-2019-tail-properties` prueba que las propiedades de cola no son elicitables.
-- Y una advertencia metodológica directa contra el diseño: `kratzert-2024-nunca-una-sola-cuenca`.
+- Y una objeción previsible: `kratzert-2024-nunca-una-sola-cuenca`. **Con el encuadre del 2026-09-18 deja de ser una amenaza y pasa a ser un experimento** (ver §4, F1): el modelo preentrenado regionalmente y ajustado localmente es uno de los candidatos a implementar, y gana o pierde midiéndolo sobre esta cuenca.
 
 ### 5.2 Lo que todavía falta (**a buscar y verificar**)
 
@@ -224,7 +237,7 @@ Los tres salen del inventario automático de ramas. No los verifiqué contra el 
    - **Modo de entrega:** formulario online de la secretaría de la MDM, todo en PDF: nota del estudiante, plan, nota de aval del director y del codirector, y los CV de ambos. El instructivo avisa que un error de forma retrasa el trámite en el Consejo Directivo.
    - **Título:** "escrito sin mayúsculas" salvo nombres propios, y el instructivo remarca que aunque sea provisorio arrastra a las instancias siguientes.
 2. **Datos de portada** (queda pendiente lo que no salió de los documentos):
-   - título provisorio: hoy dice "Pronóstico de caudal del río Uruguay con funciones de pérdida asimétricas", **a confirmar**;
+   - título provisorio: hoy dice "Método de proyección del caudal de la cuenca alta del río Uruguay en territorio de Brasil", que es la dirección que dio el autor el 2026-09-18. Él mismo avisó que no lo tiene cerrado, **así que hay que cerrarlo con el director**;
    - nombre exacto (el TFI dice "Sebastian", sin tilde);
    - ~~director~~: **Gustavo Denicolay Pacheco**. Falta su grado académico, filiación institucional y correo, que el instructivo pide dentro del plan;
    - codirector: nombre, grado académico, filiación y correo;
