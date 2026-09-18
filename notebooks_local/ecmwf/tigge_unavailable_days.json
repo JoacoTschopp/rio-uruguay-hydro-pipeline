@@ -1,8 +1,0 @@
-{
-  "cf": {
-    "2016-12-29": {
-      "comprobado": "2026-09-07T21:16:59.041170+00:00",
-      "motivo": "ECDS devuelve 400 para un request de un solo dia (comprobado 2026-09-07)"
-    }
-  }
-}
