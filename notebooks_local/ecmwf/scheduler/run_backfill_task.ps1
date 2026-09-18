@@ -39,5 +39,16 @@ $LogFile = "$ScriptDir\tigge_backfill_task.log"
 # PowerShell.
 Set-Location $ScriptDir
 "=== Corrida iniciada $(Get-Date) ===" | Out-File -FilePath $LogFile -Append -Encoding utf8
-$PythonArgs = "run_tigge_backfill.py --max-batches-per-call 25 --sync-every-calls 3 --profile `"$DatabricksProfile`""
+# --max-batches-per-call 1 (antes 25): el frente diario se moria de hambre (Decision 050).
+# run() arma su lista de lotes UNA sola vez al entrar y la recorre hasta agotar el cupo; recien
+# cuando vuelve, run_source() recalcula que falta. A 11,6 h por lote medidos, una llamada de 25
+# lotes dura ~12 dias, y en todo ese tiempo los dias nuevos del frente no se piden nunca aunque
+# encabecen la lista. Con cupo 1 se recalcula despues de cada lote, y como la grilla va del mes
+# mas reciente hacia atras, el frente siempre se sirve antes que el historico. No cambia cuantos
+# requests se hacen ni su tamano -- solo cada cuanto se re-prioriza.
+#
+# --sync-every-calls 1 (antes 3): con 1 lote por llamada, sincronizar cada 3 dejaria ~26 GB de
+# JSON acumulados en C: y hasta 35 h de demora hasta que el dia llegue al Volume. Con 1, cada
+# lote sube apenas termina y el pipeline diario lo ve en la corrida siguiente.
+$PythonArgs = "run_tigge_backfill.py --max-batches-per-call 1 --sync-every-calls 1 --profile `"$DatabricksProfile`""
 cmd /c "`"$Python`" $PythonArgs >> `"$LogFile`" 2>&1"

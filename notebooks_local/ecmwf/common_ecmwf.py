@@ -91,8 +91,85 @@ def raw_filename(tipo: str, run_date: date, run_time: str, ext: str) -> str:
     return f"ECMWF_{tipo.upper()}_{run_date:%Y_%m_%d}_t{run_time}.{ext}"
 
 
+# Archivos ya subidos al Volume que se movieron fuera del disco principal para liberar espacio
+# (Decision 042). La resumibilidad de TIGGE se apoya en la PRESENCIA del JSON en disco -- no hay
+# archivo de estado como en GEFS -- asi que mover un JSON sin avisar aca hace que el orquestador
+# lo crea pendiente y lo vuelva a pedir a ECDS. Cada entrada mapea el directorio de trabajo a su
+# archivo externo; `already_landed` da por aterrizado el dia que aparezca en cualquiera de los dos.
+# El sync sigue mirando SOLO el directorio de trabajo, asi que nada de lo archivado se re-sube.
+ARCHIVE_DIRS: dict[Path, list[Path]] = {}
+
+
+def register_archive_dir(json_dir: Path, archive_dir: Path) -> None:
+    """Declara un directorio donde pueden estar los JSON movidos de `json_dir`.
+
+    Admite VARIOS destinos por `json_dir` y se consultan todos. Esto no es un lujo: durante
+    una migracion de archivo (W: -> D:, 2026-09-09) los archivos estan reales mitad en el
+    origen y mitad en el destino. Si solo valiera el ultimo registrado, already_landed()
+    devolveria False para todo lo todavia no movido y el backfill re-pediria a ECDS cientos
+    de dias ya bajados -- el accidente que casi pasa en agosto (Decision 042). Registrando
+    ambos, cualquier instante intermedio de la migracion es seguro."""
+    clave = Path(json_dir).resolve()
+    destino = Path(archive_dir)
+    dirs = ARCHIVE_DIRS.setdefault(clave, [])
+    if destino not in dirs:
+        dirs.append(destino)
+
+
+_CATALOGO_CACHE: dict[str, set] = {}
+
+
+def _dias_en_catalogo(fuente: str) -> Optional[set]:
+    """Dias cubiertos segun el catalogo (Decision 046), cacheados por proceso.
+
+    Devuelve None si el catalogo no esta disponible; el caller entonces cae al chequeo
+    directo sobre disco. Degradar asi es deliberado: que falte el indice tiene que costar
+    lentitud, nunca una re-descarga."""
+    if fuente in _CATALOGO_CACHE:
+        return _CATALOGO_CACHE[fuente]
+    db = Path(__file__).resolve().parents[1] / "catalogo.db"
+    if not db.exists():
+        return None
+    try:
+        import sqlite3
+
+        cx = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        dias = {
+            date.fromisoformat(r[0])
+            for r in cx.execute(
+                "SELECT fecha FROM archivos WHERE fuente=? AND (en_volumen=1 OR ubicacion<>'')",
+                (fuente,),
+            )
+        }
+        cx.close()
+    except Exception:
+        return None
+    _CATALOGO_CACHE[fuente] = dias
+    return dias
+
+
+CATALOGO_FUENTE: dict[Path, str] = {}
+
+
+def register_catalogo_fuente(json_dir: Path, fuente: str) -> None:
+    """Asocia un directorio de landing con su nombre de fuente en el catalogo."""
+    CATALOGO_FUENTE[Path(json_dir).resolve()] = fuente
+
+
 def already_landed(tipo: str, run_date: date, run_time: str, json_dir: Path) -> bool:
-    return (json_dir / raw_filename(tipo, run_date, run_time, "json")).exists()
+    nombre = raw_filename(tipo, run_date, run_time, "json")
+    # 1) disco local: barato (C:) y siempre al dia, incluso para lo recien descargado.
+    if (json_dir / nombre).exists():
+        return True
+    # 2) catalogo: evita golpear el disco externo por USB dia por dia. Solo se consulta para
+    #    lo que ya no esta en local, que es justamente lo archivado.
+    fuente = CATALOGO_FUENTE.get(Path(json_dir).resolve())
+    if fuente:
+        dias = _dias_en_catalogo(fuente)
+        if dias is not None:
+            return run_date in dias
+    # 3) sin catalogo, el comportamiento de siempre.
+    return any((d / nombre).exists() for d in ARCHIVE_DIRS.get(Path(json_dir).resolve(), []))
 
 
 def flatten_forecast(
@@ -489,11 +566,14 @@ def iter_ensemble_forecast_batch_by_day(
 
 
 def iter_batches_backward(earliest: date, latest: date, step_months: int):
-    """Genera lotes [start, end] desde el mas reciente hacia el mas antiguo, de tamanio
-    step_months (12 para lotes anuales/cf, 1 para lotes mensuales/pf), acotados a
-    [earliest, latest]. No corta a fronteras exactas de calendario: cada lote arranca
-    step_months antes del fin del anterior, para que el ultimo lote (mas antiguo) quede
-    pegado exactamente a 'earliest' en vez de dejar un resto suelto."""
+    """OBSOLETA -- usar iter_batches_calendar_backward. Se conserva solo para no romper
+    codigo viejo que la importe.
+
+    Genera lotes [start, end] desde el mas reciente hacia el mas antiguo, de tamanio
+    step_months, anclando TODAS las fronteras en 'latest'. Ese anclaje es el defecto que
+    documenta la Decision 044: como 'latest' se deriva de date.today(), la grilla entera
+    se corre un dia por dia, el lote del borde deja de estar completo y se vuelve a pedir
+    un mes entero para ganar un solo dia."""
     from dateutil.relativedelta import relativedelta
 
     batches = []
@@ -507,11 +587,126 @@ def iter_batches_backward(earliest: date, latest: date, step_months: int):
     return batches
 
 
+def period_start(d: date, step_months: int) -> date:
+    """Primer dia del periodo de step_months meses que contiene a 'd', contando periodos
+    desde enero del anio 0. Con step_months=1 da el primero del mes; con 12, el 1 de enero."""
+    idx = ((d.year * 12 + (d.month - 1)) // step_months) * step_months
+    return date(idx // 12, idx % 12 + 1, 1)
+
+
+def iter_batches_calendar_backward(earliest: date, latest: date, step_months: int):
+    """Genera lotes [start, end] del mas reciente al mas antiguo, alineados a fronteras de
+    calendario (mes con step_months=1, anio con step_months=12), acotados a [earliest, latest].
+
+    A diferencia de iter_batches_backward, la grilla NO depende de 'latest': correr 'latest'
+    un dia solo agranda el ultimo lote, no mueve ninguna frontera. Eso es lo que impide que
+    un backfill que corre todos los dias vuelva a pedir un mes entero cada vez que cambia la
+    fecha del sistema (Decision 044)."""
+    from dateutil.relativedelta import relativedelta
+
+    batches = []
+    start = period_start(latest, step_months)
+    while True:
+        end = min(latest, start + relativedelta(months=step_months) - timedelta(days=1))
+        batches.append((max(start, earliest), end))
+        if start <= earliest:
+            break
+        start -= relativedelta(months=step_months)
+    return batches
+
+
 def days_in_range(start: date, end: date):
     n = (end - start).days
     for i in range(n + 1):
         yield start + timedelta(days=i)
 
 
+def retrieve_bisecting(retrieve, raw_path_for, start: date, end: date, min_days: int = 1):
+    """Pide [start, end]; si el request falla, parte el tramo al medio y reintenta cada mitad,
+    hasta granularidad `min_days`. Devuelve (piezas_ok, tramos_fallidos), donde piezas_ok son
+    tuplas (s, e, path) ya descargadas.
+
+    Por que existe (Decision 049): ECDS rechaza con 400 algunos rangos por dias puntuales que
+    no puede servir, y con el lote entero como unidad un solo dia malo tiraba abajo los ~120
+    dias buenos que lo rodeaban -- y como la grilla de la Decision 044 es estable, el mismo
+    request fallaba identico en cada corrida, en loop y sin avanzar nunca.
+
+    Bisecar es autolimitado (log2 del tramo) y conserva el dato bueno. Ademas distingue solo
+    con el resultado los dos tipos de falla: si NINGUNA pieza baja, el problema es global
+    (cola rate-limited, credenciales, red) y el caller debe cortar como siempre (Decision 030);
+    si bajo aunque sea una, el bloqueo no era global y los tramos fallidos son dias que la
+    fuente no entrega."""
+    pendientes = [(start, end)]
+    ok: list[tuple[date, date, Path]] = []
+    fallidos: list[tuple[date, date]] = []
+    while pendientes:
+        s, e = pendientes.pop(0)
+        destino = raw_path_for(s, e)
+        if retrieve(s, e, destino):
+            ok.append((s, e, destino))
+            continue
+        n = (e - s).days + 1
+        if n <= min_days:
+            fallidos.append((s, e))
+            continue
+        mitad = s + timedelta(days=n // 2 - 1)
+        print(f"  tramo {s.isoformat()}..{e.isoformat()} fallo, se parte en {n // 2} + {n - n // 2} dias")
+        pendientes.insert(0, (mitad + timedelta(days=1), e))
+        pendientes.insert(0, (s, mitad))
+    return ok, fallidos
+
+
 def batch_fully_landed(tipo: str, start: date, end: date, run_time: str, json_dir: Path) -> bool:
     return all(already_landed(tipo, d, run_time, json_dir) for d in days_in_range(start, end))
+
+
+UNAVAILABLE_DAYS_PATH = Path(__file__).resolve().parent / "tigge_unavailable_days.json"
+
+
+def load_unavailable_days(tipo: str, path: Path = UNAVAILABLE_DAYS_PATH) -> set:
+    """Dias que la fuente demostro no poder servir: un request de UN SOLO dia fallo.
+
+    No es una preferencia sobre el dataset, es un hecho sobre el origen -- y queda registrado
+    en un archivo auditable en vez de hardcodeado, con la fecha en que se comprobo. Sin esto,
+    un dia que ECDS no entrega bloquea su lote para siempre: el bisect lo aisla, el lote queda
+    sin piezas, el caller corta la fuente y la corrida siguiente repite todo igual
+    (Decision 049)."""
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    return {date.fromisoformat(d) for d in data.get(tipo, {})}
+
+
+def record_unavailable_day(tipo: str, day: date, reason: str, path: Path = UNAVAILABLE_DAYS_PATH) -> None:
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data.setdefault(tipo, {})[day.isoformat()] = {
+        "comprobado": datetime.now(timezone.utc).isoformat(),
+        "motivo": reason[:300],
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+def missing_span(tipo: str, start: date, end: date, run_time: str, json_dir: Path, ignorar: set | None = None):
+    """Devuelve (primer_faltante, ultimo_faltante) dentro del lote, o None si esta completo.
+
+    Pedirle a la API solo ese tramo en vez del lote entero es la otra mitad del arreglo de
+    la Decision 044: batch_fully_landed es todo-o-nada, asi que un lote al que le falta un
+    solo dia se re-descargaba completo. El tramo es contiguo por construccion (min..max);
+    si los faltantes estuvieran salteados se re-baja algun dia ya presente, acotado siempre
+    al tamanio del lote."""
+    ignorar = ignorar or set()
+    faltantes = [d for d in days_in_range(start, end)
+                 if d not in ignorar and not already_landed(tipo, d, run_time, json_dir)]
+    if not faltantes:
+        return None
+    return faltantes[0], faltantes[-1]

@@ -31,6 +31,13 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
             source: WORKSPACE
 
+        - task_key: ETL_Bronze_ECMWF_FC
+          depends_on:
+            - task_key: DDL_Silver_Gold
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: DDL_Silver_Gold
@@ -146,6 +153,13 @@ resources:
             notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_GEFS
             source: WORKSPACE
 
+        - task_key: ETL_Bronze_ECMWF_FC
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_FC
+            source: WORKSPACE
+
         - task_key: ETL_Silver_Level_Daily
           depends_on:
             - task_key: Check_Bronze_Freshness
@@ -193,10 +207,33 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "60"
 
+        # Decision 020: la conversion nivel->caudal es diaria, encadenada antes de Gold. Solo
+        # ingesta las curvas ya bajadas a Bronze (barato, idempotente) -- la descarga de curvas
+        # nuevas sigue siendo el job trimestral aparte `rating_curve_discharge_initial_load`,
+        # sin schedule, no se toca aca.
+        - task_key: ETL_Bronze_Rating_Curve
+          depends_on:
+            - task_key: Check_Bronze_Freshness
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_Rating_Curve
+            source: WORKSPACE
+
+        - task_key: ETL_Silver_River_Discharge_Daily
+          depends_on:
+            - task_key: ETL_Bronze_Rating_Curve
+            - task_key: ETL_Silver_Level_Daily
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_River_Discharge_Daily
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
         - task_key: ETL_Gold_Training_Dataset_v0
           depends_on:
             - task_key: ETL_Silver_Rainfall_Daily
             - task_key: ETL_Silver_CPTEC_Grid_Daily
+            - task_key: ETL_Silver_River_Discharge_Daily
           notebook_task:
             notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
             source: WORKSPACE
@@ -442,6 +479,86 @@ resources:
               load_mode: incremental
               incremental_lookback_days: "3"
 
+        # pf no tiene task de Landing aca: el ensemble lo baja el backfill local continuo
+        # (notebooks_local/ecmwf/run_tigge_backfill.py), que ya cubre el frente diario porque
+        # su grilla de lotes llega hasta date.today() - TIGGE_LAG_DAYS, y sube los JSON al
+        # Volume cada pocas horas. Agregar aca una descarga de pf pondria un segundo cliente
+        # contra la misma cola de ECDS, que es exactamente lo que prohibe la Decision 012.
+        - task_key: ETL_Bronze_ECMWF_PF
+          depends_on:
+            - task_key: DDL_ECMWF_Forecast
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/02_Bronze/ETL_Bronze_ECMWF_PF
+            source: WORKSPACE
+            base_parameters:
+              lookback_days: "10"
+
+        - task_key: ETL_Silver_ECMWF_PF
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_PF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_PF
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "3"
+
+        # Los dos agregados por sub-cuenca cuelgan de Bronze, no de las tablas *_basin: leen
+        # Bronze contra el mapa materializado weather.silver.punto_subcuenca (Decision 048).
+        # Asi el camino a Gold no queda detras del tageo punto a punto de *_basin, que hace
+        # toPandas() + geopandas y es varios ordenes de magnitud mas lento.
+        - task_key: ETL_Silver_ECMWF_Subcuenca_CF
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_CF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: cf
+              load_mode: incremental
+              incremental_lookback_days: "5"
+
+        - task_key: ETL_Silver_ECMWF_Subcuenca_PF
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_PF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: pf
+              load_mode: incremental
+              incremental_lookback_days: "5"
+
+        # Gold se re-materializa aca, al final del job de pronostico, y no solo en
+        # Silver_Gold_Daily_Incremental: ese job corre 04:30 America/Montevideo (07:30 UTC),
+        # media hora ANTES que este (08:00 UTC), asi que por si solo publicaria siempre el
+        # pronostico del dia anterior. La ventana de Gold es delete+append sobre un rango, o
+        # sea idempotente: correrlo dos veces por dia no duplica ni una fila.
+        - task_key: ETL_Gold_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Silver_ECMWF_Subcuenca_CF
+            - task_key: ETL_Silver_ECMWF_Subcuenca_PF
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/ETL_Gold_Training_Dataset_v0
+            source: WORKSPACE
+            base_parameters:
+              load_mode: incremental
+              incremental_lookback_days: "14"
+
+        - task_key: Validate_Training_Dataset_v0
+          depends_on:
+            - task_key: ETL_Gold_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/06_Quality/Validate_Training_Dataset_v0
+            source: WORKSPACE
+
+        - task_key: Export_Gold_Snapshot
+          depends_on:
+            - task_key: Validate_Training_Dataset_v0
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/05_Gold/Export_Gold_Snapshot
+            source: WORKSPACE
+
     ecmwf_forecast_historic_backfill:
       name: ECMWF_Forecast_Historic_Backfill
       max_concurrent_runs: 1
@@ -513,6 +630,50 @@ resources:
               load_mode: backfill
               range_start: "{{tasks.Historic_ECMWF_PF.values.range_start}}"
               range_end: "{{tasks.Historic_ECMWF_PF.values.range_end}}"
+
+        # load_mode=incremental alcanza para el backfill: el notebook toma la diferencia de
+        # conjuntos entre Bronze y Silver, asi que levanta los dias historicos recien
+        # aterrizados aunque sean mas viejos que el maximo ya agregado.
+        - task_key: ETL_Silver_ECMWF_Subcuenca_CF_Historic
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_CF_Historic
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: cf
+              load_mode: incremental
+              max_days_per_run: "5000"
+
+        - task_key: ETL_Silver_ECMWF_Subcuenca_PF_Historic
+          depends_on:
+            - task_key: ETL_Bronze_ECMWF_PF_Historic
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_ECMWF_Subcuenca
+            source: WORKSPACE
+            base_parameters:
+              modelo: pf
+              load_mode: incremental
+              max_days_per_run: "5000"
+
+    gefs_cf_fill:
+      name: GEFS_CF_Fill
+      max_concurrent_runs: 1
+      # Sin schedule (Decision 053): es un calculo unico e idempotente sobre valores de Bronze
+      # (GEFS c00 + TIGGE cf), no un task del job diario. GEFS Reforecast v12 esta congelado
+      # (2000-01-01 -> 2019-12-31, sin dias nuevos) y el sesgo contra cf no cambia dia a dia; se
+      # dispara a mano ("Run now") cuando haga falta recalcularlo (por ejemplo si el backfill
+      # historico de cf sigue llenando huecos en 2006-2019 y conviene refrescar el sesgo).
+      tags:
+        project: rio-uruguay-hydro-pipeline
+        layer: silver
+        source: gefs-reforecast
+        load_type: fill
+      tasks:
+        - task_key: ETL_Silver_GEFS_CF_Fill
+          notebook_task:
+            notebook_path: ${var.workspace_project_path}/notebooks/04_Silver/ETL_Silver_GEFS_CF_Fill
+            source: WORKSPACE
 
     rating_curve_discharge_initial_load:
       name: Rating_Curve_Discharge_Initial_Load
