@@ -3191,3 +3191,91 @@ Que el archivado falle **nunca** puede cortar una descarga en curso: el `Popen` 
 **Ejecución manual inicial** (2026-09-16): 502 archivos, **133,8 GB**, 0 salteados en el
 `--dry-run` previo. Los 502 estaban confirmados en el volumen con tamaño byte a byte idéntico.
 
+---
+
+## Decisión 053: relleno de `cf` 2000-01→2006-09 calibrando GEFS `c00` contra el sesgo real medido con TIGGE
+
+### Estado
+
+`Aceptada` (2026-09-18), implementada.
+
+### Contexto
+
+GEFS Reforecast v12 se bajó (Decisiones 021/026/029/034) para tapar el hueco 2000-01→2006-09
+que TIGGE no cubre. Verificado en Databricks real esta sesión: el miembro `c00` (control) está
+**completo**, 7.305/7.305 días, 2000-01-01→2019-12-31. Los miembros perturbados `p01`-`p10`
+están **rotos desde 2018-01-04**: el estado local del backfill (`gefs_backfill_state.json`) los
+marca `"done"` para todo el rango, pero el JSON real subido al Volume desde esa fecha solo trae
+`c00` (verificado bajando `GEFS_2018_01_04_t00.json` e inspeccionando `member` por registro —
+90.560 filas, todas `c00`). No se persigue este gap: sin miembros perturbados confiables no hay
+con qué calibrar dispersión de ensemble, así que este relleno usa únicamente `c00`, y solo para
+`cf` (no hay sustituto para `pf`).
+
+El solapamiento real `c00` × TIGGE `cf` en 2006-10→2019-12 es de **4.260 días**. Antes (Decisión
+035) era 0 días — la extensión de GEFS (Decisión 034) todavía no había llegado más allá de
+2018-01-03 y el trabajo de calibración quedó en `notebooks_local/forecast_calibration/` como
+prototipo offline (pandas/geopandas), sin productivizar, a la espera de "solapamiento real de un
+tamaño defendible". Hoy lo hay.
+
+### Diseño
+
+Se hereda tal cual el método de la Decisión 035: sesgo **aditivo**, `bias_mm = media(cf − gefs)`
+por `(subcuenca_nombre, lead_day)`, medido únicamente sobre `run_date` con dato real en las dos
+fuentes — elegido sobre un factor multiplicativo porque la serie es fuertemente cero-inflada. Se
+extiende a los 15 `lead_day` (1-15) que ya usa `ETL_Gold_Training_Dataset_v0.ipynb`
+(`FORECAST_LEAD_DAYS`), no solo los 8 horizontes de la Decisión 019, para no dejar huecos en
+d8,d9...d13,d15.
+
+**Precisión importante sobre dónde vive la agregación.** La primera versión de este plan
+colapsaba GEFS a un promedio por sub-cuenca antes de escribir a Silver — igual que hace
+`ETL_Silver_ECMWF_Subcuenca` con `cf`/`pf` reales. Eso rompía un invariante: la agregación a un
+solo valor por sub-cuenca es el cálculo de **Silver→Gold** (hoy media, mañana quizás P90 u otra
+métrica — ver comentario de diseño de la Decisión 048), y aplicarla ya en la calibración congela
+esa decisión en el tramo 2000-2006 por separado del resto del histórico. La corrección se sigue
+calculando a nivel sub-cuenca (es la única granularidad comparable entre las dos grillas), pero
+se aplica de vuelta a **cada punto de grilla** de GEFS, no al promedio — así
+`weather.silver.gefs_cf_fill_grid` queda con la misma forma que
+`weather.bronze.ecmwf_forecast_cf` (grilla completa, acumulado desde el inicio de la corrida) y
+`ETL_Silver_ECMWF_Subcuenca` la agrega exactamente igual que un día real de `cf`, sin ninguna
+rama especial. Si el día de mañana cambia la métrica de agregación, se recalcula igual para las
+dos épocas sin tocar esta calibración.
+
+**Tablas nuevas** (`notebooks/01_DDL/DDL_ECMWF_Forecast.ipynb`):
+
+- `weather.silver.gefs_cf_bias` — auditoría, una fila por `(subcuenca_nombre, lead_day)`. Sin
+  evidencia real para un combo, `calibrado=false, bias_mm=0` (no se inventa una corrección —
+  mismo criterio que `apply_bias()` del prototipo offline).
+- `weather.silver.gefs_cf_fill_grid` — mismo shape que `weather.bronze.ecmwf_forecast_cf` más
+  `fuente STRING` (`'gefs_calibrado'`) y `bias_mm_aplicado DOUBLE`, filtrada a
+  `run_date < 2006-10-01` (el propio alcance del relleno).
+
+**Notebook nuevo, corrida única e idempotente** (`notebooks/04_Silver/ETL_Silver_GEFS_CF_Fill.ipynb`,
+job `gefs_cf_fill` en `databricks.yml`, **sin `schedule`** — se corre a mano, no es un task del
+job diario: es un cálculo sobre valores de Bronze que solo necesita repetirse si `cf` sigue
+llenando huecos históricos en 2006-2019 y conviene refrescar el sesgo). Lee Bronze GEFS (`c00`,
+pasos múltiplo de 24h hasta 360h) y Bronze `cf`, tagea contra `weather.silver.punto_subcuenca`
+(igual que `ETL_Silver_ECMWF_Subcuenca`, sin reimplementar el point-in-polygon del prototipo),
+convierte acumulado→diario por punto, calcula y persiste el sesgo, y aplica la corrección punto
+a punto antes de volver a acumular.
+
+**Cambio mínimo en `ETL_Silver_ECMWF_Subcuenca.ipynb`** — el único notebook existente que se
+toca: solo para `modelo == 'cf'`, si `gefs_cf_fill_grid` existe, se le hace `unionByName` a la
+lectura de Bronze antes del `groupBy`/`agg` (con una columna `fuente` que viaja como
+`F.first('fuente')` en el agregado), y `dias_a_procesar()` suma sus `run_date` al conjunto de
+Bronze para que el modo `full`/incremental los vea como pendientes. Ni el `MERGE`, ni los
+widgets, ni la lógica de chunking cambian. `weather.silver.ecmwf_forecast_{cf,pf}_subcuenca`
+necesitaron `ALTER TABLE ... ADD COLUMNS (fuente STRING)` (las dos, no solo `cf`: el notebook
+ahora siempre escribe `fuente`, y a `pf` le vale siempre `'tigge'`).
+
+**`ETL_Gold_Training_Dataset_v0.ipynb` no se toca.** `forecast_lead_day_features()` ya lee
+`weather.silver.ecmwf_forecast_cf_subcuenca` completa; en cuanto esa tabla tiene filas desde
+2000, las columnas `ecmwf_cf_tp_mm_d1..d15` se completan solas para 2000-01→2006-09, sin ningún
+cambio de código. `ecmwf_pf_*` sigue en `NULL` en ese tramo — decisión explícita, sin sustituto
+de `pf`.
+
+### Alcance
+
+Solo `cf`. Solo `2000-01-01`→`2006-09-30` (nunca compite con un día real: Bronze `cf` empieza
+justo en `2006-10-01`). Cálculo único sobre valores de Bronze, no wireado al cron diario.
+
+---
