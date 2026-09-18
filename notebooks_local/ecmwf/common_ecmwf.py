@@ -696,6 +696,78 @@ def record_unavailable_day(tipo: str, day: date, reason: str, path: Path = UNAVA
     tmp.replace(path)
 
 
+RECENT_DAY_THRESHOLD_DAYS = 14
+
+
+def is_recent_frontier_day(day: date, threshold_days: int = RECENT_DAY_THRESHOLD_DAYS) -> bool:
+    """True si `day` esta dentro de los ultimos `threshold_days` respecto de hoy.
+
+    Un dia reciente que falla un request de un solo dia (Decision 049) NO es lo mismo que un
+    hueco historico confirmado (ej. la cinta danada de 2017-2018, Decision 031): lo mas probable
+    es que la fuente todavia no lo publico (TIGGE_LAG_DAYS es apenas una expectativa, no una
+    garantia). Blacklistearlo para siempre con record_unavailable_day() lo sacaria del backfill
+    de forma permanente aunque aparezca mañana -- hallazgo real, 2026-09-18: el dia frontera
+    2026-09-16 encadeno un fallo largo (7h en 'running') seguido de un loop de reintento propio
+    de cdsapi, y de haber llegado a bisectar hasta el dia suelto se habria marcado como
+    definitivamente no disponible sin serlo."""
+    return day > date.today() - timedelta(days=threshold_days)
+
+
+BATCH_COOLDOWN_PATH = Path(__file__).resolve().parent / "tigge_batch_cooldown.json"
+BATCH_COOLDOWN_HOURS = 6.0
+
+
+def _cooldown_key(start: date, end: date) -> str:
+    return f"{start.isoformat()}_{end.isoformat()}"
+
+
+def load_batch_cooldowns(tipo: str, path: Path = BATCH_COOLDOWN_PATH) -> dict[str, datetime]:
+    """Lotes que fallaron sin piezas (ni una sola descarga) hace poco: se saltean por un tiempo
+    en vez de reintentarse en cada corrida.
+
+    Por que existe (hallazgo real, 2026-09-18): la grilla de lotes es calendario-descendente
+    (Decision 044) y el cupo por llamada se bajo a 1 para que el frente diario nunca se muera de
+    hambre (Decision 050) -- pero eso significa que el frente es SIEMPRE el primer candidato de
+    cada corrida. Si ese lote puntual queda atascado (un request que tarda horas en fallar, o
+    entra en un loop de reintento propio de la libreria cdsapi), la corrida entera se corta ahi
+    (Decision 030) y el historico trimestral no avanza NUNCA, ni siquiera una vez, porque el
+    disparo siguiente (cada hora, Task Scheduler) vuelve a encontrar el mismo lote primero en la
+    lista. El cooldown rompe ese circulo: un lote sin piezas se salta por unas horas y la corrida
+    sigue con el resto de lo pendiente (que, por construccion, es historico)."""
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out: dict[str, datetime] = {}
+    for key, hasta_iso in data.get(tipo, {}).items():
+        try:
+            out[key] = datetime.fromisoformat(hasta_iso)
+        except ValueError:
+            continue
+    return out
+
+
+def batch_in_cooldown(start: date, end: date, cooldowns: dict[str, datetime]) -> bool:
+    hasta = cooldowns.get(_cooldown_key(start, end))
+    return hasta is not None and datetime.now(timezone.utc) < hasta
+
+
+def record_batch_cooldown(tipo: str, start: date, end: date, hours: float = BATCH_COOLDOWN_HOURS, path: Path = BATCH_COOLDOWN_PATH) -> None:
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    hasta = datetime.now(timezone.utc) + timedelta(hours=hours)
+    data.setdefault(tipo, {})[_cooldown_key(start, end)] = hasta.isoformat()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
 def missing_span(tipo: str, start: date, end: date, run_time: str, json_dir: Path, ignorar: set | None = None):
     """Devuelve (primer_faltante, ultimo_faltante) dentro del lote, o None si esta completo.
 

@@ -25,12 +25,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common_ecmwf import (  # noqa: E402
     area_to_cds_list,
     batch_fully_landed,
+    batch_in_cooldown,
     compute_download_area,
     date_range_str,
+    is_recent_frontier_day,
     iter_batches_calendar_backward,
     iter_ensemble_forecast_batch_by_day,
+    load_batch_cooldowns,
     missing_span,
     raw_filename,
+    record_batch_cooldown,
     register_archive_dir,
     register_catalogo_fuente,
     load_unavailable_days,
@@ -136,6 +140,7 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
     latest = date.today() - timedelta(days=TIGGE_LAG_DAYS)
     batches = iter_batches_calendar_backward(EARLIEST_TIGGE_DATE, latest, BATCH_MONTHS)
     no_disponibles = load_unavailable_days("pf")
+    en_cooldown = load_batch_cooldowns("pf")
 
     print(f"Rango objetivo: {EARLIEST_TIGGE_DATE.isoformat()} .. {latest.isoformat()} ({len(batches)} lotes mensuales totales)")
 
@@ -155,11 +160,15 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
     client = cdsapi.Client()
 
     processed = 0
-    failed = False
+    algo_fallo = False
     for start, end in batches:
         if processed >= max_batches_per_run:
             print(f"Limite de {max_batches_per_run} lotes por corrida alcanzado, se corta aca. Volver a correr para continuar.")
             break
+
+        if batch_in_cooldown(start, end, en_cooldown):
+            print(f"Lote {start.isoformat()}..{end.isoformat()} en cooldown (fallo sin piezas hace poco), se saltea por ahora")
+            continue
 
         span = None if force_reload else missing_span("pf", start, end, RUN_TIME, JSON_DIR, no_disponibles)
         if not force_reload and span is None:
@@ -177,14 +186,26 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
             _batch_raw_path, req_start, req_end,
         )
         if not piezas:
-            # Ninguna pieza bajo: bloqueo global, no un dia puntual. Se corta -- Decision 030.
-            print("Se corta la ejecucion por el fallo anterior (no se reintenta en bucle).")
-            failed = True
-            break
+            # Ni una pieza bajo de este lote puntual: se pone en cooldown y se sigue con el
+            # resto de lo pendiente (por construccion, historico) en vez de cortar toda la
+            # corrida -- un lote atascado (ej. el frente diario colgado horas en la cola) ya
+            # no bloquea el backfill entero para siempre (hallazgo real, 2026-09-18; ver
+            # docstring de record_batch_cooldown en common_ecmwf.py). Si el bloqueo fuera
+            # realmente global (cola caida, credenciales, red) el resto de los lotes va a
+            # fallar tambien y processed termina en 0 -- ahi si el caller lo trata como fallo.
+            print(f"  lote {req_start.isoformat()}..{req_end.isoformat()} sin ninguna pieza, "
+                  f"cooldown por unas horas y se sigue con el resto de lo pendiente")
+            record_batch_cooldown("pf", start, end)
+            algo_fallo = True
+            continue
         for s_bad, e_bad in tramos_fallidos:
             if s_bad == e_bad:
-                record_unavailable_day("pf", s_bad, "ECDS devuelve 400 para un request de un solo dia")
-                no_disponibles.add(s_bad)
+                if is_recent_frontier_day(s_bad):
+                    print(f"  {s_bad.isoformat()} es un dia reciente (frente), no se marca como no "
+                          f"disponible para siempre -- puede que la fuente todavia no lo publico")
+                else:
+                    record_unavailable_day("pf", s_bad, "ECDS devuelve 400 para un request de un solo dia")
+                    no_disponibles.add(s_bad)
         if tramos_fallidos:
             dias_malos = sum((e - s).days + 1 for s, e in tramos_fallidos)
             print(f"  la fuente no entrega {dias_malos} dia(s) de este lote: "
@@ -208,9 +229,14 @@ def run(max_batches_per_run: int = DEFAULT_MAX_BATCHES_PER_RUN, dry_run: bool = 
         processed += 1
         time.sleep(PAUSE_BETWEEN_REQUESTS_SECONDS)
 
-    if processed == 0 and not failed:
+    if processed == 0 and not algo_fallo:
         print("Nada pendiente para procesar en este lote de trabajo (o limite en 0).")
 
+    # `failed` solo es True si esta corrida no logro procesar NADA y ademas algo fallo de
+    # verdad (bloqueo global real: cola caida, credenciales, red) -- no simplemente porque el
+    # primer lote de la lista (el frente) haya entrado en cooldown. Si se proceso aunque sea
+    # un lote historico, el caller debe seguir llamando run() en el mismo ciclo (Decision 050).
+    failed = algo_fallo and processed == 0
     return {"processed": processed, "failed": failed}
 
 
