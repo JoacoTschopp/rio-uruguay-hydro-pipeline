@@ -36,8 +36,8 @@ El minimizador poblacional de cada pérdida es un funcional distinto de la distr
 --- la media, un cuantil, un expectil --- y una función de pérdida sólo sirve para ordenar modelos
 si es consistente para el funcional que se declaró de antemano
 \cite{gneiting-2011-making-evaluating-point-forecasts}.
-De ahí se sigue que **comparar con una única métrica a modelos entrenados con pérdidas distintas
-es un error de método**, no una simplificación aceptable: se los estaría evaluando con una
+De ahí se sigue que \textbf{comparar con una única métrica a modelos entrenados con pérdidas distintas
+es un error de método}, no una simplificación aceptable: se los estaría evaluando con una
 directiva que sólo uno de ellos se propuso cumplir.
 El protocolo de comparación tiene que resolver esto explícitamente.
 
@@ -57,31 +57,28 @@ variantes de una sola:
 
 \begin{enumerate}[nosep]
   \item \textbf{Líneas de base.} Persistencia y climatología, que son las que usa la literatura
-        operativa para reportar desempeño \cite{harrigan-2023-glofas-reforecast}, y un modelo
-        lineal, que en series temporales resultó competitivo frente a arquitecturas mucho más
-        complejas \cite{zeng-2023-dlinear}.
-  \item \textbf{Modelos tabulares de árboles}, que son estado del arte en datos de esta forma
-        \cite{grinsztajn-2022-arboles-tabular} y ganaron competencias hidrológicas con evaluación
-        externa \cite{drivendata-2025-water-supply-rodeo}.
-  \item \textbf{Redes recurrentes}, en su versión entrenada sólo con esta cuenca y en su versión
-        preentrenada sobre un conjunto regional y ajustada localmente
-        \cite{kratzert-2018-lstm-lluvia-escorrentia, ryd-2025-fine-tuning-local}. La comparación
-        entre esas dos versiones responde, con datos de esta cuenca, la objeción de
-        \citeA{kratzert-2024-nunca-una-sola-cuenca}.
-  \item \textbf{Atención combinada con recurrencia}, por ser la arquitectura pensada para
-        multi-horizonte con covariables conocidas a futuro \cite{lim-2021-tft,
-        rasiyakoya-2024-tft-caudal}.
-  \item \textbf{Post-procesamiento de un sistema operativo existente}, que es la vía más barata y
-        está documentada \cite{hunt-2022-lstm-refuerzo-pronosticos}.
+        operativa para reportar desempeño \cite{harrigan-2023-glofas-reforecast}, más un modelo
+        lineal. Ningún método complejo se acepta sin haberles ganado primero.
+  \item \textbf{Modelos de árboles}, por ser estado del arte en datos tabulares como los de esta
+        cuenca \cite{grinsztajn-2022-arboles-tabular}.
+  \item \textbf{Redes recurrentes}, en dos versiones: entrenada sólo con esta cuenca
+        \cite{kratzert-2018-lstm-lluvia-escorrentia}, y preentrenada sobre un conjunto regional y
+        ajustada localmente. La comparación entre ambas responde, con datos de esta cuenca, la
+        objeción de \citet{kratzert-2024-nunca-una-sola-cuenca}.
+  \item \textbf{Atención combinada con recurrencia}, por ser la familia que gana terreno
+        justamente a medida que se alarga el horizonte \cite{liu-2025-rnn-a-transformers}.
 \end{enumerate}
+
+% Un quinto candidato posible, el post-procesamiento de la salida de un sistema operativo
+% existente, queda fuera de la lista porque depende de conseguir esa salida para esta cuenca.
+% Esta documentado en el anexo de relevamiento.
 
 El protocolo es el mismo para todos: validación temporal hacia adelante, evaluación con
 precipitación \emph{pronosticada} y no observada --- porque es lo único disponible en operación
 \cite{taccari-2026-aifl} ---, y contraste estadístico de las diferencias, para no confundir una
 mejora con el azar del período de evaluación.
-La evaluación reporta, además del error agregado, su descomposición por regiones del rango
-\cite{taggart-2022-extreme-events-scoring}, y un intervalo sobre la métrica, dado que unos pocos
-días de crecida dominan su valor \cite{clark-2021-abuse-performance-metrics}.
+Cada métrica se reporta con un intervalo, dado que unos pocos días de crecida dominan su valor
+\cite{clark-2021-abuse-performance-metrics}.
 
 Sobre el método que resulte mejor se pone a prueba una hipótesis adicional: que el nivel de
 asimetría conveniente no es constante.
@@ -94,7 +91,7 @@ Se propone entonces reemplazar el $\tau$ fijo por
 donde $\mathbf{x}_t$ resume el estado de la cuenca en el instante $t$ y $g$ es un modulador
 acotado en $(0,1)$.
 El nivel de asimetría no se ajusta por validación cruzada sino que se deriva de la relación entre
-el costo de actuar y la pérdida de no hacerlo \cite{richardson-2000-relative-economic-value}: es
+el costo de actuar y la pérdida de no hacerlo \cite{matte-2017-beyond-cost-loss}: es
 un dato del problema de decisión, no un hiperparámetro.
 
 % PENDIENTE: la forma funcional concreta de g. Lo ya implementado en el repositorio (validacion

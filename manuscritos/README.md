@@ -5,6 +5,10 @@ Acá viven los dos documentos de la Maestría en Explotación de Datos y Descubr
 - **plan de tesis** → `plan-de-tesis/`
 - **tesis** → `tesis/`
 
+Y una hoja de trabajo que **no se eleva** con ninguno de los dos:
+
+- **relevamiento bibliográfico** → `anexo-relevamiento/`
+
 Los dos usan el mismo formato: el del Trabajo Final Integrador de la Especialización, que la carrera ya aceptó.
 
 Se trabaja en la rama `feature/tesis-latex`, que nace de `main-predic`, con el worktree `rio-uruguay-tesis`. El plan de trabajo, las dependencias y los pendientes están en [`PLAN.md`](PLAN.md).
@@ -28,6 +32,8 @@ manuscritos/
 │   ├── capitulos/
 │   ├── figuras/
 │   └── tablas/
+├── anexo-relevamiento/
+│   └── main.tex              métricas, metodologías y comparaciones, en listas con referencias
 ├── herramientas/
 │   ├── compilar.ps1          regenera la bibliografía y compila con latexmk
 │   └── exportar_bib.py       research/catalog/*.yaml → comun/referencias.bib
@@ -51,11 +57,12 @@ Desde la raíz del repo, en **PowerShell**:
 ```powershell
 .\manuscritos\herramientas\compilar.ps1                          # los dos documentos
 .\manuscritos\herramientas\compilar.ps1 -Documento plan-de-tesis
+.\manuscritos\herramientas\compilar.ps1 -Documento anexo-relevamiento
 .\manuscritos\herramientas\compilar.ps1 -Documento tesis -SinBib  # sin regenerar el .bib
 .\manuscritos\herramientas\compilar.ps1 -Limpiar                  # borra build/
 ```
 
-Los PDF salen en `plan-de-tesis/build/main.pdf` y `tesis/build/main.pdf`.
+Los PDF salen en `<documento>/build/main.pdf`.
 
 **No compilar desde Git Bash.** MSYS convierte `BIBINPUTS` a rutas `/c/...` que el `bibtex` de MiKTeX no entiende, y todas las citas quedan sin resolver. Está documentado en la Decisión 049 de la rama `feature/rio-search`.
 
@@ -88,6 +95,8 @@ La UI de Rio_Search (rama `feature/rio-search`) también lista y edita una bibli
 - Etiquetas con prefijo: `cap:`, `sec:`, `fig:`, `tab:`, `ec:`.
 - Cada figura o tabla generada lleva, en su primera línea, un comentario con su fuente (archivo de resultados, celda, commit) y el script que la produjo.
 - En el texto no se cita "Decisión NNN": la numeración de `docs/decisions.md` se repite con otro contenido entre ramas. Si hace falta, se cita el documento del repositorio en un anexo.
+- **Para citar se usa `\citet{}` (en el cuerpo de la oración) o `\cite{}` (entre paréntesis). `\citeA{}` no se puede usar**: la clase carga `apacite` y `natbib` juntos, como el TFI validado, y natbib pisa los comandos de apacite. `\citeA` sale roto y pdflatex no avisa nada.
+- **Un plan de tesis lleva de 15 a 20 referencias**, varias de ellas recientes. El relevamiento completo vive en `anexo-relevamiento/`, no en el plan.
 
 ## Material de referencia (`referencia/`)
 

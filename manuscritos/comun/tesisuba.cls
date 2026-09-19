@@ -37,6 +37,11 @@
 \RequirePackage{enumitem}
 % El modelo carga apacite y natbib juntos. apacite recomienda la opcion [natbibapa] en su lugar;
 % se replica lo validado y no se cambia sin compilar y comparar contra el PDF de referencia.
+%
+% CONSECUENCIA, verificada compilando el 2026-09-19: natbib pisa los comandos propios de apacite.
+% \citeA NO se puede usar; sale roto, literalmente "411970Nash y SutcliffeNash y Sutcliffe ()",
+% sin que pdflatex avise nada. Para citar en el cuerpo de la oracion va \citet, que es de natbib
+% y da "Autor (anio)"; para citar entre parentesis, \cite.
 \RequirePackage{apacite}
 \RequirePackage{natbib}
 \RequirePackage{float}

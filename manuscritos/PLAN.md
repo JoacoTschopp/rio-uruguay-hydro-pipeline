@@ -168,7 +168,15 @@ El catálogo pasó de 15 a 71 entradas el 2026-09-18, con dos relevamientos pedi
 - Hay un resultado teórico que **acota lo que se puede prometer**: `brehmer-strokorb-2019-tail-properties` prueba que las propiedades de cola no son elicitables.
 - Y una objeción previsible: `kratzert-2024-nunca-una-sola-cuenca`. **Con el encuadre del 2026-09-18 deja de ser una amenaza y pasa a ser un experimento** (ver §4, F1): el modelo preentrenado regionalmente y ajustado localmente es uno de los candidatos a implementar, y gana o pierde midiéndolo sobre esta cuenca.
 
-### 5.2 Lo que todavía falta (**a buscar y verificar**)
+### 5.2 Cuánto se cita, y dónde
+
+**El plan cita 20 referencias**, que es lo que corresponde a un documento de ~11 páginas de cuerpo, y 12 de ellas son de los últimos cinco años. Las 20 se eligieron para cubrir los tres ejes que pidió el autor: metodologías de aprendizaje automático y profundo aplicadas al problema, funciones de ganancia y pérdida, y métricas de comparación entre modelos.
+
+El relevamiento completo vive en `anexo-relevamiento/`, que **no se eleva con el plan**: tres listas numeradas --- métricas, metodologías y comparaciones --- con la referencia de cada punto. La de comparaciones dice, para cada trabajo, qué comparó contra qué, con cuál métrica y qué le dio.
+
+Ojo con una trampa de esa última lista: **lo que dice sobre el contenido de cada trabajo sale del relevamiento, no de la lectura del texto completo.** Está advertido en el propio documento. Antes de que algo de ahí entre al plan o a la tesis hay que abrir el paper.
+
+### 5.3 Lo que todavía falta (**a buscar y verificar**)
 
 - **LSTM, origen:** Hochreiter y Schmidhuber (1997).
 - **Comparación de pronósticos:** Diebold y Mariano (1995); Harvey, Leybourne y Newbold (1997), por la corrección HLN que usa B11.03.

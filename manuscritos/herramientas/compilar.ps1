@@ -16,10 +16,11 @@
     .\manuscritos\herramientas\compilar.ps1
     .\manuscritos\herramientas\compilar.ps1 -Documento tesis
     .\manuscritos\herramientas\compilar.ps1 -Documento plan-de-tesis -SinBib
+    .\manuscritos\herramientas\compilar.ps1 -Documento anexo-relevamiento
     .\manuscritos\herramientas\compilar.ps1 -Limpiar
 #>
 param(
-    [ValidateSet('plan-de-tesis', 'tesis', 'todos')]
+    [ValidateSet('plan-de-tesis', 'tesis', 'anexo-relevamiento', 'todos')]
     [string]$Documento = 'todos',
     [switch]$SinBib,
     [switch]$Limpiar
@@ -32,7 +33,8 @@ $manuscritos = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $raiz = (Resolve-Path (Join-Path $manuscritos '..')).Path
 $comun = Join-Path $manuscritos 'comun'
 
-$documentos = if ($Documento -eq 'todos') { @('plan-de-tesis', 'tesis') } else { @($Documento) }
+$documentos = if ($Documento -eq 'todos') { @('plan-de-tesis', 'tesis', 'anexo-relevamiento') }
+              else { @($Documento) }
 
 if ($Limpiar) {
     foreach ($doc in $documentos) {

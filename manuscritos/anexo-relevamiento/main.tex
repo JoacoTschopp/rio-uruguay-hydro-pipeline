@@ -1,0 +1,400 @@
+% manuscritos/anexo-relevamiento/main.tex
+%
+% Hoja de trabajo, NO forma parte del plan de tesis. El plan se limita a 20 referencias, que es lo
+% que corresponde a ese documento; este anexo guarda el relevamiento completo para que no se
+% pierda y para que el director vea sobre que se apoyan las decisiones.
+%
+% Compilar:  .\manuscritos\herramientas\compilar.ps1 -Documento anexo-relevamiento
+% Salida:    manuscritos/anexo-relevamiento/build/main.pdf (fuera de git).
+%
+% DOS DECISIONES DE FORMA, las dos por prueba y error compilando:
+%
+% 1. Listas numeradas y no tablas. Es el formato en puntos que pidio el autor, y ademas evita
+%    longtable y tabularx, que reprocesan el cuerpo para calcular anchos de columna.
+%
+% 2. \citet y no \citeA. La clase carga apacite y natbib juntos (asi estaba el TFI validado) y
+%    natbib pisa los comandos propios de apacite: \citeA sale roto, literalmente
+%    "411970Nash y SutcliffeNash y Sutcliffe ()". \citet es de natbib y da "Autor (anio)".
+\documentclass{../comun/tesisuba}
+
+\newcommand{\entrada}[2]{\item \textbf{#1} --- #2}
+
+\begin{document}
+
+\begin{center}
+  {\large \textbf{Relevamiento bibliográfico}}\\[0.2cm]
+  {\normalsize Métricas, metodologías y comparaciones}\\[0.3cm]
+  {\small Anexo de trabajo del plan de tesis\\
+  Joaquín Sebastian Tschopp --- 19 de septiembre de 2026}
+\end{center}
+
+\vspace{0.8cm}
+
+\section*{Cómo leer este anexo}
+
+Este documento \textbf{no forma parte del plan de tesis}, que se limita a veinte referencias.
+Acá queda el relevamiento completo, que es de donde salieron esas veinte.
+
+El catálogo vive en \texttt{research/catalog/} y hoy tiene 71 entradas.
+De ellas, 69 tienen el DOI resuelto y el título, la revista, el volumen, el número y las páginas
+confirmados campo por campo contra Crossref.
+Las 2 restantes son literatura gris sin DOI y están marcadas como no verificadas.
+
+\medskip
+\noindent\fbox{\parbox{0.95\textwidth}{%
+\textbf{Advertencia sobre los resultados.}
+Lo que dice la sección 3 sobre \emph{qué} reportó cada trabajo proviene del relevamiento
+bibliográfico, no de la lectura del texto completo: los PDF todavía no están en
+\texttt{research/documents/}.
+Los metadatos de las citas sí están verificados.
+\textbf{Nada de la sección 3 debe citarse en el plan ni en la tesis sin abrir el trabajo y
+confirmarlo.}}}
+
+\medskip
+
+Las tres secciones responden a tres preguntas distintas:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Métricas y funciones objetivo}: con qué se mide y con qué se entrena, y qué estima
+        cada una. La distinción importa, porque no toda métrica sirve como función de pérdida y no
+        toda función de pérdida sirve para ordenar modelos.
+  \item \textbf{Metodologías}: qué métodos existen y quién los propuso.
+  \item \textbf{Comparaciones}: quién comparó qué contra qué, con cuál métrica, y qué le dio.
+\end{enumerate}
+
+\newpage
+
+\section*{1. Métricas y funciones objetivo}
+
+\begin{enumerate}[leftmargin=*, itemsep=3pt]
+
+\entrada{Nash--Sutcliffe (NSE)}{error cuadrático reescalado por la varianza observada. Estima la
+media condicional, igual que el error cuadrático. Es la métrica por defecto en hidrología.
+\citet{nash-sutcliffe-1970}}
+
+\entrada{Kling--Gupta (KGE)}{descompone el desempeño en correlación, sesgo y variabilidad. No es
+consistente para ningún funcional conocido: es un índice de ajuste, no una función de pérdida.
+\citet{gupta-2009-kge}}
+
+\entrada{KGE modificado (KGE$'$)}{reemplaza el cociente de desvíos estándar por el de coeficientes
+de variación, para desacoplar variabilidad de sesgo. \citet{kling-2012-modified-kge}}
+
+\entrada{KGE no paramétrico}{Spearman en lugar de Pearson, y curva de duración de caudales en
+lugar del cociente de desvíos. Levanta los supuestos de linealidad y normalidad, que un río de
+régimen asimétrico no cumple. \citet{pool-2018-nonparametric-kge}}
+
+\entrada{NSE promediado por cuenca}{variante usada como función de pérdida al entrenar sobre
+muchas cuencas. En una sola cuenca colapsa a un error cuadrático reescalado, así que acá pierde
+sentido. \citet{kratzert-2019-universal-regional-local}}
+
+\entrada{Pérdida \textit{pinball} (regresión cuantílica)}{estima el cuantil de nivel $\tau$. No es
+derivable en el origen. \citet{koenker-bassett-1978}}
+
+\entrada{Mínimos cuadrados asimétricos (regresión expectílica)}{estima el expectil de nivel
+$\tau$. Derivable en todo el dominio, así que se usa directamente como objetivo de entrenamiento.
+\citet{newey-powell-1987}}
+
+\entrada{Huber generalizada}{interpola entre el cuantil y el expectil del mismo nivel conservando
+la consistencia. Robusta a valores atípicos. \citet{taggart-2022-generalized-huber-loss}}
+
+\entrada{LINEX}{pérdida asimétrica suave, con penalización exponencial de un lado. Bajo LINEX la
+media muestral es inadmisible: el óptimo es un predictor sesgado.
+\citet{zellner-1986-asymmetric-loss-linex}}
+
+\entrada{Marco de elicitabilidad}{establece la regla que ordena todo el campo: una pérdida sólo
+sirve para ordenar modelos si es consistente para un funcional declarado de antemano.
+\citet{gneiting-2011-making-evaluating-point-forecasts}}
+
+\entrada{Elicitabilidad de orden superior}{extiende lo anterior a funcionales multidimensionales.
+Es el encuadre teórico que necesita una pérdida cuyo $\tau$ depende del régimen.
+\citet{fissler-ziegel-2016-higher-order-elicitability}}
+
+\entrada{Scores elementales}{toda pérdida consistente para un cuantil o un expectil se descompone
+en scores elementales, lo que habilita comparaciones robustas.
+\citet{ehm-2016-quantiles-expectiles}}
+
+\entrada{Reglas de scoring propias y CRPS}{marco general de evaluación probabilística.
+\citet{gneiting-raftery-2007-scoring-rules}}
+
+\entrada{CRPS ponderado por umbral}{enfatiza una región del rango, por ejemplo las crecidas, sin
+perder la propiedad de ser una regla propia. \citet{gneiting-ranjan-2011-weighted-scoring}}
+
+\entrada{Kernel scores transformados}{generalización moderna de lo anterior, con receta
+constructiva para armar scores propios que pesan más los eventos de interés.
+\citet{allen-2023-transformed-kernel-scores}}
+
+\entrada{Descomposición de un score por región del rango}{parte un score consistente en
+componentes que enfatizan tramos del rango, y cada componente sigue siendo consistente. Es la
+forma correcta de preguntar cómo anda el modelo en crecidas.
+\citet{taggart-2022-extreme-events-scoring}}
+
+\entrada{Expectiles en hidrología}{tratamiento específico de la regresión expectílica para
+variables hidrológicas. \citet{tyralis-2023-expectile-hydrological}}
+
+\entrada{Transformaciones dentro de pérdidas consistentes}{formaliza qué estima una pérdida
+aplicada sobre una variable transformada. Una expectílica sobre $\log Q$ no estima el expectil de
+$Q$ sino otro funcional, y este trabajo da la caracterización exacta.
+\citet{tyralis-2026-variable-transformations-loss}}
+
+\entrada{Trampas del log-KGE y de las transformaciones}{documentan en hidrología que transformar
+la variable es, de hecho, cambiar la función de pérdida.
+\citet{santos-2018-log-kge-pitfalls, thirel-2024-streamflow-transformations}}
+
+\entrada{Sesgo de retransformación (\textit{smearing})}{volver de escala logarítmica a unidades
+originales sesga el resultado hacia la mediana. Es el problema exacto de entrenar sobre $\log Q$ y
+reportar m\textsuperscript{3}/s para operar. \citet{duan-1983-smearing-retransformation}}
+
+\entrada{Verosimilitud distribucional asimétrica}{entrenar con la densidad --- laplaciana
+asimétrica, mezclas --- en lugar de un error puntual. Es lo que usa el sistema operativo de
+referencia. \citet{klotz-2022-uncertainty-deep-learning-rainfall-runoff}}
+
+\entrada{Valor económico relativo (cost-loss)}{liga el desempeño al cociente entre el costo de
+actuar y la pérdida de no hacerlo. Implica que el nivel de asimetría es un dato del problema de
+decisión, no un hiperparámetro. \citet{richardson-2000-relative-economic-value}}
+
+\entrada{Cost-loss con aversión al riesgo}{extensión del anterior para decisiones hidrológicas
+donde el decisor no es neutral al riesgo. \citet{matte-2017-beyond-cost-loss}}
+
+\entrada{Beneficio de pronosticar, aplicado a alerta de crecidas}{cuantifica sobre un sistema real
+cuánto valor destruyen las falsas alarmas y los eventos perdidos.
+\citet{verkade-werner-2011-flood-warning-benefits}}
+
+\entrada{Incertidumbre muestral de NSE y KGE}{no es una métrica sino una advertencia sobre ellas:
+unos pocos días de crecida dominan su valor, así que un número puntual no alcanza para ordenar
+modelos. \citet{clark-2021-abuse-performance-metrics}}
+
+\entrada{Dilema del pronosticador}{evaluar sólo sobre los eventos extremos distorsiona la
+comparación y premia modelos sesgados. \citet{lerch-2017-forecasters-dilemma}}
+
+\entrada{Límite de las colas}{resultado negativo duro: las propiedades de cola no son elicitables.
+Acota lo que una pérdida asimétrica puede prometer.
+\citet{brehmer-strokorb-2019-tail-properties}}
+
+\end{enumerate}
+
+\newpage
+
+\section*{2. Metodologías}
+
+\begin{enumerate}[leftmargin=*, itemsep=3pt]
+
+\entrada{LSTM lluvia-escorrentía}{red recurrente con memoria aplicada a la relación entre lluvia y
+caudal. Trabajo fundacional de toda la línea. \citet{kratzert-2018-lstm-lluvia-escorrentia}}
+
+\entrada{EA-LSTM regional}{un solo modelo entrenado sobre muchas cuencas, que modula el
+comportamiento aprendido con atributos estáticos de cada una.
+\citet{kratzert-2019-universal-regional-local}}
+
+\entrada{Preentrenamiento global más ajuste local}{preentrenar sobre un conjunto grande y después
+ajustar por cuenca. Preprint, sin revisión por pares. \citet{ryd-2025-fine-tuning-local}}
+
+\entrada{Preentrenar en reanálisis, ajustar en pronóstico operativo}{cierra la brecha entre
+entrenar con forzantes observadas y operar con forzantes pronosticadas. Es el problema que tiene
+esta tesis. \citet{taccari-2026-aifl}}
+
+\entrada{\texttt{neuralhydrology}}{librería de referencia, del mismo equipo que el sistema
+operativo, con implementaciones probadas de LSTM y EA-LSTM y lectores de los conjuntos estándar.
+\citet{kratzert-2022-neuralhydrology}}
+
+\entrada{\textit{Temporal Fusion Transformer} (TFT)}{arquitectura multi-horizonte con covariables
+conocidas a futuro, observadas y estáticas, con selección de variables por horizonte. Es la
+situación que crea disponer del pronóstico de lluvia. \citet{lim-2021-tft}}
+
+\entrada{TFT aplicado a caudal}{aplica la anterior al pronóstico de caudal, combinando atención
+con recurrencia. \citet{rasiyakoya-2024-tft-caudal}}
+
+\entrada{Transformer en hidrología}{evalúa la atención pura sobre caudal y discute el techo de
+predictibilidad del dato. \citet{liu-2024-transformer-limite-hidrologico}}
+
+\entrada{Modelos fundacionales de series temporales}{pronóstico sin entrenamiento específico sobre
+la serie objetivo. \citet{sun-2026-tsfm-zeroshot-caudal}}
+
+\entrada{Árboles con potenciación de gradiente en datos tabulares}{aprenden bien funciones
+objetivo no suaves y toleran variables no informativas.
+\citet{grinsztajn-2022-arboles-tabular}}
+
+\entrada{Árboles en pronóstico de series temporales}{cómo se usan con covariables exógenas, y sus
+límites de extrapolación fuera del rango observado.
+\citet{januschowski-2022-forecasting-trees, makridakis-2022-m5-accuracy}}
+
+\entrada{Baseline lineal (DLinear)}{modelo lineal de una capa como referencia obligatoria antes de
+cualquier arquitectura compleja. \citet{zeng-2023-dlinear}}
+
+\entrada{Post-procesamiento con red neuronal}{corregir con aprendizaje automático la salida de un
+sistema operativo existente, con un modelo por horizonte. Es la vía más barata.
+\citet{hunt-2022-lstm-refuerzo-pronosticos}}
+
+\entrada{Modelos diferenciables}{modelo conceptual reescrito de forma derivable, con redes que
+regionalizan sus parámetros. Conserva variables de estado interpretables y respeta el balance de
+masa. \citet{feng-2022-modelos-diferenciables}}
+
+\entrada{Red cuantílica monótona no cruzada}{estima varios cuantiles a la vez evitando que se
+crucen. \citet{cannon-2018-mcqrnn-noncrossing}}
+
+\entrada{Red profunda de Huber-cuantil}{una sola red que anida los casos cuantílico y expectílico,
+con el nivel de asimetría como parámetro. Es la plantilla más directa si se implementa la
+hipótesis de asimetría. \citet{tyralis-2025-deep-huber-quantile-networks}}
+
+\entrada{Pérdida asimétrica de picos en LSTM}{penaliza más el error en los picos de caudal.
+\citet{tofighi-2025-asymmetric-peak-loss}}
+
+\entrada{Aprendizaje orientado a la decisión}{entrena minimizando el costo de la decisión aguas
+abajo en lugar del error de predicción. \citet{elmachtoub-grigas-2022-smart-predict-optimize}}
+
+\entrada{GloFAS}{sistema operativo global: ensambles meteorológicos acoplados a un modelo
+hidrológico distribuido. \citet{alfieri-2013-glofas}}
+
+\entrada{MGB continental}{modelo hidrológico-hidrodinámico de Sudamérica; cubre la cuenca del
+Plata y el río Uruguay. \citet{siqueira-2018-mgb-sudamerica}}
+
+\entrada{\textit{National Water Model}}{sistema operativo continental sobre WRF-Hydro. Documenta
+cómo un sistema en producción trata los embalses y la regulación antrópica.
+\citet{cosgrove-2024-national-water-model}}
+
+\entrada{Arquitectura de un sistema de alerta en producción}{ingesta, modelo, umbrales, latencia y
+qué hacer cuando faltan datos. \citet{nevo-2022-pronostico-operativo-ml}}
+
+\entrada{M5 \textit{Model Tree} en el río Uruguay}{predice niveles medios diarios a 1, 2 y 3 días,
+usando niveles aguas arriba y precipitación satelital. Literatura gris, sin verificar.
+\citet{mattiuzi-2021-m5-uruguai}}
+
+\entrada{Conjuntos de datos de muestra grande}{CAMELS-BR y Caravan: series y atributos
+estandarizados. Son la base para preentrenar o regionalizar antes del ajuste local.
+\citet{chagas-2020-camels-br, kratzert-2023-caravan}}
+
+\end{enumerate}
+
+\newpage
+
+\section*{3. Comparaciones}
+
+Recordatorio: lo que sigue sale del relevamiento, no de la lectura del texto completo.
+Hay que confirmarlo contra la fuente antes de citarlo.
+
+\medskip
+
+\begin{enumerate}[leftmargin=*, itemsep=4pt]
+
+\entrada{LSTM contra modelo conceptual calibrado por cuenca}{sobre el conjunto CAMELS, midiendo
+con NSE. La red iguala o supera al conceptual calibrado cuenca por cuenca.
+\citet{kratzert-2018-lstm-lluvia-escorrentia}}
+
+\entrada{Un modelo regional contra modelos calibrados individualmente}{sobre 531 cuencas, con NSE.
+El modelo único regional supera a los individuales.
+\citet{kratzert-2019-universal-regional-local}}
+
+\entrada{Entrenamiento sobre una cuenca contra entrenamiento regional}{revisión de 150 trabajos,
+de los cuales 122 entrenaron sobre una sola cuenca. El regional supera sistemáticamente al
+aislado. Es la objeción que esta tesis tiene que responder midiendo.
+\citet{kratzert-2024-nunca-una-sola-cuenca}}
+
+\entrada{Árboles contra redes profundas}{sobre 45 conjuntos tabulares de tamaño medio. Los árboles
+siguen siendo estado del arte. \citet{grinsztajn-2022-arboles-tabular}}
+
+\entrada{Árboles contra LSTM variando el volumen de entrenamiento}{con NSE. Empatan con pocos
+datos; el LSTM gana cuando hay más. Acota la conclusión al régimen de datos de cada caso.
+\citet{gauch-2021-camels-datos-limitados}}
+
+\entrada{Transformer contra LSTM}{sobre 671 cuencas CAMELS, con NSE y métricas de caudales altos.
+El Transformer común no resulta competitivo y falla especialmente en caudales altos.
+\citet{liu-2024-transformer-limite-hidrologico}}
+
+\entrada{Redes recurrentes contra arquitecturas de atención}{por complejidad creciente de la
+tarea, con KGE y NSE. El LSTM gana en regresión y horizontes cortos; la atención gana terreno en
+horizontes largos y en extremos. \citet{liu-2025-rnn-a-transformers}}
+
+\entrada{TFT contra LSTM y contra Transformer puro, en caudal}{con NSE. El TFT supera a ambos: lo
+que rinde es atención combinada con recurrencia, no atención sola.
+\citet{rasiyakoya-2024-tft-caudal}}
+
+\entrada{Modelos fundacionales sin entrenamiento contra LSTM entrenado}{con NSE. En univariado
+quedan apenas por debajo del LSTM; en multivariado, muy por detrás.
+\citet{sun-2026-tsfm-zeroshot-caudal}}
+
+\entrada{Modelo lineal de una capa contra la familia de Transformers}{en nueve benchmarks de
+horizonte largo, con MSE y MAE. El lineal iguala o supera a todos.
+\citet{zeng-2023-dlinear}}
+
+\entrada{Ocho funciones de pérdida entre sí}{MSE, NSE, KGE, Huber, y cuantílica y expectílica en
+dos niveles, sobre 482 cuencas CAMELS, con NSE y KGE. \textbf{Es el antecedente más cercano a esta
+tesis}: ya usa expectiles, con $\tau$ fijo y sin modular por régimen.
+\citet{dahal-2026-ensemble-diverse-loss-functions}}
+
+\entrada{Pérdida asimétrica de picos contra pérdida simétrica}{en LSTM, midiendo NSE de flujos
+altos. Reporta mejora en caudales altos, en horizonte horario y una sola cuenca.
+\citet{tofighi-2025-asymmetric-peak-loss}}
+
+\entrada{Cabezales distribucionales entre sí}{mezclas gaussianas, laplaciana asimétrica y
+\textit{dropout}, por verosimilitud y calibración. La asimetría aparece aprendida, no impuesta.
+\citet{klotz-2022-uncertainty-deep-learning-rainfall-runoff}}
+
+\entrada{LSTM global contra GloFAS, en cuencas no aforadas}{con métricas de detección de eventos
+extremos. El LSTM a varios días de anticipación alcanza una confiabilidad comparable o mejor que
+la del pronóstico a cero días de GloFAS. \citet{nearing-2024-global-extreme-floods}}
+
+\entrada{Reevaluación crítica de esa misma comparación}{sostiene que las decisiones de evaluación
+--- umbrales, definición de extremo, elección del benchmark --- inflaron las métricas reportadas.
+\citet{li-2026-critica-despliegue-ia}}
+
+\entrada{Sistema operativo global contra persistencia y contra climatología}{aporta el protocolo
+de verificación operativa: contra persistencia en corto y medio plazo, contra climatología en
+plazos largos. \citet{harrigan-2023-glofas-reforecast}}
+
+\entrada{LSTM post-procesando GloFAS contra GloFAS sin corregir}{con KGE y NSE por horizonte. El
+post-procesamiento mejora sustancialmente a varios días de anticipación.
+\citet{hunt-2022-lstm-refuerzo-pronosticos}}
+
+\entrada{Modelo diferenciable contra LSTM puro}{con NSE. Se acerca a la precisión del LSTM
+conservando variables de estado interpretables. \citet{feng-2022-modelos-diferenciables}}
+
+\entrada{Pérdida asimétrica calibrada por costos contra simétrica}{en demanda eléctrica, midiendo
+costo diario de operación. Reduce el costo. El parámetro de asimetría se deriva del cociente de
+costos real, no de validación cruzada. \citet{wu-2021-asymmetric-svr-load-forecasting}}
+
+\entrada{Varias pérdidas evaluadas por resultado económico}{en el mercado eléctrico, comparando
+beneficio y riesgo contra RMSE. \textbf{La pérdida que maximiza el beneficio no es la que minimiza
+el error cuadrático.} \citet{serafin-weron-2025-loss-functions-trading}}
+
+\entrada{Skill del pronóstico contra valor en la operación de embalses}{la relación no es monótona
+ni universal: depende del objetivo operativo.
+\citet{turner-2017-forecast-skill-value-reservoir}}
+
+\entrada{Incertidumbre muestral de NSE y KGE}{unos pocos días de crecida dominan el valor de la
+métrica, así que un número puntual no alcanza para ordenar modelos.
+\citet{clark-2021-abuse-performance-metrics}}
+
+\entrada{Sistema operativo MGB-IPH en el alto río Uruguay}{entre 2013 y 2016, corrido a diario con
+diez días de anticipación. \textbf{Es el piso concreto a superar en esta cuenca}: la ocurrencia de
+crecidas se anticipa con dos o tres días útiles. \citet{fan-2017-uruguai-operacional}}
+
+\entrada{Esquemas estadísticos para afluencias a Salto Grande}{con skill contra climatología.
+Opera en escala mensual y estacional, no diaria. \citet{talento-2013-salto-grande}}
+
+\entrada{Afluencias a embalses brasileños con ensambles meteorológicos}{con CRPS y skill
+probabilístico. Aporta el vocabulario de verificación reutilizable acá.
+\citet{fan-2015-tigge-embalses}}
+
+\end{enumerate}
+
+\newpage
+
+\section*{Lo que no cerró el relevamiento}
+
+\begin{enumerate}[leftmargin=*, itemsep=3pt]
+  \item Ninguna de las comparaciones de la sección 3 está confirmada contra el texto completo.
+        Para eso hacen falta los PDF en \texttt{research/documents/}, que hoy está fuera de git.
+  \item Falta la referencia de origen de la LSTM (Hochreiter y Schmidhuber, 1997), la del
+        contraste de Diebold--Mariano y su corrección, y la de validación en series temporales.
+  \item Faltan las referencias de los productos de forzantes que usa el conjunto de datos: TIGGE,
+        GEFS Reforecast, MERGE y SAMeT.
+  \item Las dos entradas de literatura gris brasileña no tienen DOI y hay que confirmarlas a mano:
+        \citet{mattiuzi-2021-m5-uruguai} y el informe de operación del sistema de alerta de la
+        cuenca.
+  \item No aparece ningún trabajo publicado de pronóstico de \emph{caudal} del río Uruguay con
+        aprendizaje automático en horizontes de 1 a 7 días. Es la afirmación que sostiene el hueco
+        que ataca la tesis, y conviene que la dirección la confirme antes de escribirla.
+\end{enumerate}
+
+\bibliografia
+
+\end{document}
